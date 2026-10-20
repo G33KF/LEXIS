@@ -1,0 +1,540 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LEXIS code map</title>
+<script src="dati.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.0/mermaid.min.js"></script>
+<script src="https://unpkg.com/vis-network@9.1.6/standalone/umd/vis-network.min.js"></script>
+<style>
+:root{--sfondo:#f6f7f9;--carta:#fff;--testo:#1c2330;--tenue:#5d6878;--bordo:#dde2ea;--accento:#2f5bd3;
+ --fatto:#2f6fdb;--corso:#e8891c;--dafare:#9aa3ae;--bloccato:#d23b3b;--stantio:#b5179e;--sel:#eef3ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--sfondo:#12161d;--carta:#1a2029;--testo:#e3e8ef;--tenue:#94a0b0;--bordo:#2c3542;--accento:#7c9cff;--sel:#223052}}
+:root[data-theme="dark"]{--sfondo:#12161d;--carta:#1a2029;--testo:#e3e8ef;--tenue:#94a0b0;--bordo:#2c3542;--accento:#7c9cff;--sel:#223052}
+*{box-sizing:border-box}
+body{margin:0;background:var(--sfondo);color:var(--testo);font:14px/1.5 system-ui,"Segoe UI",sans-serif}
+header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--bordo);background:var(--carta);position:sticky;top:0;z-index:5}
+header h1{font-size:16px;margin:0}
+header .links{margin-left:auto;display:flex;gap:8px}header .links a{padding:4px 10px;border:1px solid var(--bordo);border-radius:6px;text-decoration:none}header .links{margin-left:auto;display:flex;gap:8px}header .links a{padding:4px 10px;border:1px solid var(--bordo);border-radius:6px;text-decoration:none}header .meta{color:var(--tenue);font-size:12px}
+nav{display:flex;flex-wrap:wrap;gap:4px}
+nav button,.btn{border:1px solid var(--bordo);background:var(--carta);color:var(--testo);border-radius:6px;padding:4px 10px;cursor:pointer;font:inherit}
+nav button.on{background:var(--accento);border-color:var(--accento);color:#fff}
+select,input{font:inherit;background:var(--carta);color:var(--testo);border:1px solid var(--bordo);border-radius:6px;padding:3px 6px}
+main{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;padding:16px}
+@media (max-width:900px){main{grid-template-columns:1fr}}
+#pannello{background:var(--carta);border:1px solid var(--bordo);border-radius:8px;padding:12px;align-self:start;position:sticky;top:64px;max-height:calc(100vh - 80px);overflow:auto}
+section.diag{background:var(--carta);border:1px solid var(--bordo);border-radius:8px;padding:12px;margin-bottom:16px}
+section.diag h3{margin:0 0 4px;font-size:15px}
+.desc{color:var(--tenue);margin:0 0 8px}
+.mm{overflow-x:auto;min-height:40px}
+.mm:empty{min-height:320px}
+.mm g.node{cursor:pointer}
+.duo .corpo{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px}
+.duo .lato{position:sticky;top:70px;align-self:start;border-left:1px dashed var(--bordo);padding-left:12px}
+.duo .lato .sotto{margin-top:0;border-top:0;padding-top:0}
+.duo .lato .rete{height:calc(100vh - 170px);min-height:360px}
+@media (max-width:1100px){.duo .corpo{grid-template-columns:1fr}.duo .lato{position:static;border-left:0;padding-left:0}}
+h2.banda{font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--tenue);margin:22px 0 8px;padding-bottom:4px;border-bottom:2px solid var(--accento)}
+h2.banda:first-of-type{margin-top:4px}
+.avvisi{background:var(--carta);border:1px solid var(--corso);border-radius:8px;padding:8px 12px;margin-bottom:16px;font-size:13px}
+table{border-collapse:collapse;width:100%;background:var(--carta)}
+th,td{border-bottom:1px solid var(--bordo);padding:5px 8px;text-align:left;vertical-align:top}
+th{font-size:12px;color:var(--tenue);font-weight:600}
+.tab{overflow-x:auto}
+.pill{display:inline-block;border-radius:10px;padding:0 8px;font-size:12px;color:#fff;white-space:nowrap}
+.fatto{background:var(--fatto)}.in_corso{background:var(--corso)}.da_fare,.senza_caselle{background:var(--dafare)}.bloccato{background:var(--bloccato)}
+.stantio{background:var(--stantio)}.nuova{background:var(--corso)}.cambiata{background:var(--stantio)}.uguale,.prima{background:var(--dafare)}.rimossa{background:var(--bloccato)}
+.card{border:1px solid var(--bordo);border-radius:6px;padding:6px;margin-bottom:6px;font-size:13px;cursor:pointer}
+.card small{color:var(--tenue);display:block}
+#rete,.rete{height:520px;background:var(--carta);border:1px solid var(--bordo);border-radius:8px}
+.sotto{margin-top:10px;border-top:1px dashed var(--bordo);padding-top:8px}
+.sotto .rete{height:440px}
+.sotto-testa{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:6px}
+.lista{max-height:520px;overflow:auto}
+.indice{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:4px 16px;font-size:13px}
+.indice h4{grid-column:1/-1;margin:8px 0 0;font-size:12px;color:var(--tenue);text-transform:uppercase;letter-spacing:.04em}
+a{color:var(--accento);cursor:pointer}
+code{font-size:12px}
+.vuoto{color:var(--tenue);padding:16px}
+.lav{display:grid;grid-template-columns:minmax(0,320px) minmax(0,1fr);gap:16px}
+@media (max-width:1100px){.lav{grid-template-columns:1fr}}
+.albero{background:var(--carta);border:1px solid var(--bordo);border-radius:8px;padding:8px;max-height:calc(100vh - 110px);overflow:auto;position:sticky;top:64px;font-size:13px}
+.albero ul{list-style:none;margin:0;padding-left:14px}
+.albero>ul{padding-left:0}
+.albero li{margin:1px 0}
+.albero summary{cursor:pointer}
+.albero a{color:var(--testo);text-decoration:none;border-radius:4px;padding:0 3px}
+.albero a.on{background:var(--sel);outline:1px solid var(--accento)}
+.albero .pt{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;vertical-align:middle}
+.logica p{margin:4px 0}
+.logica b{color:var(--tenue);font-weight:600}
+</style>
+</head>
+<body>
+<header>
+ <h1 id="titolo">KraphWork</h1><span class="meta" id="meta"></span>
+ <nav id="schede"></nav>
+ <label>Module <select id="modulo"><option value="">all</option></select></label>
+ <span class="links"><a href="https://github.com/G33KF/LEXIS">Repository</a> <a href="https://github.com/G33KF/LEXIS/releases/latest">Download</a></span>
+</header>
+<main><div id="vista"></div><aside id="pannello"><p class="vuoto">Click a node, a group or a row for details.</p></aside></main>
+<script>
+const K = window.KRAPHWORK;
+if (!K) document.getElementById('vista').innerHTML = '<p class="vuoto">dati.js missing.</p>';
+const SCHEDE = ['Progetto','Codice','Moduli','Documenti'];
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const pill = (s) => `<span class="pill ${esc(s)}">${esc(({fatto: 'done', da_fare: 'to do', in_corso: 'in progress', bloccato: 'blocked', stantio: 'stale', rimossa: 'removed', prima: 'baseline'})[s] || String(s).replace('_',' '))}</span>`;
+const scuro = matchMedia('(prefers-color-scheme: dark)').matches && document.documentElement.dataset.theme !== 'light';
+let scheda = 'Progetto', filtro = '';
+const reti = new Map();   // contenitore -> vis.Network, distrutte a ogni cambio di scheda
+const vista = document.getElementById('vista'), pannello = document.getElementById('pannello');
+const dvTxt = (d) => d.righe ? `${d.file}:${d.righe[0]}-${d.righe[1]}` : d.foglio ? `${d.file} [foglio ${d.foglio}]` : d.slide ? `${d.file} [slide ${d.slide}]` : d.pagina ? `${d.file} [pag. ${d.pagina}]` : (d.sezione ?? d.chiave) ? `${d.file} [${d.sezione ?? d.chiave}]` : d.file;
+const perModulo = (m) => !filtro || m === filtro;
+const stantiiId = new Set((K?.stantii || []).map((s) => s.id));
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const gruppo = (id) => K.codice.gruppi.find((g) => g.id === id);
+// etichetta Mermaid sicura: niente caratteri che Mermaid interpreta come forma o commento
+// w: a capo ogni ~w caratteri (Mermaid non manda a capo da solo le etichette lunghe)
+const lab = (s, n = 70, w = 0) => {
+  let t = String(s ?? '').slice(0, n).replace(/["`]/g, "'").replace(/[[\]{}<>|#;]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (w) t = t.split(' ').reduce((r, p) => { const u = r[r.length - 1]; if (u !== undefined && (u + ' ' + p).length <= w) r[r.length - 1] = u + ' ' + p; else r.push(p); return r; }, []).join('<br/>');
+  return '"' + t + '"';
+};
+
+function init() {
+  document.getElementById('titolo').innerHTML = '<a href="https://github.com/G33KF/LEXIS" style="color:inherit">LEXIS</a> · code map';
+  document.getElementById('meta').textContent = `generated ${new Date(K.generato).toLocaleString('en-GB')}${K.codice.commit ? ' · graphify @' + K.codice.commit.slice(0, 7) : ''}`;
+  const sel = document.getElementById('modulo');
+  for (const m of K.moduli) sel.insertAdjacentHTML('beforeend', `<option value="${esc(m.id)}">${esc(m.nome)}</option>`);
+  sel.onchange = () => { filtro = sel.value; mostra(); };
+  const nav = document.getElementById('schede');
+  for (const s of SCHEDE) {
+    const b = document.createElement('button'); b.textContent = ({Progetto: 'Project', Codice: 'Code', Moduli: 'Modules', Documenti: 'Documents'})[s] || s;
+    b.onclick = () => { scheda = s; mostra(); }; nav.append(b);
+  }
+  mermaid.initialize({ startOnLoad: false, securityLevel: 'loose', theme: scuro ? 'dark' : 'default', flowchart: { htmlLabels: true, useMaxWidth: false }, maxTextSize: 200000 });
+  const h = decodeURIComponent(location.hash.slice(1));
+  if (SCHEDE.includes(h)) scheda = h;
+  mostra();
+}
+
+function mostra() {
+  document.querySelectorAll('#schede button').forEach((b) => b.classList.toggle('on', b.textContent === scheda));
+  history.replaceState(null, '', '#' + encodeURIComponent(scheda));
+  for (const r of reti.values()) r.destroy();
+  reti.clear();
+  const avv = K.avvisi.length ? `<div class="avvisi">${K.avvisi.map(esc).join('<br>')}</div>` : '';
+  vista.innerHTML = avv;
+  return ({ 'Obiettivi': () => diagrammi('obiettivi'), 'Progetto': () => diagrammi('progetto'), 'Codice': codice, 'Lavoro': lavoro, 'Moduli': moduli,
+     'Documenti': documenti, 'Tracciabilità': tracciabilita, 'Decisioni': decisioni, 'Da collocare': daCollocare })[scheda]();
+}
+
+// --- Mermaid: resa con colori di stato e clic sui nodi
+const COLORI = { fatto: '#2f6fdb', in_corso: '#e8891c', da_fare: '#9aa3ae', bloccato: '#d23b3b' };
+const CLASSI = Object.entries(COLORI).map(([k, c]) => `classDef ${k} fill:${c},color:#fff,stroke:${c}`).join('\n')
+  + '\nclassDef stantio fill:#b5179e,color:#fff,stroke:#7a0f6b,stroke-dasharray:4 2\nclassDef evid stroke:#e8891c,stroke-width:4px';
+let nRese = 0;
+async function rendi(box, src, alClic) {
+  try {
+    const { svg } = await mermaid.render('m' + (++nRese), src);
+    box.innerHTML = svg;
+    box.querySelectorAll('g.node').forEach((g) => {
+      const nid = (g.id.match(/^flowchart-(.+)-\d+$/) || [])[1];
+      if (nid && alClic) g.onclick = () => alClic(nid);
+    });
+  } catch (e) { box.innerHTML = `<p class="vuoto">Mermaid error: ${esc(e.message)}</p>`; }
+}
+
+// diagrammi di una scheda; la resa avviene quando la sezione si avvicina alla vista (la scheda Progetto ne ha decine)
+const osservatore = 'IntersectionObserver' in window ? new IntersectionObserver((voci) => voci.forEach((v) => { if (v.isIntersecting) { osservatore.unobserve(v.target); v.target._rendi(); } }), { rootMargin: '800px' }) : null;
+// salto a un diagramma: lo rende subito, cosi' i segnaposto sopra non lo spostano mentre si caricano
+async function vaiDiagramma(id) { const s = document.getElementById('d_' + id); if (!s) return; osservatore?.unobserve(s); await s._rendi?.(); s.scrollIntoView(); }
+// famiglie di diagrammi, nell'ordine in cui compaiono: prima cosa fa il progetto, poi come e' fatto
+const FAMIGLIE = [
+  ['How it works', (d) => d.tipo === 'logica'],
+  ['Goals', (d) => d.auto && d.scheda === 'obiettivi'],
+  ['Described', (d) => !d.auto && !d.importato && d.tipo !== 'logica'],
+  ['Architecture by module (generated)', (d) => d.tipo === 'architettura'],
+  ['Existing flows (imported)', (d) => d.importato],
+];
+const famiglia = (d) => FAMIGLIE.findIndex(([, f]) => f(d));
+const confronta = (a, b) => famiglia(a) - famiglia(b) || (a.ordine ?? 99) - (b.ordine ?? 99) || (a.modulo === '.' ? -1 : 0) - (b.modulo === '.' ? -1 : 0);
+
+async function diagrammi(tipo) {
+  const lista = K.diagrammi.filter((d) => d.scheda === tipo && perModulo(d.modulo || '')).sort(confronta);
+  if (!lista.length) { vista.insertAdjacentHTML('beforeend', `<p class="vuoto">No diagram${filtro ? ' for this module' : ''}.</p>`); return; }
+  const usate = [...new Set(lista.map(famiglia))];
+  if (lista.length > 3) {
+    vista.insertAdjacentHTML('beforeend', `<section class="diag"><div class="indice">${usate.map((k) => { const v = lista.filter((d) => famiglia(d) === k); return `<h4>${FAMIGLIE[k][0]} · ${v.length}</h4>${v.map((d) => `<a data-d="${esc(d.id)}">${esc(d.titolo)}</a>`).join('')}`; }).join('')}</div></section>`);
+    vista.querySelectorAll('.indice a').forEach((a) => a.onclick = () => vaiDiagramma(a.dataset.d));
+  }
+  let ultima = -1;
+  for (const d of lista) {
+    if (usate.length > 1 && famiglia(d) !== ultima) { ultima = famiglia(d); vista.insertAdjacentHTML('beforeend', `<h2 class="banda">${FAMIGLIE[ultima][0]}</h2>`); }
+    await aggiungiDiagramma(d, vista);
+  }
+}
+
+// una sezione per diagramma; la scheda Codice affianca al flowchart (sinistra) il grafo graphify del passo cliccato (destra)
+async function aggiungiDiagramma(d, contenitore) {
+  const sec = document.createElement('section');
+  const duo = d.scheda === 'codice';
+  sec.className = 'diag' + (duo ? ' duo' : '');
+  sec.id = 'd_' + d.id;
+  const origine = d.tipo === 'architettura' ? 'generated from the file census and graphify' : d.auto ? 'deduced from specs, plans and commits' : d.importato ? `imported from ${d.importato}` : '';
+  sec.innerHTML = `<h3>${esc(d.titolo)}</h3>${origine ? `<p class="desc"><small>${esc(origine)}</small></p>` : ''}${d.descrizione ? `<p class="desc">${esc(d.descrizione)}</p>` : ''}
+   <div class="corpo"><div class="mm"></div>${duo ? `<div class="lato"><p class="vuoto">${LATO_VUOTO}</p></div>` : ''}</div>
+   ${(d.tabelle || []).map((t) => `<h4>${esc(t.titolo)}</h4><div class="tab"><table><tr>${t.colonne.map((c) => `<th>${esc(c)}</th>`).join('')}</tr>${t.righe.map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</table></div>`).join('')}
+   ${(d.note || []).length ? `<ul class="desc">${d.note.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>` : ''}`;
+  contenitore.append(sec);
+  const per = {};
+  for (const [nid, n] of Object.entries(d.nodi || {})) {
+    const k = stantiiId.has(`${d.id}.${nid}`) ? 'stantio' : n.stato;
+    if (k) (per[k] ||= []).push(nid);   // diagrammi generati e importati: nessuno stato, restano i loro colori
+  }
+  const src = d.mermaid + '\n' + CLASSI + '\n' + Object.entries(per).map(([k, ids]) => `class ${ids.join(',')} ${k}`).join('\n');
+  sec._rendi = () => sec._fatto ||= rendi(sec.querySelector('.mm'), src, (nid) => { dettaglioNodo(d, nid); apriSottografo(sec, d, nid); });
+  if (osservatore) osservatore.observe(sec); else await sec._rendi();
+  return sec;
+}
+const LATO_VUOTO = 'Click a step of the diagram to open the graphify graph of its code here.';
+
+// diagramma di un'altra scheda (link «approfondisci»): cambia scheda se serve, poi ci salta
+async function apriDiagramma(id) {
+  const d = K.diagrammi.find((x) => x.id === id); if (!d) return;
+  if (!document.getElementById('d_' + id)) {
+    scheda = { obiettivi: 'Obiettivi', progetto: 'Progetto', codice: 'Codice' }[d.scheda] || 'Progetto';
+    filtro = ''; document.getElementById('modulo').value = '';
+    await mostra();
+  }
+  vaiDiagramma(id);
+}
+function apriLavoro(s) { selLavoro = s; scheda = 'Lavoro'; mostra(); }
+
+function gruppiDelNodo(n) {
+  if (n.gruppi?.length) return n.gruppi;
+  return [...new Set((n.dove || []).flatMap((x) => K.codice.gruppi.filter((g) => g.file.includes(x.file)).map((g) => g.id)))];
+}
+
+function dettaglioNodo(d, nid) {
+  const n = (d.nodi || {})[nid] || {};
+  const st = (K.stantii || []).filter((s) => s.id === `${d.id}.${nid}`);
+  const gruppi = gruppiDelNodo(n);
+  pannello.innerHTML = `<h3>${esc(n.titolo || nid)}</h3><p>${n.stato ? pill(n.stato) : ''} ${st.length ? pill('stantio') : ''}</p>
+   <p><code>${esc(d.id)}.${esc(nid)}</code></p>
+   ${n.descrizione ? `<p>${esc(n.descrizione)}</p>` : ''}
+   ${(n.dove || []).length ? `<h4>Where</h4><ul>${n.dove.slice(0, 60).map((x) => `<li><code>${esc(dvTxt(x))}</code></li>`).join('')}${n.dove.length > 60 ? `<li>+${n.dove.length - 60}</li>` : ''}</ul>` : ''}
+   ${st.length ? `<h4>Stale</h4><ul>${st.map((s) => `<li>${esc(s.chiave)} ${esc(s.motivo)}</li>`).join('')}</ul>` : ''}
+   ${(n.obiettivi || []).length ? `<h4>Goals</h4><ul>${n.obiettivi.map((o) => `<li><code>${esc(o)}</code></li>`).join('')}</ul>` : ''}
+   ${gruppi.length ? `<h4>Code (graphify)</h4><p class="desc">The group graph is open below the diagram.</p><ul>${gruppi.map((g) => `<li><a data-g="${esc(g)}">${esc(g)} · ${esc(gruppo(g)?.nome)}</a></li>`).join('')}</ul>` : ''}
+   ${(n.apre || []).length ? `<h4>Go deeper</h4><ul>${n.apre.map((id) => `<li><a data-apri-d="${esc(id)}">${esc(K.diagrammi.find((x) => x.id === id)?.titolo || id)}</a></li>`).join('')}</ul>` : ''}
+   ${n.iniziativa ? `<p><a data-lav="i:${esc(n.iniziativa)}">Apri nel Lavoro</a>${n.piano ? ` · <a data-lav="p:${esc(n.piano)}">il piano</a>` : ''}</p>` : ''}
+   ${n.fonte ? `<p><small>source: ${esc(n.fonte)}</small></p>` : ''}`;
+  pannello.querySelectorAll('a[data-g]').forEach((a) => a.onclick = () => apriGruppo(a.dataset.g));
+  pannello.querySelectorAll('a[data-apri-d]').forEach((a) => a.onclick = () => apriDiagramma(a.dataset.apriD));
+  pannello.querySelectorAll('a[data-lav]').forEach((a) => a.onclick = () => apriLavoro(a.dataset.lav));
+}
+
+// grafo graphify del nodo cliccato, subito sotto il suo diagramma
+function apriSottografo(sec, d, nid) {
+  const n = (d.nodi || {})[nid] || {}, dove = n.dove || [];
+  const gids = gruppiDelNodo(n);
+  const lato = sec.querySelector('.lato');
+  let box = sec.querySelector('.sotto');
+  if (!box) { box = document.createElement('div'); box.className = 'sotto'; if (lato) lato.replaceChildren(box); else sec.querySelector('.corpo').after(box); }
+  if (!gids.length) { box.innerHTML = `<p class="desc">«${esc(n.titolo || nid)}»: no linked code files, so no graphify graph.${(n.apre || []).length ? ' The detail is in the diagrams listed in the panel (“Go deeper”).' : ''}</p>`; return; }
+  const file = new Set(dove.map((x) => x.file));
+  const sovrapp = (id) => gruppo(id)?.file.filter((f) => file.has(f)).length || 0;
+  gids.sort((a, b) => sovrapp(b) - sovrapp(a));
+  box.innerHTML = `<div class="sotto-testa"><b>Code of «${esc(n.titolo || nid)}»</b>
+    ${gids.length > 1 ? `<select>${gids.map((g) => `<option value="${esc(g)}">${esc(g)} · ${esc(gruppo(g)?.nome)} (${gruppo(g)?.file.length} files)</option>`).join('')}</select>` : `<span>${esc(gids[0])} · ${esc(gruppo(gids[0])?.nome)}</span>`}
+    <a data-apri>open in the Code tab</a> <a data-chiudi>close</a></div><div class="rete"></div>
+    <p class="desc"><small>${dove.some((x) => x.righe) ? 'orange: symbols inside the lines of the node · ' : ''}blue: same files as the node · grey: rest of the group</small></p>`;
+  const el = box.querySelector('.rete');
+  const disegna = (g) => disegnaRete(el, g, dove);
+  box.querySelector('select')?.addEventListener('change', (e) => disegna(e.target.value));
+  box.querySelector('[data-apri]').onclick = () => apriGruppo(box.querySelector('select')?.value || gids[0]);
+  box.querySelector('[data-chiudi]').onclick = () => { reti.get(el)?.destroy(); reti.delete(el); box.remove(); if (lato) lato.innerHTML = `<p class="vuoto">${LATO_VUOTO}</p>`; };
+  disegna(gids[0]);
+  if (!lato) box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+const riga = (r) => parseInt(String(r ?? '').replace(/^L/, ''), 10) || null;
+function disegnaRete(el, gid, dove = []) {
+  const g = gruppo(gid); if (!g) return;
+  reti.get(el)?.destroy();
+  const file = new Set(dove.map((x) => x.file));
+  const dentro = (n) => dove.some((x) => x.file === n.f && x.righe && riga(n.r) >= x.righe[0] && riga(n.r) <= x.righe[1]);
+  const testo = getComputedStyle(document.body).color;
+  const nodi = new vis.DataSet(g.nodi.map((n) => {
+    const base = { id: n.id, label: n.l, title: `${n.f}${n.r ? ':' + n.r : ''}` };
+    if (!dove.length) return { ...base, group: n.f };
+    const c = dentro(n) ? css('--corso') : file.has(n.f) ? css('--fatto') : css('--dafare');
+    return { ...base, color: { background: c, border: c }, size: dentro(n) ? 16 : file.has(n.f) ? 11 : 7, font: { color: testo, size: dentro(n) ? 14 : 11 } };
+  }));
+  const archi = new vis.DataSet(g.archi.map(([s, t, r], i) => ({ id: i, from: s, to: t, title: r, arrows: 'to' })));
+  const rete = new vis.Network(el, { nodes: nodi, edges: archi },
+    { nodes: { shape: 'dot', size: 9, font: { color: testo, size: 12 } }, edges: { color: { opacity: 0.4 }, smooth: false }, physics: { stabilization: { iterations: 150 } } });
+  rete.on('click', (p) => { const n = g.nodi.find((x) => x.id === p.nodes[0]); if (n) pannello.innerHTML = `<h3>${esc(n.l)}</h3><p><code>${esc(n.f)}${n.r ? ':' + esc(String(n.r).replace(/^L/, '')) : ''}</code></p><p>group <code>codice.${esc(g.id)}</code> · ${esc(g.nome)}</p>`; });
+  reti.set(el, rete);
+}
+
+// --- codice: diagrammi spiegati + gruppi graphify
+let gruppoAperto = null;
+function apriGruppo(id) { gruppoAperto = id; scheda = 'Codice'; mostra(); }
+async function codice() {
+  await diagrammi('codice');
+  const gruppi = K.codice.gruppi.filter((g) => perModulo(g.modulo));
+  vista.insertAdjacentHTML('beforeend', `<section class="diag" id="sezgruppi"><h3>Code groups ${K.codice.disponibile ? '(graphify communities)' : '(by folder: no graphify)'}</h3>
+   <p><input id="cerca" placeholder="filter by name or file" size="30"> <span class="desc">${gruppi.length} groups</span></p>
+   <div style="display:grid;grid-template-columns:minmax(0,260px) minmax(0,1fr);gap:12px"><div class="lista" id="gl"></div><div id="rete"></div></div></section>`);
+  const gl = document.getElementById('gl');
+  const elenco = (q) => { gl.innerHTML = gruppi.filter((g) => !q || (g.nome + ' ' + g.file.join(' ')).toLowerCase().includes(q)).slice(0, 300)
+    .map((g) => `<div class="card" data-g="${esc(g.id)}"><b>${esc(g.nome)}</b> ${g.file.length >= 3 ? `<span class="pill ${g.spiegato ? 'fatto' : 'da_fare'}">${g.spiegato ? 'explained' : 'no flowchart'}</span>` : ''}<small>${esc(g.id)} · ${g.file.length} files · ${g.nodi.length}${g.troncato ? '/' + g.troncato : ''} nodes${g.modulo ? ' · ' + esc(g.modulo) : ''}</small></div>`).join('');
+    gl.querySelectorAll('.card').forEach((c) => c.onclick = () => disegnaGruppo(c.dataset.g)); };
+  document.getElementById('cerca').oninput = (e) => elenco(e.target.value.toLowerCase());
+  elenco('');
+  if (gruppoAperto || gruppi[0]) disegnaGruppo(gruppoAperto || gruppi[0].id);
+  if (gruppoAperto) document.getElementById('sezgruppi').scrollIntoView();
+}
+function disegnaGruppo(id) {
+  const g = gruppo(id); if (!g) return;
+  gruppoAperto = id;
+  disegnaRete(document.getElementById('rete'), id);
+  const spieg = K.diagrammi.filter((d) => d.scheda === 'codice' && ((d.gruppi || []).includes(id) || Object.values(d.nodi || {}).some((n) => (n.dove || []).some((x) => g.file.includes(x.file)))));
+  const descritto = K.diagrammi.flatMap((d) => Object.entries(d.nodi || {}).filter(([, n]) => !d.auto && (n.dove || []).some((x) => g.file.includes(x.file))).map(([nid]) => `${d.id}.${nid}`));
+  pannello.innerHTML = `<h3>${esc(g.nome)}</h3><p><code>codice.${esc(g.id)}</code>${g.modulo ? ' · module ' + esc(g.modulo) : ''}</p>
+   ${spieg.length ? `<h4>Logic flowcharts</h4><ul>${spieg.map((d) => `<li><a data-d="${esc(d.id)}">${esc(d.titolo)}</a></li>`).join('')}</ul>` : ''}
+   ${descritto.length ? `<h4>Described in</h4><ul>${descritto.slice(0, 40).map((o) => `<li><code>${esc(o)}</code></li>`).join('')}</ul>` : '<p class="desc">No described node cites it.</p>'}
+   <h4>Files (${g.file.length})</h4><ul>${g.file.map((f) => `<li><code>${esc(f)}</code></li>`).join('')}</ul>`;
+  pannello.querySelectorAll('a[data-d]').forEach((a) => a.onclick = () => vaiDiagramma(a.dataset.d));
+}
+
+// --- lavoro: albero progetto -> iniziative (spec) -> piani -> task; ogni livello ha il suo schema logico
+let selLavoro = 'progetto';
+const statoTask = (t) => t.stato === 'senza_caselle' ? 'da_fare' : t.stato;
+const conteggio = (task) => `${task.filter((t) => t.stato === 'fatto').length}/${task.length} task`;
+function lavoro() {
+  const L = K.lavoro;
+  if (!L.iniziative) { vista.insertAdjacentHTML('beforeend', '<p class="vuoto">lavoro.json di una versione precedente: rieseguire /kraphwork.</p>'); return; }
+  const piano = new Map(L.piani.map((p) => [p.file, p]));
+  const iniz = L.iniziative.filter((i) => perModulo(i.modulo || ''));
+  const taskDi = (i) => i.piani.flatMap((f) => piano.get(f).task);
+  const pt = (s) => `<span class="pt ${esc(s)}"></span>`;
+  vista.insertAdjacentHTML('beforeend', `<div class="lav"><nav class="albero"><ul>
+    <li><a data-s="progetto"><b>${esc(K.progetto)}</b></a> <small>${iniz.length} iniziative</small><ul>
+    ${iniz.map((i) => `<li><details><summary>${pt(i.stato)}<a data-s="i:${esc(i.id)}">${esc(i.titolo)}</a> <small>${esc(i.data || '')}</small></summary><ul>
+      ${i.piani.map((f) => { const p = piano.get(f); return `<li><details><summary>${pt(p.stato)}<a data-s="p:${esc(f)}">${esc(p.titolo)}</a></summary><ul>
+        ${p.task.map((t) => `<li>${pt(statoTask(t))}<a data-s="t:${esc(t.id)}">${esc(t.titolo)}</a></li>`).join('')}</ul></details></li>`; }).join('') || '<li><small>progettata, nessun piano</small></li>'}
+    </ul></details></li>`).join('')}
+    <li><a data-s="altro">Branch, commit recenti e TODO</a></li></ul></li></ul></nav><div id="lavdx"></div></div>`);
+  const albero = vista.querySelector('.albero'), dx = document.getElementById('lavdx');
+  const seleziona = async (s) => {
+    selLavoro = s;
+    albero.querySelectorAll('a.on').forEach((a) => a.classList.remove('on'));
+    const a = [...albero.querySelectorAll('a[data-s]')].find((x) => x.dataset.s === s);
+    if (a) { a.classList.add('on'); let e = a.parentElement; while (e && e !== albero) { if (e.tagName === 'DETAILS') e.open = true; e = e.parentElement; } a.scrollIntoView({ block: 'nearest' }); }
+    const [tipo, ...resto] = s.split(':'), chiave = resto.join(':');
+    if (tipo === 'progetto') await vistaProgetto(iniz, taskDi, seleziona);
+    else if (tipo === 'i') await vistaIniziativa(L.iniziative.find((x) => x.id === chiave), piano, seleziona);
+    else if (tipo === 'p') await vistaPiano(piano.get(chiave), seleziona);
+    else if (tipo === 't') { const p = piano.get(chiave.replace(/#\d+$/, '')); await vistaPiano(p, seleziona, chiave); dettaglioTask(p, p.task.find((t) => t.id === chiave)); }
+    else vistaAltro();
+  };
+  albero.querySelectorAll('a[data-s]').forEach((a) => a.onclick = (e) => { e.preventDefault(); seleziona(a.dataset.s); });
+  seleziona(selLavoro);
+}
+
+async function vistaProgetto(iniz, taskDi, seleziona) {
+  const dx = document.getElementById('lavdx');
+  const conta = (s) => iniz.filter((i) => i.stato === s).length;
+  const tutti = iniz.flatMap(taskDi);
+  dx.innerHTML = `<section class="diag"><h3>Schema del lavoro · ${esc(K.progetto)}</h3>
+    <p class="desc">${iniz.length} iniziative (fatte ${conta('fatto')}, in corso ${conta('in_corso')}, da fare ${conta('da_fare')}), ${conteggio(tutti)} fatti.
+    Ogni riquadro è un mese; ogni nodo un'iniziativa (una spec con i suoi piani). Frecce: dipendenze fra piani. Clic su un nodo per aprirla.</p><div class="mm"></div></section>
+    <section class="diag"><h3>Iniziative</h3><div class="tab"><table><tr><th>data</th><th>iniziativa</th><th>stato</th><th>piani</th><th>task</th><th>obiettivo</th></tr>
+    ${iniz.map((i) => `<tr><td>${esc(i.data || '')}</td><td><a data-s="i:${esc(i.id)}">${esc(i.titolo)}</a></td><td>${pill(i.stato)}</td><td>${i.piani.length || '—'}</td><td>${i.piani.length ? conteggio(taskDi(i)) : ''}</td><td><small>${esc(i.obiettivo)}</small></td></tr>`).join('')}</table></div></section>`;
+  dx.querySelectorAll('a[data-s]').forEach((a) => a.onclick = () => seleziona(a.dataset.s));
+  const mesi = new Map();
+  iniz.forEach((i, k) => { const m = (i.data || 'senza data').slice(0, 7); if (!mesi.has(m)) mesi.set(m, []); mesi.get(m).push(k); });
+  const pianoIn = new Map(iniz.flatMap((i, k) => i.piani.map((f) => [f, k])));
+  const righe = ['flowchart TD'];
+  [...mesi.keys()].sort().forEach((m, j) => {
+    righe.push(`subgraph M${j}[${lab(m)}]`);
+    const ks = mesi.get(m);
+    for (const k of ks) { const i = iniz[k]; righe.push(`I${k}[${lab(i.titolo, 90, 26)}]:::${i.pianificata ? i.stato : 'da_fare'}`); }
+    ks.forEach((k, x) => { if (x >= 3) righe.push(`I${ks[x - 3]} ~~~ I${k}`); });   // griglia di 3 colonne per mese
+    righe.push('end');
+    if (j) righe.push(`M${j - 1} ~~~ M${j}`);
+  });
+  const archi = new Set();
+  for (const p of K.lavoro.piani) for (const dep of p.dipende || []) {
+    const a = pianoIn.get(dep), b = pianoIn.get(p.file);
+    if (a != null && b != null && a !== b) archi.add(`I${a} --> I${b}`);
+  }
+  righe.push(...archi, CLASSI);
+  await rendi(dx.querySelector('.mm'), righe.join('\n'), (nid) => { const k = +nid.slice(1); if (nid[0] === 'I' && iniz[k]) seleziona('i:' + iniz[k].id); });
+}
+
+async function vistaIniziativa(i, piano, seleziona) {
+  const dx = document.getElementById('lavdx');
+  const pp = i.piani.map((f) => piano.get(f));
+  dx.innerHTML = `<section class="diag"><h3>${esc(i.titolo)}</h3><p>${pill(i.stato)} <small>${esc(i.data || '')}${i.spec ? ' · spec <code>' + esc(i.spec) + '</code>' : ''}</small></p>
+    <div class="logica">${i.obiettivo ? `<p><b>Obiettivo</b> ${esc(i.obiettivo)}</p>` : ''}${pp.length ? '' : '<p>Progettata (spec scritta), nessun piano ancora.</p>'}</div>
+    <p class="desc">Dalla spec ai piani, nell'ordine in cui dipendono l'uno dall'altro. Clic su un piano per il suo schema.</p><div class="mm"></div></section>
+    ${pp.map((p) => `<section class="diag"><h3><a data-s="p:${esc(p.file)}">${esc(p.titolo)}</a></h3><p>${pill(p.stato)} <small>${esc(p.data || '')} · ${conteggio(p.task)}</small></p>
+      <div class="logica">${p.obiettivo ? `<p><b>Obiettivo</b> ${esc(p.obiettivo)}</p>` : ''}${p.architettura ? `<p><b>Logica</b> ${esc(p.architettura)}</p>` : ''}</div></section>`).join('')}`;
+  dx.querySelectorAll('a[data-s]').forEach((a) => a.onclick = () => seleziona(a.dataset.s));
+  const righe = ['flowchart TD', `S([${lab(i.spec ? 'spec · ' + i.titolo : i.titolo, 60)}]):::${i.stato}`];
+  const idx = new Map(pp.map((p, k) => [p.file, k]));
+  pp.forEach((p, k) => {
+    righe.push(`P${k}[${lab(p.titolo.slice(0, 80) + ' · ' + conteggio(p.task) + (p.data ? ' · ' + p.data : ''), 120, 40)}]:::${p.stato}`);
+    const dentro = (p.dipende || []).filter((d) => idx.has(d));
+    if (dentro.length) dentro.forEach((d) => righe.push(`P${idx.get(d)} --> P${k}`));
+    else righe.push(k ? `P${k - 1} --> P${k}` : `S --> P${k}`);
+  });
+  righe.push(CLASSI);
+  await rendi(dx.querySelector('.mm'), righe.join('\n'), (nid) => { if (nid[0] === 'P' && pp[+nid.slice(1)]) seleziona('p:' + pp[+nid.slice(1)].file); });
+}
+
+async function vistaPiano(p, seleziona, evidenzia) {
+  const dx = document.getElementById('lavdx');
+  dx.innerHTML = `<section class="diag"><h3>${esc(p.titolo)}</h3><p>${pill(p.stato)} <small><code>${esc(p.file)}</code>${p.data ? ' · ' + esc(p.data) : ''} · ${conteggio(p.task)}${p.spec ? ' · spec <code>' + esc(p.spec) + '</code>' : ''}</small></p>
+    <div class="logica">${p.obiettivo ? `<p><b>Obiettivo</b> ${esc(p.obiettivo)}</p>` : ''}${p.architettura ? `<p><b>Logica</b> ${esc(p.architettura)}</p>` : ''}${(p.dipende || []).length ? `<p><b>Dipende da</b> ${p.dipende.map((d) => `<code>${esc(d)}</code>`).join(', ')}</p>` : ''}</div>
+    <p class="desc">Sequenza dei task (colore = stato) e file che ciascuno crea o modifica: i file condivisi mostrano come i task si legano. Clic su un task per file e commit.</p><div class="mm"></div></section>
+    <section class="diag"><h3>Task</h3><div class="tab"><table><tr><th>task</th><th>stato</th><th>file</th><th>commit</th></tr>
+    ${p.task.map((t) => `<tr><td><a data-t="${esc(t.id)}">${esc(t.titolo)}</a></td><td>${pill(statoTask(t))}${t.dedotto ? ' <small>dedotto</small>' : t.caselle ? ` <small>${t.fatte}/${t.caselle}</small>` : ''}</td>
+      <td>${t.file.map((f) => `<small><code>${esc(f.azione)} ${esc(f.file)}</code></small>`).join('<br>')}</td><td>${(t.commit || []).map((c) => `<small><code>${esc(c.h)}</code> ${esc(c.messaggio)}</small>`).join('<br>')}</td></tr>`).join('')}</table></div></section>`;
+  dx.querySelectorAll('a[data-t]').forEach((a) => a.onclick = () => seleziona('t:' + a.dataset.t));
+  const righe = ['flowchart TD', `O([${lab(p.obiettivo || p.titolo, 160, 50)}]):::${p.stato}`];
+  const fileId = new Map();
+  p.task.forEach((t, k) => {
+    righe.push(`${k ? 'T' + (k - 1) : 'O'} --> T${k}[${lab(t.titolo, 90, 34)}]:::${statoTask(t)}`);
+    for (const f of t.file) {
+      if (!fileId.has(f.file) && fileId.size >= 40) continue;
+      if (!fileId.has(f.file)) { fileId.set(f.file, 'F' + fileId.size); righe.push(`${fileId.get(f.file)}[(${lab(f.file.split('/').pop(), 40)})]`); }
+      righe.push(`T${k} -.${f.azione === 'crea' ? '->|crea|' : f.azione === 'test' ? '->|test|' : '->'} ${fileId.get(f.file)}`);
+    }
+  });
+  const k = evidenzia ? p.task.findIndex((t) => t.id === evidenzia) : -1;
+  righe.push(CLASSI, ...(k >= 0 ? [`class T${k} evid`] : []));
+  await rendi(dx.querySelector('.mm'), righe.join('\n'), (nid) => {
+    if (nid[0] === 'T') { const t = p.task[+nid.slice(1)]; if (t) dettaglioTask(p, t); }
+    else if (nid[0] === 'F') { const f = [...fileId].find(([, v]) => v === nid)?.[0]; if (f) dettaglioFile(f); }
+  });
+}
+
+function dettaglioFile(f) {
+  const gs = K.codice.gruppi.filter((g) => g.file.includes(f));
+  pannello.innerHTML = `<h3>${esc(f.split('/').pop())}</h3><p><code>${esc(f)}</code> ${K.file[f] ? '' : pill('rimossa')}</p>
+    ${gs.length ? `<h4>Code (graphify)</h4><ul>${gs.map((g) => `<li><a data-g="${esc(g.id)}">${esc(g.id)} · ${esc(g.nome)}</a></li>`).join('')}</ul>` : ''}`;
+  pannello.querySelectorAll('a[data-g]').forEach((a) => a.onclick = () => apriGruppo(a.dataset.g));
+}
+
+function dettaglioTask(p, t) {
+  const come = t.corretto ? 'corretto a mano (sorgenti/lavoro.json)' : t.dedotto ? 'dedotto: file creati presenti e commit sui file del task dopo la data del piano' : t.caselle ? `caselle spuntate ${t.fatte}/${t.caselle}` : 'nessuna casella e nessun file citato';
+  pannello.innerHTML = `<h3>${esc(t.titolo)}</h3><p>${pill(statoTask(t))}</p><p><small>${esc(come)}</small></p>
+    <p><code>${esc(p.file)}:${t.righe.join('-')}</code></p>
+    ${t.file.length ? `<h4>File</h4><ul>${t.file.map((f) => { const gs = K.codice.gruppi.filter((g) => g.file.includes(f.file));
+      return `<li><small>${esc(f.azione)}</small> <code>${esc(f.file)}</code> ${K.file[f.file] ? '' : '<small>(assente)</small>'}${gs.map((g) => ` <a data-g="${esc(g.id)}">${esc(g.id)}</a>`).join('')}</li>`; }).join('')}</ul>` : ''}
+    ${(t.commit || []).length ? `<h4>Commit</h4><ul>${t.commit.map((c) => `<li><code>${esc(c.h)}</code> <small>${esc(c.data)}</small> ${esc(c.messaggio)}</li>`).join('')}</ul>` : ''}
+    <p><small>id <code>lavoro.${esc(t.id)}</code></small></p>`;
+  pannello.querySelectorAll('a[data-g]').forEach((a) => a.onclick = () => apriGruppo(a.dataset.g));
+}
+
+function vistaAltro() {
+  const L = K.lavoro;
+  document.getElementById('lavdx').innerHTML = `<section class="diag"><h3>Branch non mergiati in ${esc(L.principale)}</h3>${(L.branch || []).length ? `<ul>${L.branch.map((b) => `<li><code>${esc(b.nome)}</code> <small>${esc(b.data)} · ${esc(b.ultimo)}</small></li>`).join('')}</ul>` : '<p class="desc">nessuno</p>'}</section>
+   <section class="diag"><h3>Ultimi commit${L.attuale ? ' · branch ' + esc(L.attuale) : ''}</h3><div class="tab"><table>${(L.commit || []).map((c) => `<tr><td><code>${esc(c.h)}</code></td><td><small>${esc(c.data)}</small></td><td>${esc(c.messaggio)}</td></tr>`).join('')}</table></div></section>
+   <section class="diag"><h3>TODO / FIXME nel codice (${(L.todo || []).length})</h3><div class="tab"><table><tr><th>file</th><th>testo</th></tr>${(L.todo || []).filter((x) => perModulo(x.modulo)).slice(0, 300).map((x) => `<tr><td><code>${esc(x.file)}:${x.riga}</code></td><td>${esc(x.testo)}</td></tr>`).join('')}</table></div></section>`;
+}
+
+// --- moduli: grafo delle dipendenze fra moduli
+function moduli() {
+  vista.insertAdjacentHTML('beforeend', '<div id="rete"></div>');
+  const el = document.getElementById('rete');
+  const testo = getComputedStyle(document.body).color;
+  const conta = {}; for (const [, [, m]] of Object.entries(K.file)) conta[m] = (conta[m] || 0) + 1;
+  const nodi = new vis.DataSet(K.moduli.map((m) => ({ id: m.id, label: `${m.nome}\n${conta[m.id] || 0} files`, value: conta[m.id] || 1, title: m.manifesto })));
+  const viste = new Set();
+  const archi = new vis.DataSet(K.dipendenzeModuli.filter((a) => { const k = a.da + '>' + a.a + a.fonte; if (viste.has(k)) return false; viste.add(k); return true; })
+    .map((a, i) => ({ id: i, from: a.da, to: a.a, arrows: 'to', dashes: a.fonte === 'codice', title: a.fonte + (a.n ? ` (${a.n})` : '') })));
+  const rete = new vis.Network(el, { nodes: nodi, edges: archi }, { nodes: { shape: 'dot', font: { color: testo } }, physics: { stabilization: { iterations: 200 } } });
+  reti.set(el, rete);
+  rete.on('click', (p) => { const m = K.moduli.find((x) => x.id === p.nodes[0]); if (!m) return;
+    const arch = K.diagrammi.find((d) => d.auto && d.modulo === m.id);
+    pannello.innerHTML = `<h3>${esc(m.nome)}</h3><p><code>${esc(m.dir)}</code> · ${esc(m.manifesto)}</p><p><a id="filtra">Show this module in the project</a></p>
+     <h4>Depends on</h4><ul>${K.dipendenzeModuli.filter((a) => a.da === m.id).map((a) => `<li>${esc(a.a)} <small>(${esc(a.fonte)})</small></li>`).join('') || '<li>—</li>'}</ul>`;
+    document.getElementById('filtra').onclick = () => { filtro = m.id; document.getElementById('modulo').value = m.id; scheda = 'Progetto'; mostra(); if (arch) document.getElementById('d_' + arch.id)?.scrollIntoView(); };
+    logicaModulo(m); });
+  vista.insertAdjacentHTML('beforeend', `<p class="desc">Solid line: dependency declared in the manifest. Dashed: calls in the code (graphify).</p>
+    <div id="modvista"><p class="vuoto">Click a module: what it does and how it is built appear below.</p></div>`);
+}
+
+// cosa fa un modulo: le logiche che lo dichiarano o che descrivono suoi file, poi l'architettura generata, poi gli altri flussi
+async function logicaModulo(m) {
+  const mv = document.getElementById('modvista');
+  const suo = (d) => d.modulo === m.id || (d.moduli || []).includes(m.id) || Object.values(d.nodi || {}).some((n) => (n.dove || []).some((x) => K.file[x.file]?.[1] === m.id));
+  const logiche = K.diagrammi.filter((d) => d.tipo === 'logica' && suo(d)).sort(confronta);
+  const arch = K.diagrammi.filter((d) => d.tipo === 'architettura' && d.modulo === m.id);
+  const altri = K.diagrammi.filter((d) => d.scheda === 'progetto' && d.tipo !== 'logica' && d.tipo !== 'architettura' && d.modulo === m.id);
+  mv.innerHTML = `<h2 class="banda">${esc(m.nome)} · what it does</h2>${logiche.length ? '' : '<p class="desc">No logic describes this module; its architecture is below.</p>'}`;
+  for (const [el, r] of reti) if (!el.isConnected) { r.destroy(); reti.delete(el); }   // reti del modulo precedente
+  for (const d of logiche) { const s = await aggiungiDiagramma(d, mv); s.id = 'm_' + d.id; if (d === logiche[0]) await s._rendi(); }   // la prima subito: e' la risposta al clic
+  if (arch.length) mv.insertAdjacentHTML('beforeend', `<h2 class="banda">${esc(m.nome)} · how it is built</h2>`);
+  for (const d of arch) { const s = await aggiungiDiagramma(d, mv); s.id = 'm_' + d.id; }
+  if (altri.length) {
+    mv.insertAdjacentHTML('beforeend', `<section class="diag"><h3>Other flows of the module (${altri.length})</h3><div class="indice">${altri.map((d) => `<a data-apri-d="${esc(d.id)}">${esc(d.titolo)}</a>`).join('')}</div></section>`);
+    mv.querySelectorAll('a[data-apri-d]').forEach((a) => a.onclick = () => apriDiagramma(a.dataset.apriD));
+  }
+  mv.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// --- documenti: sezioni e loro stato di modifica
+function documenti() {
+  const righe = Object.entries(K.documenti).filter(([, d]) => perModulo(d.modulo));
+  if (!righe.length) { vista.insertAdjacentHTML('beforeend', '<p class="vuoto">No documents.</p>'); return; }
+  vista.insertAdjacentHTML('beforeend', `<p><input id="cercad" placeholder="filter documents" size="30"></p><div class="tab"><table id="td"></table></div>`);
+  const disegna = (q) => { document.getElementById('td').innerHTML = '<tr><th>document</th><th>type</th><th>sections</th><th>changes</th></tr>' + righe
+    .filter(([f]) => !q || f.toLowerCase().includes(q)).slice(0, 400).map(([f, d]) => { const c = {}; for (const s of d.sezioni) c[s.modifica] = (c[s.modifica] || 0) + 1;
+      return `<tr data-f="${esc(f)}"><td><a>${esc(f)}</a>${d.errore ? ` <small>${esc(d.errore)}</small>` : ''}</td><td>${esc(d.tipo)}</td><td>${d.sezioni.length}</td><td>${Object.entries(c).map(([k, v]) => `${pill(k)} ${v}`).join(' ')}${d.rimosse?.length ? ` ${pill('rimossa')} ${d.rimosse.length}` : ''}</td></tr>`; }).join('');
+    document.querySelectorAll('#td tr[data-f]').forEach((tr) => tr.onclick = () => { const d = K.documenti[tr.dataset.f];
+      pannello.innerHTML = `<h3>${esc(tr.dataset.f)}</h3><table>${d.sezioni.map((s) => `<tr><td>${esc(s.titolo)}<br><small><code>${esc(s.chiave)}</code></small></td><td>${pill(s.modifica)}</td></tr>`).join('')}</table>
+       ${d.rimosse?.length ? `<h4>Removed</h4><ul>${d.rimosse.map((r) => `<li>${esc(r.titolo ?? r)}</li>`).join('')}</ul>` : ''}`; }); };
+  document.getElementById('cercad').oninput = (e) => disegna(e.target.value.toLowerCase());
+  disegna('');
+}
+
+// --- tracciabilità: obiettivo -> flussi, codice, test, documenti; buchi
+function tracciabilita() {
+  const B = K.buchi;
+  vista.insertAdjacentHTML('beforeend', `<section class="diag"><h3>Buchi</h3><ul>
+   <li>Obiettivi senza codice: ${B.obiettiviSenzaCodice.length ? B.obiettiviSenzaCodice.map((x) => `<code>${esc(x)}</code>`).join(', ') : 'nessuno'}</li>
+   <li>Obiettivi con codice ma senza test: ${B.obiettiviSenzaTest.length ? B.obiettiviSenzaTest.map((x) => `<code>${esc(x)}</code>`).join(', ') : 'nessuno'}</li>
+   <li>Moduli senza flussi di progetto (solo architettura generata): ${(B.moduliSenzaFlusso || []).length ? B.moduliSenzaFlusso.map((x) => `<code>${esc(x)}</code>`).join(', ') : 'nessuno'}</li>
+   <li>Gruppi di codice (≥3 file) non collegati a obiettivi: ${B.codiceSenzaObiettivo.length}</li>
+   <li>Gruppi di codice (≥3 file) senza flowchart logico: ${(B.gruppiSenzaSpiegazione || []).length}</li></ul></section>
+   ${K.tracciabilita.length ? `<div class="tab"><table><tr><th>obiettivo</th><th>stato</th><th>flussi</th><th>codice</th><th>test</th><th>documenti</th></tr>${K.tracciabilita.map((t) =>
+     `<tr><td>${esc(t.titolo)}<br><small><code>${esc(t.obiettivo)}</code></small></td><td>${pill(t.stato)}</td><td>${t.flussi.map(esc).join('<br>')}</td><td>${t.codice.map((g) => `<a data-g="${esc(g)}">${esc(g)}</a>`).join(' ')}</td><td>${t.test.map(esc).join('<br>')}</td><td>${t.documenti.map(esc).join('<br>')}</td></tr>`).join('')}</table></div>`
+     : '<p class="vuoto">Nessun obiettivo descritto: la prima esecuzione di /kraphwork li propone e li fa confermare.</p>'}`);
+  vista.querySelectorAll('a[data-g]').forEach((a) => a.onclick = () => apriGruppo(a.dataset.g));
+}
+
+function decisioni() {
+  vista.insertAdjacentHTML('beforeend', K.decisioni.length ? `<div class="tab"><table><tr><th>data</th><th>scelta</th><th>motivo</th><th>nodi</th></tr>${K.decisioni.map((d) =>
+    `<tr><td>${esc(d.data)}</td><td>${esc(d.scelta)}</td><td>${esc(d.motivo)}</td><td>${(d.nodi || []).map((n) => `<code>${esc(n)}</code>`).join(' ')}</td></tr>`).join('')}</table></div>` : '<p class="vuoto">Nessuna decisione registrata.</p>');
+}
+
+function daCollocare() {
+  const v = K.da_collocare.filter((f) => perModulo(f.modulo));
+  vista.insertAdjacentHTML('beforeend', `<section class="diag"><h3>File nuovi non ancora descritti (${v.length})</h3>
+   <p class="desc">Censiti dallo script, non citati da alcun nodo: vanno collocati in un diagramma o ignorati.</p>
+   ${v.length ? `<div class="tab"><table><tr><th>file</th><th>classe</th><th>modulo</th></tr>${v.map((f) => `<tr><td><code>${esc(f.file)}</code></td><td>${esc(f.classe)}</td><td>${esc(f.modulo)}</td></tr>`).join('')}</table></div>` : ''}</section>
+   <section class="diag"><h3>Nodi stantii (${K.stantii.length})</h3>${K.stantii.length ? `<ul>${K.stantii.map((s) => `<li><code>${esc(s.id)}</code> — ${esc(s.chiave)} ${esc(s.motivo)}</li>`).join('')}</ul>` : '<p class="desc">nessuno</p>'}</section>`);
+}
+
+if (K) init();
+</script>
+</body>
+</html>
