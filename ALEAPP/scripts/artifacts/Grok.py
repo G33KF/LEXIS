@@ -1,0 +1,379 @@
+# pylint: disable=W0718
+__artifacts_v2__ = {
+    "grok_generatedvideos": {
+        "name": "Grok - Videos",
+        "description": "Lists the files of the Grok app's ExoPlayer video cache and the cache index rows of exoplayer_internal.db, with the address each was cached from",
+        "author": "Damien Attoe {damien.attoe@spyderforensics.com}, @AlexisBrignoni, Codex",
+        "creation_date": "2025-11-14",
+        "last_update_date": "2026-10-06",
+        "requirements": "none",
+        "category": "Grok",
+        "notes": "The author reports testing on app version 1.0.71 (Nov 11th, 2025); no image or "
+                 "count from that testing is recorded. The cache last touch timestamp is not "
+                 "updated when the app's cache uses an evictor that does not ask for touches; "
+                 "which evictor the Grok app uses was not established. Filename Timestamp is the "
+                 "third part of the cache file name read as Unix milliseconds; Media3 writes the "
+                 "current time there when it starts the file (SimpleCache.java lines 392 to 394 "
+                 "and SimpleCacheSpan.java lines 51 to 52 at the commit cited below). Users URL "
+                 "Prefix Match is Matched for the exact case-sensitive prefix "
+                 "https://assets.grok.com/users/, Not matched for another nonempty address, "
+                 "and blank when no address is available. This predicate does not establish "
+                 "creator or visibility. Positive genuine cache coverage remains unavailable. "
+                 "Cache Video reads Not Present for an index row whose file is "
+                 "not in the extraction. Reference: AndroidX Media3, "
+                 "'CacheSpan.lastTouchTimestamp / SimpleCache.touchSpan (LRU cache bookkeeping "
+                 "updated on any read, not a user view)', "
+                 "https://github.com/androidx/media/blob/8c6678b657ede1e7883fc164ef73ed483c7796c3/libraries/datasource/src/main/java/androidx/media3/datasource/cache/SimpleCache.java#L637-L640",
+        "paths": ('*/ai.x.grok/cache/*/video-cache/*/*exo','*/ai.x.grok/databases/exoplayer_internal.db*'),
+        "output_types": ["html", "tsv", "lava"],
+        "artifact_icon": "video"
+    },
+        "grok_useraccount": {
+        "name": "Grok - User Account",
+        "description": "Parses Grok user account attributes from the app's Intercom SDK shared "
+                       "preferences files",
+        "author": "Damien Attoe {damien.attoe@spyderforensics.com}",
+        "creation_date": "2025-11-14",
+        "last_update_date": "2025-11-14",
+        "requirements": "none",
+        "category": "Grok",
+        "notes": "The author reports testing on app version 1.0.71 (Nov 11th, 2025); no image or "
+                 "count from that testing is recorded.",
+        "paths": ('*/ai.x.grok/shared_prefs/INTERCOM_DEDUPER_PREFS.xml', '*/ai.x.grok/shared_prefs/INTERCOM_SDK_USER_PREFS.xml'),
+        "output_types": ["html", "tsv", "lava"],
+        "artifact_icon": "user"
+    }    
+}
+
+import os
+import datetime
+import re
+from pathlib import Path
+import xml.etree.ElementTree as ET
+import json
+
+from scripts.ilapfuncs import artifact_processor, check_in_media, logfunc, open_sqlite_db_readonly
+
+INVALID_XML_CHARS = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f]')
+BARE_AMPERSAND = re.compile(r'&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[0-9A-Fa-f]+);)')
+
+
+def _parse_xml(file_found):
+    """Parse XML, recovering from invalid tokens / unescaped ampersands; empty element if unparseable."""
+    try:
+        return ET.parse(file_found).getroot()
+    except ET.ParseError:
+        with open(file_found, encoding='utf-8', errors='replace') as f:
+            xml = BARE_AMPERSAND.sub('&amp;', INVALID_XML_CHARS.sub('', f.read()))
+        try:
+            return ET.fromstring(xml)
+        except ET.ParseError as ex:
+            logfunc(f'Skipping unparseable XML {file_found}: {ex}')
+            return ET.Element('empty')
+
+@artifact_processor
+def grok_generatedvideos(context):
+    files_found = context.get_files_found()
+    data_list = []
+
+    db_path = None
+    source_path = ''
+    meta_tables = []
+    index_tables = []
+
+    for source_path in files_found:
+        source_path = str(source_path)
+        if not source_path.lower().endswith('.db'):
+            continue
+
+        try:
+            conn = open_sqlite_db_readonly(source_path)
+            if not conn:
+                continue
+            cur = conn.cursor()
+
+            # Metadata tables: ExoPlayerCacheFileMetadata*
+            cur.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'ExoPlayerCacheFileMetadata%'"
+            )
+            meta_rows = cur.fetchall()
+
+            # Index tables: ExoPlayerCacheIndex*
+            cur.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'ExoPlayerCacheIndex%'"
+            )
+            index_rows = cur.fetchall()
+
+            conn.close()
+
+            if meta_rows or index_rows:
+                db_path = source_path
+                meta_tables = [r[0] for r in meta_rows]
+                index_tables = [r[0] for r in index_rows]
+                break
+
+        except Exception:
+            try:
+                conn.close()
+            except Exception:
+                pass
+            continue
+
+    exo_meta = {}
+    id_to_url = {}
+
+    conn = open_sqlite_db_readonly(db_path) if db_path else None
+
+    if conn:
+        try:
+            cur = conn.cursor()
+
+            for tbl in meta_tables:
+                try:
+                    cur.execute(f"SELECT name, length, last_touch_timestamp FROM '{tbl}'")
+                    for name, length, last_touch_timestamp in cur.fetchall():
+                        exo_meta[name] = (length, last_touch_timestamp)
+                except Exception:
+                    continue
+
+            for tbl in index_tables:
+                try:
+                    cur.execute(f"SELECT id, key FROM '{tbl}'")
+                    for rec_id, key in cur.fetchall():
+                        try:
+                            rec_id_int = int(rec_id)
+                        except Exception:
+                            continue
+                        id_to_url[rec_id_int] = key
+                except Exception:
+                    continue
+
+            conn.close()
+        except Exception:
+            pass
+
+    exo_files_present = set()
+    for f in files_found:
+        f = str(f)
+        if f.endswith(('-wal', '-shm', '-journal')):
+            continue
+        p = Path(f)
+        if p.is_file() and p.suffix.lower() == '.exo':
+            exo_files_present.add(p.name)
+
+    for file_found in files_found:
+        file_found = str(file_found)
+        if file_found.endswith(('-wal', '-shm', '-journal')):
+            continue
+        media_path = Path(file_found)
+
+        if not media_path.is_file():
+            continue
+        if media_path.suffix.lower() != '.exo':
+            continue
+
+        filename = media_path.name
+        location = context.get_relative_path(str(media_path.parent))
+
+        # Extract cache ID from filename: "4.0.1763060403970.v3.exo" - first part - 4
+        file_id = None
+        parts = filename.split(".")
+        if len(parts) >= 4:
+            try:
+                file_id = int(parts[0])
+            except Exception:
+                file_id = None
+
+        # Extract timestamp from filename (3rd part): 1763060403970 (ms) - UTC
+        extracted_ts = ""
+        if len(parts) >= 4:
+            ts_raw = parts[2]
+            try:
+                ts = int(ts_raw)
+                dt = datetime.datetime.fromtimestamp(ts / 1000.0, datetime.timezone.utc)
+                extracted_ts = dt.strftime('%Y-%m-%d %H:%M:%S')
+            except Exception:
+                extracted_ts = ""
+
+        # Lookup DB metadata by name
+        db_last_touch_utc = ""
+        if filename in exo_meta:
+            _, last_touch_raw = exo_meta[filename]
+
+            try:
+                ts2 = int(last_touch_raw)
+                dt2 = datetime.datetime.fromtimestamp(ts2 / 1000.0, datetime.timezone.utc)
+                db_last_touch_utc = dt2.strftime('%Y-%m-%d %H:%M:%S')
+            except Exception:
+                db_last_touch_utc = ""
+
+        # Lookup original URL by file_id = CacheIndex.id
+        original_url = ""
+        content_type = ""
+        if file_id is not None and file_id in id_to_url:
+            original_url = id_to_url[file_id] or ""
+            if original_url.startswith("https://assets.grok.com/users/"):
+                content_type = "Matched"
+            elif original_url:
+                content_type = "Not matched"
+
+        missing_flag = "Present"
+
+        media_item = check_in_media(
+            file_found,
+            filename
+        )
+
+        if media_item:
+            data_list.append((
+                extracted_ts,
+                db_last_touch_utc,
+                content_type,
+                original_url,
+                filename,
+                location,
+                missing_flag,
+                media_item
+            ))
+
+    for name, (_, last_touch_raw) in exo_meta.items():
+        if name in exo_files_present:
+            continue 
+
+        filename = name
+        location = "" 
+        extracted_ts = ""
+
+        parts = filename.split(".")
+        if len(parts) >= 4:
+            ts_raw = parts[2]
+            try:
+                ts = int(ts_raw)
+                dt = datetime.datetime.fromtimestamp(ts / 1000.0, datetime.timezone.utc)
+                extracted_ts = dt.strftime('%Y-%m-%d %H:%M:%S')
+            except Exception:
+                extracted_ts = ""
+
+        db_last_touch_utc = ""
+        try:
+            ts2 = int(last_touch_raw)
+            dt2 = datetime.datetime.fromtimestamp(ts2 / 1000.0, datetime.timezone.utc)
+            db_last_touch_utc = dt2.strftime('%Y-%m-%d %H:%M:%S')
+        except Exception:
+            db_last_touch_utc = ""
+
+        original_url = ""
+        content_type = ""
+        file_id = None
+        if len(parts) >= 1:
+            try:
+                file_id = int(parts[0])
+            except Exception:
+                file_id = None
+
+        if file_id is not None and file_id in id_to_url:
+            original_url = id_to_url[file_id] or ""
+            if original_url.startswith("https://assets.grok.com/users/"):
+                content_type = "Matched"
+            elif original_url:
+                content_type = "Not matched"
+
+        missing_flag = "Not Present"
+        media_item = "" 
+
+        data_list.append((
+            extracted_ts,
+            db_last_touch_utc,
+            content_type,
+            original_url,
+            filename,
+            location,
+            missing_flag,
+            media_item
+        ))
+
+    data_headers = (
+        ('Filename Timestamp', 'datetime'),
+        ('Cache Last Touch Timestamp', 'datetime'),
+        'Users URL Prefix Match',
+        'Original URL',
+        'File Name',
+        'Location',
+        'Cache Video',
+        ('Video', 'media')
+    )
+
+    return data_headers, data_list, source_path
+
+@artifact_processor
+def grok_useraccount(context):
+    files_found = context.get_files_found()
+    data_list = []
+    source_path = ""
+
+    user_keys = {
+        "intercomsdk-session-INTERCOM_SDK_USER_ID",
+        "intercomsdk-session-INTERCOM_SDK_EMAIL_ID"
+    }
+
+    for fp in files_found:
+        source_path = str(fp)
+
+        if not source_path.lower().endswith(".xml"):
+            continue
+        if not os.path.isfile(source_path):
+            continue
+
+        root = _parse_xml(source_path)
+
+        filename = Path(source_path).name
+        path = context.get_relative_path(source_path)
+
+        cached_json = None
+        for elem in root.iter():
+            if elem.get("name") == "CachedAttributes":
+                cached_json = (elem.text or "").strip()
+                break
+
+        if cached_json:
+            try:
+                data = json.loads(cached_json)
+            except Exception:
+                data_list.append(("CachedAttributes_raw", cached_json, filename, path))
+            else:
+                name = ""
+                email = ""
+                xusername = ""
+
+                if isinstance(data, dict):
+                    name = data.get("name", "") or name
+                    email = data.get("email", "") or email
+
+                    custom = data.get("custom_attributes", {})
+                    if isinstance(custom, dict):
+                        name = custom.get("name", name)
+                        email = custom.get("email", email)
+                        xusername = custom.get("xUsername", xusername)
+
+                if name:
+                    data_list.append(("name", str(name), filename, path))
+                if email:
+                    data_list.append(("email", str(email), filename, path))
+                if xusername:
+                    data_list.append(("xUsername", str(xusername), filename, path))
+
+        for elem in root.iter():
+            key_name = elem.get("name")
+            if key_name not in user_keys:
+                continue
+
+            value_raw = (elem.text or "").strip()
+            if not value_raw:
+                value_raw = (elem.get("value", "") or "").strip()
+
+            data_list.append((key_name, value_raw, filename, path))
+
+    data_headers = ("Key", "Value", "File Name", "Path")
+
+    return data_headers, data_list, source_path
+

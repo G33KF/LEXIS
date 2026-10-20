@@ -1,0 +1,145 @@
+name: Test builds
+
+# Builds ALEAPP with packaging/build.py on every platform and architecture it ships for,
+# runs what came out, builds each platform's installer, and uploads the lot. Nothing here
+# is a release; release.yml runs the same steps when a version tag is pushed. It exists so
+# every platform's build is produced and actually executed, without anyone owning the
+# hardware.
+#
+# The smoke test is the point, not decoration. iLEAPP's frozen builds shipped a startup
+# crash for a long time (missing google.protobuf, PIL, leapp_functions) precisely because
+# nothing ever ran a built binary. `build.py smoke` runs the executable the ways a user
+# does: --version, a run over an empty extraction, a run over the NTFS raw fixture, the
+# mister_skinnylegs plugins the browser artifacts need, and the window's --selfcheck,
+# which counts the artifacts the build loaded against the source.
+#
+# Advisory rather than required, so a paths filter is fine here. A logic change inside an
+# existing module almost never breaks a build; packaging and dependency changes are where
+# the breaks come from, and the weekly build of main covers the rest.
+
+on:
+  workflow_dispatch:
+  # Monday 06:00 UTC.
+  schedule:
+    - cron: '0 6 * * 1'
+  pull_request:
+    paths:
+      - 'packaging/**'
+      - 'requirements.txt'
+      - 'requirements-msl-lock.txt'
+      - '.github/workflows/test_builds.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        # `os` is the runner; `name` is what the job and its artifact are called, since
+        # a runner label such as macos-latest does not say which machine it is.
+        include:
+          - os: windows-latest
+            name: windows-x64
+          - os: windows-11-arm
+            name: windows-11-arm
+          - os: macos-latest
+            name: macos-apple_silicon
+          # Intel Macs. GitHub drops x86_64 macOS when macos-15-intel retires in 2027.
+          - os: macos-15-intel
+            name: macos-15-intel
+          # 22.04 rather than 24.04: a build runs only on the glibc it was made against or
+          # a newer one, and 22.04's 2.35 still covers the SIFT workstation and the LTS
+          # releases examiners keep.
+          - os: ubuntu-22.04
+            name: ubuntu-22.04-x64
+          - os: ubuntu-22.04-arm
+            name: ubuntu-22.04-arm
+    name: build (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          # Latest supported Python. On Windows ARM pip builds bcrypt 3.2.0 and lz4 from
+          # source; the runner's toolchain covers both.
+          python-version: '3.14'
+
+      - name: Linux, the window's toolkit and a display for its self-check
+        # The window imports tkinter, and PyInstaller needs that import to succeed at
+        # analysis time; the hard check turns a missing toolkit into a readable failure.
+        # xvfb gives the --selfcheck a display.
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q libtcl8.6 libtk8.6 xvfb
+          python -c "import tkinter" || { echo "tkinter unavailable in this Python"; exit 1; }
+
+      # build.py installs requirements.txt and packaging/requirements-build.txt, then
+      # requirements-msl-lock.txt over them with --no-deps.
+      - name: Phase 1, the aleapp executable
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python packaging/build.py exe
+
+      - name: Smoke test the build
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            xvfb-run -a python packaging/build.py smoke
+          else
+            python packaging/build.py smoke
+          fi
+
+      - name: Phase 2, the installer (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          choco install innosetup --no-progress -y
+          python packaging/build.py installer
+          ls -l dist/ALEAPP-Setup-*.exe
+
+      - name: Phase 2, the disk image (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          python packaging/build.py installer
+          ls -l dist/ALEAPP-*.dmg
+
+      # build.py runs the finished AppImage once and requires it to report the version.
+      - name: Phase 2, the AppImage (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          python packaging/build.py installer
+          ls -l dist/ALEAPP-*.AppImage
+
+      # Windows and Linux ship the one-folder build as well as their installer.
+      - name: Upload the build (Windows, Linux)
+        if: runner.os != 'macOS'
+        uses: actions/upload-artifact@v7
+        with:
+          name: aleapp-${{ matrix.name }}-test
+          path: |
+            dist/ALEAPP/
+            dist/ALEAPP-Setup-*.exe
+            dist/ALEAPP-*.AppImage
+          retention-days: 14
+          if-no-files-found: error
+
+      # macOS ships only the disk image. dist/ALEAPP/ is there too, the one-folder build
+      # PyInstaller copies into the .app, but nothing ships or tests it. The .app goes up
+      # inside its .dmg: an artifact zip keeps neither the bundle's symlinks nor its
+      # signature.
+      - name: Upload the build (macOS)
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v7
+        with:
+          name: aleapp-${{ matrix.name }}-test
+          path: dist/ALEAPP-*.dmg
+          retention-days: 14
+          if-no-files-found: error

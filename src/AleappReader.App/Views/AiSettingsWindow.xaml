@@ -1,0 +1,223 @@
+<Window x:Class="AleappReader.App.Views.AiSettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="AI settings" Height="760" Width="860" WindowStartupLocation="CenterOwner" Background="{StaticResource PanelBrush}">
+    <Window.Resources>
+        <!-- a server's place (this computer, network, remote), its connection status and its models, each to use for a job -->
+        <DataTemplate x:Key="ServerModels">
+            <StackPanel>
+                <DockPanel Margin="0,6,0,0">
+                    <TextBlock DockPanel.Dock="Left" VerticalAlignment="Center" Margin="0,0,12,0" FontWeight="SemiBold" Text="{Binding WhereText}">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Foreground" Value="#B3261E"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsLocal}" Value="True"><Setter Property="Foreground" Value="#2E7D32"/></DataTrigger>
+                                    <DataTrigger Binding="{Binding WhereText}" Value="on your network"><Setter Property="Foreground" Value="#B26A00"/></DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                    <TextBlock Text="{Binding Status}" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip="{Binding Status}"/>
+                </DockPanel>
+                <ItemsControl ItemsSource="{Binding Models}" Margin="0,6,0,0" MaxHeight="220">
+                    <ItemsControl.Template>
+                        <ControlTemplate TargetType="ItemsControl"><ScrollViewer VerticalScrollBarVisibility="Auto"><ItemsPresenter/></ScrollViewer></ControlTemplate>
+                    </ItemsControl.Template>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <DockPanel Margin="0,1">
+                                <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Content="Use for audio" Margin="4,0,0,0"
+                                        Command="{Binding DataContext.UseForTranscriptionCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding}"/>
+                                <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Content="Use for images" Margin="4,0,0,0"
+                                        Command="{Binding DataContext.UseForVisionCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding}"/>
+                                <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Content="Use for text" Margin="4,0,0,0"
+                                        Command="{Binding DataContext.UseForTextCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding}"/>
+                                <TextBlock Text="{Binding Display}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                            </DockPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </DataTemplate>
+    </Window.Resources>
+    <DockPanel Margin="14">
+        <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0" LastChildFill="False">
+            <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Content="Cancel" IsCancel="True"/>
+            <Button DockPanel.Dock="Right" Style="{StaticResource AccentButton}" Content="Save" Command="{Binding SaveCommand}" IsDefault="True"/>
+            <TextBlock Text="{Binding Message}" Foreground="#B3261E" VerticalAlignment="Center" TextWrapping="Wrap"/>
+        </DockPanel>
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <TextBlock Style="{StaticResource ViewTitle}" Text="AI"/>
+                <TextBlock TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Margin="0,4,0,8"
+                           Text="Off until you turn it on. Every send is logged per case with the provider, the model and what was sent. AI answers are labelled with model, date and prompt, cite the records they come from, and never change the evidence, the tags or the notes."/>
+                <CheckBox Content="Use AI" IsChecked="{Binding Enabled}" FontWeight="SemiBold" Margin="0,0,0,12"/>
+
+                <TextBlock Style="{StaticResource SectionHeader}" Text="Local engine" Margin="0,0,0,4"/>
+                <TextBlock TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,6"
+                           Text="The model server on this computer (or on your network). Its models are listed as soon as it answers: choose one for each job below."/>
+                <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="3" Padding="8" Margin="0,0,0,6">
+                    <StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <ComboBox ItemsSource="{Binding Engines}" SelectedItem="{Binding Engine}" DisplayMemberPath="Name" ToolTip="Ollama or LM Studio"/>
+                            <TextBox Grid.Column="1" Margin="6,0" DataContext="{Binding Engine}" Text="{Binding Address, UpdateSourceTrigger=LostFocus}" VerticalContentAlignment="Center"
+                                     ToolTip="Address of the engine; its models are listed again when you leave the box"/>
+                            <Button Grid.Column="2" Style="{StaticResource FlatButton}" Content="Connect" Command="{Binding DetectCommand}" CommandParameter="{Binding Engine}"
+                                    ToolTip="Connects and lists its models (nothing of a case is sent)"/>
+                        </Grid>
+                        <ContentControl Content="{Binding Engine}" ContentTemplate="{StaticResource ServerModels}"/>
+                    </StackPanel>
+                </Border>
+
+                <DockPanel Margin="0,10,0,4">
+                    <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Content="Add endpoint" Command="{Binding AddProviderCommand}"/>
+                    <TextBlock Style="{StaticResource SectionHeader}" Text="Other endpoints"/>
+                </DockPanel>
+                <TextBlock TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,4"
+                           Text="Any other server: OpenAI-compatible (llama.cpp, vLLM, a cloud API) or another Ollama. Its API key is stored encrypted for your Windows account (DPAPI)."/>
+                <ItemsControl ItemsSource="{Binding Endpoints}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="3" Padding="8" Margin="0,0,0,6">
+                                <StackPanel>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                        <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" VerticalContentAlignment="Center" ToolTip="Name"/>
+                                        <ComboBox Grid.Column="1" Margin="6,0" ItemsSource="{Binding DataContext.Kinds, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                  SelectedValuePath="Kind" SelectedValue="{Binding Kind}" DisplayMemberPath="Label" ToolTip="The API the server speaks"/>
+                                        <TextBox Grid.Column="2" Text="{Binding Address, UpdateSourceTrigger=LostFocus}" VerticalContentAlignment="Center"
+                                                 ToolTip="Address; its models are listed when you leave the box"/>
+                                        <Button Grid.Column="3" Style="{StaticResource FlatButton}" Content="Connect" Margin="6,0,0,0"
+                                                Command="{Binding DataContext.DetectCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"/>
+                                        <Button Grid.Column="4" Style="{StaticResource FlatButton}" Content="Remove" Margin="6,0,0,0"
+                                                Command="{Binding DataContext.RemoveProviderCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"/>
+                                    </Grid>
+                                    <DockPanel Margin="0,6,0,0">
+                                        <TextBlock DockPanel.Dock="Left" Text="API key" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                        <PasswordBox DockPanel.Dock="Left" Width="180" PasswordChanged="Key_Changed" ToolTip="Leave empty to keep the stored key"/>
+                                        <TextBlock DockPanel.Dock="Left" Text="{Binding KeyText}" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" Margin="6,0"/>
+                                        <Button DockPanel.Dock="Left" Style="{StaticResource FlatButton}" Content="Forget key" Command="{Binding ForgetKeyCommand}"/>
+                                    </DockPanel>
+                                    <ContentControl Content="{Binding}" ContentTemplate="{StaticResource ServerModels}"/>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <TextBlock Style="{StaticResource SectionHeader}" Text="Models for each job" Margin="0,12,0,4"/>
+                <ItemsControl ItemsSource="{Binding Roles}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="0,0,0,6">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="300"/><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                <TextBlock Text="{Binding Title}" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                <ComboBox Grid.Column="1" Margin="6,0" ItemsSource="{Binding DataContext.ProviderNames, RelativeSource={RelativeSource AncestorType=Window}}" SelectedItem="{Binding Provider}"/>
+                                <ComboBox Grid.Column="2" IsEditable="True" ItemsSource="{Binding Models}" Text="{Binding Model, UpdateSourceTrigger=PropertyChanged}"
+                                          TextSearch.TextPath="Id" ToolTip="A model of the server, from its list, or typed">
+                                    <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Display}"/></DataTemplate></ComboBox.ItemTemplate>
+                                </ComboBox>
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <Grid Margin="0,4,0,0">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="300"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                    <TextBlock Grid.Row="3" Text="Records per request (most)" VerticalAlignment="Center"/>
+                    <TextBox Grid.Row="3" Grid.Column="1" Margin="6,4,0,0" Width="80" HorizontalAlignment="Left" VerticalContentAlignment="Center"
+                             Text="{Binding MaxRecordsPerRequest, UpdateSourceTrigger=PropertyChanged}"
+                             ToolTip="Messages or records sent in one request. A summary over more goes in steps: each step sends the summary so far with the next records. Fewer is safer for small models; the model's context can lower it further."/>
+                    <TextBlock Text="Answer in" VerticalAlignment="Center"/>
+                    <TextBox Grid.Column="1" Margin="6,0,0,4" Text="{Binding AnswerLanguage, UpdateSourceTrigger=PropertyChanged}" VerticalContentAlignment="Center"
+                             ToolTip="Language of summaries, answers and reasons; the records' own words are quoted as they are"/>
+                    <TextBlock Grid.Row="1" Text="Translate into" VerticalAlignment="Center"/>
+                    <TextBox Grid.Row="1" Grid.Column="1" Margin="6,0,0,4" Text="{Binding TranslateTo, UpdateSourceTrigger=PropertyChanged}" VerticalContentAlignment="Center"/>
+                    <TextBlock Grid.Row="2" Text="Image categories" VerticalAlignment="Center"/>
+                    <TextBox Grid.Row="2" Grid.Column="1" Margin="6,0,0,0" Text="{Binding VisionCategories, UpdateSourceTrigger=PropertyChanged}" VerticalContentAlignment="Center"
+                             ToolTip="Comma-separated; the vision model picks one per image, with a confidence"/>
+                </Grid>
+
+                <TextBlock Style="{StaticResource SectionHeader}" Text="Web lookup for Explain" Margin="0,14,0,4"/>
+                <TextBlock TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,4"
+                           Text="Explain can search the web for what the app's data format means. Only the app, artifact, database file and column names are searched, never a value of a record; words with digits or @ are dropped. The searches are shown before they leave and logged. What comes back is reference, not evidence."/>
+                <CheckBox Content="Search the web when explaining (asked again at every run)" IsChecked="{Binding ExplainWebLookup}" Margin="0,0,0,4"/>
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Left" Text="Search address" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <TextBox Text="{Binding WebSearchUrl, UpdateSourceTrigger=PropertyChanged}" VerticalContentAlignment="Center"
+                             ToolTip="DuckDuckGo's HTML page by default; {q} is replaced by the search words"/>
+                </DockPanel>
+
+                <TextBlock Style="{StaticResource SectionHeader}" Text="Claude CLI" Margin="0,14,0,4"/>
+                <TextBlock TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,4"
+                           Text="Once allowed, &quot;Claude CLI&quot; is a server the jobs above can use (text: summary, questions, translation, explain; vision: image description): choose it and its model under Jobs. The AI window's &quot;Ask Claude&quot; also runs claude -p with LEXIS as a read-only MCP server. What Claude reads leaves this machine for Anthropic: each run asks first, and every send is logged."/>
+                <CheckBox Content="Allow the Claude CLI (asked again at every run)" IsChecked="{Binding ClaudeAllowed}" Margin="0,0,0,4"/>
+                <TextBlock Text="{Binding ClaudeRow.Status}" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,4"
+                           Visibility="{Binding ClaudeAllowed, Converter={StaticResource Vis}}"/>
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Content="Check" Command="{Binding CheckClaudeCommand}" Margin="6,0,0,0"/>
+                    <TextBlock DockPanel.Dock="Left" Text="Executable" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <TextBox Text="{Binding ClaudePath, UpdateSourceTrigger=PropertyChanged}" VerticalContentAlignment="Center"/>
+                </DockPanel>
+                <TextBlock Text="{Binding ClaudeStatus}" Foreground="{StaticResource MutedBrush}" Margin="0,2,0,0"/>
+
+                <TextBlock Style="{StaticResource SectionHeader}" Text="Transcription with whisper.cpp" Margin="0,14,0,4"/>
+                <TextBlock TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,4"
+                           Text="LM Studio and Ollama run chat models: they cannot transcribe audio, even with a Whisper model loaded (LM Studio answers 415). whisper.cpp does it on this machine: download a release's Windows zip (whisper-cli.exe) and a ggml model (ggml-small.bin is a good start; ggml-large-v3-turbo.bin is better and slower) into one folder, then give whisper-cli.exe here and choose whisper.cpp for Transcription under Jobs. Opus, AMR, M4A and other formats need ffmpeg.exe beside it or on PATH. Nothing leaves this machine."/>
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Content="Browse…" Command="{Binding BrowseWhisperCommand}" Margin="6,0,0,0"/>
+                    <TextBlock DockPanel.Dock="Left" Text="whisper-cli.exe" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <TextBox Text="{Binding WhisperPath, UpdateSourceTrigger=LostFocus}" VerticalContentAlignment="Center"/>
+                </DockPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                    <Button Style="{StaticResource FlatButton}" Content="Download page (whisper.cpp)" Command="{Binding OpenWhisperDownloadsCommand}" Margin="0,0,6,0"
+                            ToolTip="Opens the whisper.cpp releases in your browser"/>
+                    <Button Style="{StaticResource FlatButton}" Content="Download page (models)" Command="{Binding OpenWhisperDownloadsCommand}" CommandParameter="models"
+                            ToolTip="Opens the ggml Whisper models in your browser"/>
+                    <TextBlock Text="{Binding WhisperRow.Status}" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                </StackPanel>
+
+                <TextBlock Style="{StaticResource SectionHeader}" Text="MCP for other programs" Margin="0,14,0,4"/>
+                <TextBlock TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,4"
+                           Text="While on, this LEXIS serves the case open in it (the device in front) to LM Studio, Claude Desktop or another MCP client, read-only, on this computer only: artifacts, table structure, search, records, timeline, media list. Nothing else starts and nothing has to be closed. Every tool answer is logged in the case's AI log. Where the data goes then depends on the model that program uses: LEXIS cannot see it."/>
+                <CheckBox Content="MCP server on (acts at once)" IsChecked="{Binding McpAllowed}" Margin="0,0,0,4"/>
+                <StackPanel Visibility="{Binding McpAllowed, Converter={StaticResource Vis}}">
+                    <TextBlock Text="{Binding McpState}" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,4"/>
+                    <DockPanel Margin="0,0,0,2">
+                        <TextBlock DockPanel.Dock="Left" Text="Address" Width="76" VerticalAlignment="Center" ToolTip="For clients that connect to a URL (LM Studio)"/>
+                        <TextBox Text="{Binding McpUrl, Mode=OneWay}" IsReadOnly="True"/>
+                    </DockPanel>
+                    <DockPanel Margin="0,0,0,4">
+                        <TextBlock DockPanel.Dock="Left" Text="Command" Width="76" VerticalAlignment="Center" ToolTip="For clients that start the server themselves: it connects to this LEXIS"/>
+                        <TextBox Text="{Binding McpBridge, Mode=OneWay}" IsReadOnly="True"/>
+                    </DockPanel>
+                    <WrapPanel>
+                        <Button Style="{StaticResource FlatButton}" Content="Add to LM Studio" Command="{Binding AddToLmStudioCommand}" IsEnabled="{Binding HasLmStudio}" Margin="0,0,6,0"/>
+                        <Button Style="{StaticResource FlatButton}" Content="Add to Claude Desktop" Command="{Binding AddToClaudeDesktopCommand}" IsEnabled="{Binding HasClaudeDesktop}" Margin="0,0,6,0"/>
+                        <Button Style="{StaticResource FlatButton}" Content="Copy mcp.json (other programs)" Command="{Binding CopyMcpConfigCommand}"/>
+                    </WrapPanel>
+                </StackPanel>
+
+                <DockPanel Margin="0,14,0,4">
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                        <Button Style="{StaticResource FlatButton}" Content="Add theme" Command="{Binding AddThemeCommand}"/>
+                        <Button Style="{StaticResource FlatButton}" Content="Remove" Command="{Binding RemoveThemeCommand}"/>
+                    </StackPanel>
+                    <TextBlock Style="{StaticResource SectionHeader}" Text="Thematic review"/>
+                </DockPanel>
+                <TextBlock TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,4"
+                           Text="A theme and its indicators: the model lists the messages that match one, with the reason and the quote. Candidates for you to check, not findings."/>
+                <Grid Height="170">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="200"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <ListBox ItemsSource="{Binding Themes}" SelectedItem="{Binding SelectedTheme}" DisplayMemberPath="Name"/>
+                    <StackPanel Grid.Column="1" Margin="8,0,0,0" DataContext="{Binding SelectedTheme}">
+                        <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" VerticalContentAlignment="Center" Margin="0,0,0,4"/>
+                        <TextBox Text="{Binding Indicators, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" Height="138" VerticalScrollBarVisibility="Auto"/>
+                    </StackPanel>
+                </Grid>
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</Window>

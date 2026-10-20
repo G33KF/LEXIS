@@ -1,0 +1,213 @@
+__artifacts_v2__ = {
+    "get_chromeMediaHistorySessions": {
+        "name": "Media History - Sessions",
+        "description": "Parses Media History playback sessions from Chromium Based Browsers",
+        "author": "Kevin Pagano (@stark4n6)",
+        "creation_date": "2021-01-26",
+        "last_update_date": "2021-01-26",
+        "requirements": "none",
+        "category": "Chromium",
+        "notes": "",
+        "paths": ('*/app_chrome/Default/Media History*', '*/app_sbrowser/Default/Media History*', '*/app_opera/Media History*', '*/app_webview/Default/Media History*'),
+        "output_types": "standard",
+        "artifact_icon": "photo",
+        "sample_data": {
+            "galaxys10_a10": "Android 10 | com.android.chrome vc 438910534 | 0 rows",
+        },
+    },
+    "get_chromeMediaHistoryPlaybacks": {
+        "name": "Media History - Playbacks",
+        "description": "Parses Media History playbacks from Chromium Based Browsers",
+        "author": "Kevin Pagano (@stark4n6)",
+        "creation_date": "2021-01-26",
+        "last_update_date": "2021-01-26",
+        "requirements": "none",
+        "category": "Chromium",
+        "notes": "",
+        "paths": ('*/app_chrome/Default/Media History*', '*/app_sbrowser/Default/Media History*', '*/app_opera/Media History*', '*/app_webview/Default/Media History*'),
+        "output_types": "standard",
+        "artifact_icon": "photo",
+        "sample_data": {
+            "galaxys10_a10": "Android 10 | com.android.chrome vc 438910534 | 0 rows",
+        },
+    },
+    "get_chromeMediaHistoryOrigins": {
+        "name": "Media History - Origins",
+        "description": "Parses Media History origins from Chromium Based Browsers",
+        "author": "Kevin Pagano (@stark4n6)",
+        "creation_date": "2021-01-26",
+        "last_update_date": "2021-01-26",
+        "requirements": "none",
+        "category": "Chromium",
+        "notes": "",
+        "paths": ('*/app_chrome/Default/Media History*', '*/app_sbrowser/Default/Media History*', '*/app_opera/Media History*', '*/app_webview/Default/Media History*'),
+        "output_types": "standard",
+        "artifact_icon": "photo",
+        "sample_data": {
+            "galaxys10_a10": "Android 10 | com.android.chrome vc 438910534 | 0 rows",
+        },
+    }
+}
+
+import sqlite3
+
+from scripts.ilapfuncs import logfunc, open_sqlite_db_readonly, artifact_processor, convert_human_ts_to_utc
+from scripts.artifacts.chrome import get_browser_name
+from scripts.artifacts.storagePathViews import unique_files
+
+
+def _media_history_files(files_found):
+    for file_found in files_found:
+        file_found = str(file_found)
+        if not file_found.endswith('Media History'):
+            continue  # Skip all other files
+        browser_name = get_browser_name(file_found)
+        if file_found.find('app_sbrowser') >= 0:
+            browser_name = 'Browser'
+        elif file_found.find('.magisk') >= 0 and file_found.find('mirror') >= 0:
+            continue  # Skip sbin/.magisk/mirror/data/.. , it should be duplicate data
+        yield file_found, browser_name
+
+
+def _media_history_rows(file_found, browser_name, query):
+    '''Run one query against a Media History database.
+
+    Returns None when the database cannot be read, so the caller skips that
+    file instead of ending the whole artifact. A Media History file left with
+    a non-empty rollback journal is the case to expect: SQLite has to write to
+    replay and clear the journal, which a read-only handle cannot do.
+    '''
+    db = open_sqlite_db_readonly(file_found)
+    if db is None:
+        return None
+    try:
+        cursor = db.cursor()
+        cursor.execute(query)
+        return cursor.fetchall()
+    except sqlite3.Error as ex:
+        logfunc(f'Unable to read {browser_name} media history in {file_found}: {ex}')
+        return None
+    finally:
+        db.close()
+
+
+@artifact_processor
+def get_chromeMediaHistorySessions(context):
+    files_found = unique_files(context)
+    all_data = []
+    data_headers = ['Last Updated', 'Origin ID', 'URL', 'Position', 'Duration', 'Title', 'Artist', 'Album', 'Source Title']
+    lava_data_headers = data_headers.copy()
+    lava_data_headers[0] = (lava_data_headers[0], 'datetime')
+    all_data_headers = lava_data_headers + ['Browser Name']
+    report_file = 'Unknown'
+
+    for file_found, browser_name in _media_history_files(files_found):
+        all_rows = _media_history_rows(file_found, browser_name, '''
+        select
+        datetime(last_updated_time_s-11644473600, 'unixepoch') as last_updated_time_s,
+            origin_id,
+            url,
+            strftime('%H:%M:%S',position_ms/1000, 'unixepoch') as position_ms,
+            strftime('%H:%M:%S',duration_ms/1000, 'unixepoch') as duration_ms,
+            title,
+            artist,
+            album,
+            source_title
+        from playbackSession
+        ''')
+        if all_rows is None:
+            continue
+
+        if len(all_rows) > 0:
+            report_file = file_found if report_file == 'Unknown' else report_file + ', ' + file_found
+            data_list = []
+            for row in all_rows:
+                data_list.append((convert_human_ts_to_utc(row[0]),row[1],row[2],row[3],row[4],row[5],row[6],row[7],row[8]))
+
+            data_list = [row + (browser_name,) for row in data_list]
+            all_data.extend(data_list)
+        else:
+            logfunc(f'No {browser_name} - Media History - Sessions data available')
+
+    return all_data_headers, all_data, report_file
+
+
+@artifact_processor
+def get_chromeMediaHistoryPlaybacks(context):
+    files_found = unique_files(context)
+    all_data = []
+    data_headers = ['Last Updated', 'ID', 'Origin ID', 'URL', 'Watch Time', 'Has Audio', 'Has Video']
+    lava_data_headers = data_headers.copy()
+    lava_data_headers[0] = (lava_data_headers[0], 'datetime')
+    all_data_headers = lava_data_headers + ['Browser Name']
+    report_file = 'Unknown'
+
+    for file_found, browser_name in _media_history_files(files_found):
+        all_rows = _media_history_rows(file_found, browser_name, '''
+        select
+            datetime(last_updated_time_s-11644473600, 'unixepoch') as last_updated_time_s,
+            id,
+            origin_id,
+            url,
+            strftime('%H:%M:%S',watch_time_s, 'unixepoch') as watch_time_s,
+            case has_audio
+                when 0 then ''
+                when 1 then 'Yes'
+            end as has_audio,
+            case has_video
+                when 0 then ''
+                when 1 then 'Yes'
+            end as has_video
+        from playback
+        ''')
+        if all_rows is None:
+            continue
+
+        if len(all_rows) > 0:
+            report_file = file_found if report_file == 'Unknown' else report_file + ', ' + file_found
+            data_list = []
+            for row in all_rows:
+                data_list.append((convert_human_ts_to_utc(row[0]),row[1],row[2],row[3],row[4],row[5],row[6]))
+
+            data_list = [row + (browser_name,) for row in data_list]
+            all_data.extend(data_list)
+        else:
+            logfunc(f'No {browser_name} - Media History - Playbacks data available')
+
+    return all_data_headers, all_data, report_file
+
+
+@artifact_processor
+def get_chromeMediaHistoryOrigins(context):
+    files_found = unique_files(context)
+    all_data = []
+    data_headers = ['Last Updated', 'ID', 'Origin', 'Aggregate Watchtime']
+    lava_data_headers = data_headers.copy()
+    lava_data_headers[0] = (lava_data_headers[0], 'datetime')
+    all_data_headers = lava_data_headers + ['Browser Name']
+    report_file = 'Unknown'
+
+    for file_found, browser_name in _media_history_files(files_found):
+        all_rows = _media_history_rows(file_found, browser_name, '''
+        select
+            datetime(last_updated_time_s-11644473600, 'unixepoch') as last_updated_time_s,
+            id,
+            origin,
+            cast(aggregate_watchtime_audio_video_s/86400 as integer) || ':' || strftime('%H:%M:%S', aggregate_watchtime_audio_video_s ,'unixepoch') as aggregate_watchtime_audio_video_s
+        from origin
+        ''')
+        if all_rows is None:
+            continue
+
+        if len(all_rows) > 0:
+            report_file = file_found if report_file == 'Unknown' else report_file + ', ' + file_found
+            data_list = []
+            for row in all_rows:
+                data_list.append((convert_human_ts_to_utc(row[0]),row[1],row[2],row[3]))
+
+            data_list = [row + (browser_name,) for row in data_list]
+            all_data.extend(data_list)
+        else:
+            logfunc(f'No {browser_name} - Media History - Origins data available')
+
+    return all_data_headers, all_data, report_file

@@ -1,0 +1,126 @@
+# pylint: disable=W0718
+__artifacts_v2__ = {
+    "get_gps": {
+        "name": "Strava - Activities",
+        "description": "GPS activities decoded from FIT files under com.strava/files",
+        "author": "Fabian Nunes {fabiannunes12@gmail.com}, @AlexisBrignoni, Codex",
+        "creation_date": "2023-03-24",
+        "last_update_date": "2026-10-06",
+        "requirements": "fitdecode",
+        "category": "Strava",
+        "notes": "One row per file whose name ends in fit under com.strava/files that decodes; a "
+                 "file that cannot be decoded is logged and gives no row. Activity Type, Start Time, "
+                 "total time and distance come from the session message. Total Time (minutes) is "
+                 "the decoded total elapsed time divided by 60 and cut to a whole number. Total "
+                 "Distance (km) is the decoded total distance divided by 1000 and rounded to two "
+                 "decimals. End Time is computed as Start Time plus the decoded total elapsed time. "
+                 "A time with no zone is taken as UTC. "
+                 "Latitude and Longitude are the first position record, rounded to five decimals. "
+                 "Route Map is an image drawn from the position records and Route KML holds the same "
+                 "track. The source indicator includes only files that produced rows. "
+                 "Rows carry evidence-relative Source File values only when a report combines "
+                 "multiple FIT inputs.",
+        "paths": ('*/com.strava/files*',),
+        "output_types": "all",
+        "artifact_icon": "activity",
+    }
+}
+
+import datetime
+
+import fitdecode
+
+from scripts.geo_utils import render_gps_track_png, build_track_kml
+from scripts.ilapfuncs import artifact_processor, logfunc, check_in_embedded_media
+
+_SEMI_TO_DEG = 180.0 / 2 ** 31
+
+
+def _to_utc(value):
+    if not isinstance(value, datetime.datetime):
+        return ''
+    if value.tzinfo is None:
+        return value.replace(tzinfo=datetime.timezone.utc)
+    return value.astimezone(datetime.timezone.utc)
+
+
+@artifact_processor
+def get_gps(context):
+    files_found = context.get_files_found()
+    data_list = []
+    source_paths = set()
+    for file_found in files_found:
+        file_found = str(file_found)
+        if not file_found.endswith('fit'):
+            continue
+        coordinates = []
+        sport = ''
+        start_time = ''
+        end_time = ''
+        total_minutes = ''
+        total_distance_km = ''
+        try:
+            with fitdecode.FitReader(file_found) as fit:
+                for frame in fit:
+                    if frame.frame_type != fitdecode.FIT_FRAME_DATAMESG:
+                        continue
+                    if (frame.name == 'record' and frame.has_field('position_lat')
+                            and frame.has_field('position_long')):
+                        lat = frame.get_value('position_lat') * _SEMI_TO_DEG
+                        lon = frame.get_value('position_long') * _SEMI_TO_DEG
+                        coordinates.append([round(lat, 5), round(lon, 5)])
+                    elif frame.name == 'session':
+                        elapsed = (frame.get_value('total_elapsed_time')
+                                   if frame.has_field('total_elapsed_time') else None)
+                        if elapsed is not None:
+                            total_minutes = int(elapsed / 60)
+                        if frame.has_field('start_time'):
+                            st = frame.get_value('start_time')
+                            start_time = _to_utc(st)
+                            if elapsed is not None and isinstance(st, datetime.datetime):
+                                end_time = _to_utc(st + datetime.timedelta(seconds=elapsed))
+                        if frame.has_field('sport'):
+                            sport = frame.get_value('sport')
+                        if frame.has_field('total_distance'):
+                            total_distance_km = round(frame.get_value('total_distance') / 1000, 2)
+        except Exception as exc:
+            logfunc(f'Strava: could not read {file_found}: {exc}')
+            continue
+
+        start_lat = coordinates[0][0] if coordinates else ''
+        start_lon = coordinates[0][1] if coordinates else ''
+        name = sport or 'activity'
+        caption_bits = []
+        if start_time:
+            caption_bits.append(start_time.strftime('%Y-%m-%d %H:%M UTC'))
+        if total_distance_km != '':
+            caption_bits.append(f'{total_distance_km} km')
+        if total_minutes != '':
+            caption_bits.append(f'{total_minutes} min')
+
+        route_map = ''
+        png = render_gps_track_png(coordinates, title=str(sport).title() if sport else 'Activity',
+                                   subtitle='  -  '.join(caption_bits))
+        if png:
+            route_map = check_in_embedded_media(file_found, png, f'{name}_route.png',
+                                                force_type='image/png', force_extension='png') or ''
+        route_kml = ''
+        kml = build_track_kml(coordinates, name=f'{name} {start_time}')
+        if kml:
+            route_kml = check_in_embedded_media(file_found, kml, f'{name}_route.kml',
+                                                force_type='application/vnd.google-earth.kml+xml',
+                                                force_extension='kml') or ''
+        data_list.append((sport, start_time, end_time, total_minutes, total_distance_km,
+                          start_lat, start_lon, route_map, route_kml, context.get_relative_path(file_found)))
+        source_paths.add(file_found)
+
+    data_headers = (('Start Time', 'datetime'), ('End Time', 'datetime'), 'Activity Type',
+                    'Total Time (minutes)', 'Total Distance (km)', 'Latitude', 'Longitude',
+                    ('Route Map', 'media'), ('Route KML', 'media'))
+    multiple_sources = len(source_paths) > 1
+    if multiple_sources:
+        data_headers += ('Source File',)
+    else:
+        data_list = [row[:-1] for row in data_list]
+    data_list = [row[1:3] + (row[0],) + row[3:] for row in data_list]
+    return data_headers, data_list, '\n'.join(sorted(source_paths))

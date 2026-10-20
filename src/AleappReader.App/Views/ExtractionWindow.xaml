@@ -1,0 +1,88 @@
+<Window x:Class="AleappReader.App.Views.ExtractionWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Analyze new extraction (ALEAPP / iLEAPP)" Height="760" Width="1000" WindowStartupLocation="CenterOwner" Background="{StaticResource PanelBrush}">
+    <Grid Margin="12">
+        <Grid.ColumnDefinitions><ColumnDefinition Width="430"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+        <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="170"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <TextBlock Text="DEVICE" Style="{StaticResource SectionHeader}" Margin="0,0,0,4"/>
+                <ComboBox ItemsSource="{Binding ToolChoices}" SelectedItem="{Binding ToolChoice}" IsEnabled="{Binding NotRunning}" Margin="0,0,0,4"/>
+                <TextBlock Text="{Binding EngineStatus}" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}"/>
+
+                <TextBlock Text="INPUT" Style="{StaticResource SectionHeader}" Margin="0,12,0,4"/>
+                <TextBlock Text="Extraction (zip, tar, folder, image) — or its .ufd file: the extraction and the case details are taken from it."
+                           TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,4"/>
+                <DockPanel>
+                    <ComboBox ItemsSource="{Binding InputTypes}" SelectedItem="{Binding InputType}" Width="74" Margin="0,0,6,0"/>
+                    <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Content="…" Command="{Binding BrowseInputCommand}"/>
+                    <TextBox Text="{Binding InputPath, UpdateSourceTrigger=PropertyChanged}" VerticalContentAlignment="Center"/>
+                </DockPanel>
+                <StackPanel Visibility="{Binding NeedsPassword, Converter={StaticResource Vis}}" Margin="0,4,0,0">
+                    <TextBlock Text="Password (encrypted image, iTunes backup or Android .ab backup; passed via environment, not saved)"/>
+                    <PasswordBox x:Name="Pw" PasswordChanged="Pw_PasswordChanged"/>
+                </StackPanel>
+                <StackPanel Margin="0,4,0,0">
+                    <TextBlock Text="{Binding KeyFileLabel}" TextWrapping="Wrap"/>
+                    <DockPanel><Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Content="…" Command="{Binding BrowseKeychainCommand}"/>
+                        <TextBox Text="{Binding Keychain, UpdateSourceTrigger=PropertyChanged}" VerticalContentAlignment="Center"/></DockPanel>
+                </StackPanel>
+                <TextBlock Text="Output folder" Margin="0,4,0,0"/>
+                <DockPanel><Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Content="…" Command="{Binding BrowseOutputCommand}"/>
+                    <TextBox Text="{Binding OutputDir, UpdateSourceTrigger=PropertyChanged}" VerticalContentAlignment="Center"/></DockPanel>
+
+                <TextBlock Text="CASE DATA (optional)" Style="{StaticResource SectionHeader}" Margin="0,12,0,4"/>
+                <TextBlock Text="Case number"/><TextBox Text="{Binding CaseNumber}"/>
+                <TextBlock Text="Agency" Margin="0,4,0,0"/><TextBox Text="{Binding Agency}"/>
+                <TextBlock Text="Examiner" Margin="0,4,0,0"/><TextBox Text="{Binding Examiner}"/>
+                <TextBlock Text="Add the report to" Margin="0,4,0,0"/>
+                <ComboBox ItemsSource="{Binding CaseChoices}" SelectedItem="{Binding TargetCase}" DisplayMemberPath="Title"/>
+            </StackPanel>
+        </ScrollViewer>
+
+        <DockPanel Grid.Column="2">
+            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
+                <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Content="None" Command="{Binding CheckAllCommand}" CommandParameter="false"/>
+                <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Content="All" Command="{Binding CheckAllCommand}" CommandParameter="true"/>
+                <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Content="Load modules" Command="{Binding LoadPluginsCommand}"/>
+                <TextBlock Text="MODULES" Style="{StaticResource SectionHeader}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                <TextBox Style="{StaticResource SearchBox}" Text="{Binding PluginFilter, UpdateSourceTrigger=PropertyChanged, Delay=250}" ToolTip="Filter modules"/>
+            </DockPanel>
+            <TextBlock DockPanel.Dock="Bottom" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,4,0,0"
+                       Text="Without loading the list, every module runs. Checked modules are passed as a profile (.alprofile / .ilprofile)."/>
+            <ListBox ItemsSource="{Binding PluginsView}" VirtualizingPanel.IsVirtualizingWhenGrouping="True" VirtualizingPanel.IsVirtualizing="True">
+                <ListBox.GroupStyle>
+                    <GroupStyle>
+                        <GroupStyle.HeaderTemplate>
+                            <DataTemplate><TextBlock Text="{Binding Name}" FontWeight="SemiBold" Margin="0,6,0,2"/></DataTemplate>
+                        </GroupStyle.HeaderTemplate>
+                    </GroupStyle>
+                </ListBox.GroupStyle>
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <CheckBox IsChecked="{Binding IsChecked}">
+                            <TextBlock><Run Text="{Binding Info.Artifact, Mode=OneWay}"/>  <Run Text="{Binding Info.Name, Mode=OneWay}" Foreground="{StaticResource MutedBrush}"/></TextBlock>
+                        </CheckBox>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </DockPanel>
+
+        <TextBox Grid.Row="1" Grid.ColumnSpan="3" Margin="0,10,0,0" Text="{Binding Log, Mode=OneWay}" IsReadOnly="True" FontFamily="Consolas" FontSize="11.5"
+                 VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" TextChanged="Log_TextChanged"/>
+
+        <DockPanel Grid.Row="2" Grid.ColumnSpan="3" Margin="0,10,0,0">
+            <TextBlock DockPanel.Dock="Top" Text="{Binding CurrentArtifact}" Margin="0,0,0,4" TextTrimming="CharacterEllipsis"
+                       Foreground="{StaticResource MutedBrush}" ToolTip="{Binding CurrentArtifact}"/>
+            <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Content="Close" IsCancel="True"/>
+            <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Content="Cancel run" Command="{Binding CancelCommand}"/>
+            <Button DockPanel.Dock="Right" Style="{StaticResource AccentButton}" Command="{Binding RunCommand}">
+                <TextBlock><Run Text="Run"/> <Run Text="{Binding ToolName, Mode=OneWay}"/></TextBlock>
+            </Button>
+            <TextBlock DockPanel.Dock="Right" Text="{Binding ProgressText}" VerticalAlignment="Center" Margin="8,0"/>
+            <ProgressBar Value="{Binding Progress}" Height="10" VerticalAlignment="Center" Style="{StaticResource RunBar}"/>
+        </DockPanel>
+    </Grid>
+</Window>

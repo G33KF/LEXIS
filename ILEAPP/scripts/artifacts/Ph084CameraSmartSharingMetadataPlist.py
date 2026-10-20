@@ -1,0 +1,87 @@
+__artifacts_v2__ = {
+'Ph084CameraSmartSharingMetadataPlist': {
+'name': 'Ph084-Camera-Smart-Sharing-Metadata-Plist',
+'description': 'Parses basic data from'
+' */PhotoData/Caches/SmartSharing/camera_smart_sharing_metadata.plist and reports seven'
+' keys as stored: creationDate, homeLocations, frequentLocations, identities,'
+' locationShiftingRequired, version and libraryScopeLocalIdentifier. Other keys are not'
+' reported. One row is written for the first file matched, with a blank cell when a key'
+' is absent. No row is written when the file cannot be decoded, and the error is logged.'
+' What the keys mean is not established here. sample_data records a row on one image'
+' (iOS 18.3.2), whose file held these seven keys and no other.',
+'author': 'Scott Koenig',
+'creation_date': '2026-05-28',
+'last_update_date': '2026-10-04',
+'version': '5.0',
+'date': '2025-01-05',
+'requirements': 'Acquisition that contains camera_smart_sharing_metadata.plist',
+'category': 'Photos.sqlite',
+'notes': '',
+'paths': ('*/PhotoData/Caches/SmartSharing/camera_smart_sharing_metadata.plist',),
+"output_types": ["standard", "tsv", "none"],
+"artifact_icon": "camera",
+'sample_data': {
+'dexter_ios18': 'iOS 18.3.2 | 1 row',
+}
+}
+}
+
+import plistlib
+import nska_deserialize as nd
+from scripts.ilapfuncs import artifact_processor, logfunc
+
+@artifact_processor
+def Ph084CameraSmartSharingMetadataPlist(context):
+    files_found = context.get_files_found()
+    data_list = []
+    source_path = str(files_found[0])
+
+    if source_path.endswith('camera_smart_sharing_metadata.plist'):
+        creationdate = homelocations = frequentlocations = identities = ''
+        locationshiftingrequired = version = libraryscopelocalidentifier = ''
+        decoded = True
+        with open(source_path, 'rb') as f:
+            try:
+                deserialized_plist = nd.deserialize_plist(f)
+                plist = deserialized_plist
+                for key, val in plist.items():
+                    if key == 'creationDate':
+                        creationdate = val
+                    if key == 'homeLocations':
+                        homelocations = val
+                    if key == 'frequentLocations':
+                        frequentlocations = val
+                    if key == 'identities':
+                        identities = val
+                    if key == 'locationShiftingRequired':
+                        locationshiftingrequired = val
+                    if key == 'version':
+                        version = val
+                    if key == 'libraryScopeLocalIdentifier':
+                        libraryscopelocalidentifier = val
+
+            except (nd.DeserializeError,
+            nd.biplist.NotBinaryPlistException,
+            nd.biplist.InvalidPlistException,
+            plistlib.InvalidFileException,
+            nd.ccl_bplist.BplistError,
+            ValueError,
+            TypeError, OSError, OverflowError) as ex:
+                logfunc('Had exception: ' + str(ex))
+                decoded = False
+
+        if decoded:
+            data_list.append((creationdate, homelocations, frequentlocations, identities, locationshiftingrequired,
+            version, libraryscopelocalidentifier))
+
+    data_headers = (
+    ('creationdate', 'datetime'),
+    'homelocations',
+    'frequentlocations',
+    'identities',
+    'locationshiftingrequired',
+    'version',
+    'libraryscopelocalidentifier')
+    return data_headers, data_list, source_path
+
+

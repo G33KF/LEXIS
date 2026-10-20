@@ -1,0 +1,10 @@
+ALEAPP/.venv/
+ILEAPP/.venv/
+__pycache__/
+bin/
+obj/
+.vs/
+*.user
+*_REPORT_FOLDER/
+/src/AleappReader.App/engine/
+/release/

@@ -1,0 +1,103 @@
+{
+  "metadata": {
+    "module_name": "calculatorLockVault",
+    "artifact_name": "Calculator Lock - Preferences",
+    "function_name": "calculatorvault_preferences",
+    "case_number": "pixel7a_a14",
+    "number_of_columns": 5,
+    "number_of_rows": 10,
+    "total_data_size_bytes": 653,
+    "media_checkins": 0,
+    "media_embedded_checkins": 0,
+    "input_zip_path": "admin/test/cases/data/calculatorLockVault/testdata.calculatorLockVault.calculatorvault_preferences.pixel7a_a14.zip",
+    "start_time": "2026-09-28T20:04:33.011612+00:00",
+    "end_time": "2026-09-28T20:04:33.030006+00:00",
+    "run_time_seconds": 0.00024509429931640625,
+    "last_commit": {
+      "hash": "dad00ace958158d36afed7e188dbcd6aeea7aa86",
+      "author_name": "Brigs",
+      "author_email": "abrignoni@gmail.com",
+      "date": "2026-09-28T14:17:46-04:00",
+      "message": "Word the calculatorLockVault Hidden Files description to the matching rule"
+    }
+  },
+  "headers": [
+    "Preference",
+    "Value",
+    "Stored Type",
+    "Observed Use",
+    "Android User"
+  ],
+  "data": [
+    [
+      "COUNT_SKIP_SECURE_QUESTION",
+      "2",
+      "int",
+      "",
+      ""
+    ],
+    [
+      "HOME_PRESS",
+      "true",
+      "boolean",
+      "",
+      ""
+    ],
+    [
+      "IABTCF_CmpSdkID",
+      "300",
+      "int",
+      "",
+      ""
+    ],
+    [
+      "IABTCF_gdprApplies",
+      "0",
+      "int",
+      "",
+      ""
+    ],
+    [
+      "IABTCF_idfaFlowControl",
+      "2",
+      "int",
+      "",
+      ""
+    ],
+    [
+      "PASSWORD",
+      "1234",
+      "string",
+      "Read and written by CalculatorActivity, LockScreenCalculatorActivity, ChangePassword and the obfuscated app class l4.b, and read by the obfuscated app class m4.i (from app code)",
+      ""
+    ],
+    [
+      "SET_PASSWORD",
+      "true",
+      "boolean",
+      "",
+      ""
+    ],
+    [
+      "TAKE_PICTURE",
+      "false",
+      "boolean",
+      "Written by SettingActivity and read by SettingActivity, CalculatorActivity, LockScreenCalculatorActivity and the obfuscated app class l4.b; the app also contains a TakePictureActivity and an Intruder storage subfolder (from app code)",
+      ""
+    ],
+    [
+      "key.KEY_FIRST_LAUNCH_3",
+      "false",
+      "boolean",
+      "",
+      ""
+    ],
+    [
+      "key.KEY_LANGUAGE",
+      "en",
+      "string",
+      "",
+      ""
+    ]
+  ]
+}

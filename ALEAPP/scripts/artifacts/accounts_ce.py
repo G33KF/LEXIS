@@ -1,0 +1,143 @@
+__artifacts_v2__ = {
+    "accounts_ce": {
+        "name": "Accounts_ce",
+        "description": "Application accounts recorded in accounts_ce.db",
+        "author": "@AlexisBrignoni",
+        "creation_date": "2020-03-02",
+        "last_update_date": "2025-03-14",
+        "requirements": "none",
+        "category": "Accounts",
+        "notes": "",
+        "paths": ('*/system_ce/*/accounts_ce.db*'),
+        "output_types": ["html", "lava", "tsv"],
+        "artifact_icon": "user",
+        "sample_data": {
+            "anne_a15": "Android 15 | 9 rows",
+            "galaxys10_a10": "Android 10 | 4 rows",
+            "hc_pixel8pro_a16": "Android 16 | 9 rows",
+            "kevin_pocox7_a15": "Android 15 | 8 rows",
+            "pixel7a_a14": "Android 14 | 20 rows",
+            "samsunga53_a14": "Android 14 | 8 rows",
+            "samsungs20_a13": "Android 13 | 16 rows",
+            "sharon_a14": "Android 14 | 14 rows",
+            "russell_pixel6a_a13": "Android 13 | 8 rows",
+            "userb2_a13": "Android 13 | 2 rows",
+        }
+    },
+    "accounts_ce_authtokens": {
+        "name": "Authentication tokens",
+        "description": "Authentication tokens recorded per account in accounts_ce.db.",
+        "author": "@AlexisBrignoni",
+        "creation_date": "2020-03-04",
+        "last_update_date": "2025-03-14",
+        "requirements": "none",
+        "category": "Accounts",
+        "notes": "",
+        "paths": ('*/system_ce/*/accounts_ce.db*'),
+        "output_types": ["html", "lava", "tsv"],
+        "artifact_icon": "key",
+        "sample_data": {
+            "anne_a15": "Android 15 | 75 rows",
+            "galaxys10_a10": "Android 10 | 78 rows",
+            "hc_pixel8pro_a16": "Android 16 | 160 rows",
+            "kevin_pocox7_a15": "Android 15 | 122 rows",
+            "pixel7a_a14": "Android 14 | 162 rows",
+            "samsunga53_a14": "Android 14 | 130 rows",
+            "samsungs20_a13": "Android 13 | 107 rows",
+            "sharon_a14": "Android 14 | 107 rows",
+            "russell_pixel6a_a13": "Android 13 | 227 rows",
+            "userb2_a13": "Android 13 | 108 rows",
+        }
+    },
+    "accounts_ce_extras": {
+        "name": "Account Extras",
+        "description": "Per-account key and value pairs recorded in the extras table of accounts_ce.db.",
+        "author": "@AlexisBrignoni, @gk-forensics",
+        "creation_date": "2026-10-08",
+        "last_update_date": "2026-10-08",
+        "requirements": "none",
+        "category": "Accounts",
+        "notes": "One row per extras row joined to its account. Keys and values are reported as "
+                 "stored; each app chooses its own keys, so their meaning is not interpreted here. "
+                 "Keys beginning EXP: pair an app package, "
+                 "an OAuth scope and an integer value; that value is shown as stored and is not "
+                 "converted to a date.",
+        "paths": ('*/system_ce/*/accounts_ce.db*'),
+        "output_types": ["html", "lava", "tsv"],
+        "artifact_icon": "key",
+    }
+}
+
+
+from scripts.ilapfuncs import artifact_processor, \
+    get_file_path_list_checking_uid, get_results_with_extra_sourcepath_if_needed
+
+
+@artifact_processor
+def accounts_ce(context):
+    files_found = context.get_files_found()
+    source_path_list = get_file_path_list_checking_uid(files_found, "accounts_ce.db", -2, "mirror")
+    source_path = ""
+    data_list = []
+
+    query = '''
+    SELECT
+        type,
+        name,
+        password
+    FROM
+    accounts
+    '''
+
+    data_headers = ('Account Type', 'Account Name', 'Password')
+
+    data_headers, data_list, source_path = get_results_with_extra_sourcepath_if_needed(source_path_list, query, data_headers)
+
+    return data_headers, data_list, source_path
+
+
+@artifact_processor
+def accounts_ce_authtokens(context):
+    files_found = context.get_files_found()
+    source_path_list = get_file_path_list_checking_uid(files_found, "accounts_ce.db", -2, "mirror")
+    source_path = ""
+    data_list = []
+
+    query = '''
+    SELECT
+        accounts.type,
+        accounts.name,
+        authtokens.type,
+        authtokens.authtoken
+    FROM accounts, authtokens
+    WHERE
+        accounts._id = authtokens.accounts_id
+    '''
+
+    data_headers = ('Account Type', 'Account Name', 'Authtoken Type', 'Authtoken')
+
+    data_headers, data_list, source_path = get_results_with_extra_sourcepath_if_needed(source_path_list, query, data_headers)
+
+    return data_headers, data_list, source_path
+
+
+@artifact_processor
+def accounts_ce_extras(context):
+    files_found = context.get_files_found()
+    source_path_list = get_file_path_list_checking_uid(files_found, "accounts_ce.db", -2, "mirror")
+
+    query = '''
+    SELECT
+        accounts.type,
+        accounts.name,
+        extras.key,
+        extras.value
+    FROM extras
+    LEFT JOIN accounts ON accounts._id = extras.accounts_id
+    '''
+
+    data_headers = ('Account Type', 'Account Name', 'Key', 'Value')
+
+    data_headers, data_list, source_path = get_results_with_extra_sourcepath_if_needed(source_path_list, query, data_headers)
+
+    return data_headers, data_list, source_path

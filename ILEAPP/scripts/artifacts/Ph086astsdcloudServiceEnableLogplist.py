@@ -1,0 +1,70 @@
+__artifacts_v2__ = {
+'Ph086assetsdcloudServiceEnableLogPlist': {
+'name': 'Ph086-assetsd-cloud-Service-Enable-Log-Plist',
+'description': 'Parses distinct files matched by */PhotoData/private/com.apple.assetsd/cloudServiceEnableLog.plist.'
+' Scott Koenig reports, from the testing described in the linked post (test devices on'
+' iOS 14.7 and iOS 15), that this plist holds a UTC timestamp for when iCloud Photo'
+' Library (CPL) was enabled or disabled, shown as a True or False value, with False read'
+' as turned off, and that it keeps a history of the setting. The post gives its location'
+' as PhotoData/private/com.apple.assetsd. Values are reported as stored.'
+' https://theforensicscooter.com/2022/05/02/photos-sqlite-query-documentation-notable-artifacts/',
+'author': 'Scott Koenig, @AlexisBrignoni, Codex',
+'creation_date': '2026-05-28',
+'version': '5.0',
+'date': '2025-01-05',
+'last_update_date': '2026-10-04',
+'requirements': 'Acquisition that contains assetsd cloudServiceEnableLog.plist',
+'category': 'Photos.sqlite',
+'notes': '',
+'paths': ('*/PhotoData/private/com.apple.assetsd/cloudServiceEnableLog.plist',),
+"output_types": ["standard", "tsv", "none"],
+"artifact_icon": "settings",
+'sample_data': {
+'dexter_ios18': 'iOS 18.3.2 | 1 row',
+'hc_ios18_7': 'iOS 18.7.8 | 1 row',
+'iphone11_ios17': 'iOS 17.3 | 1 row',
+'iphone12_ios18': 'iOS 18.7 | 1 row',
+'iphone14plus_ios18': 'iOS 18.0 | 1 row',
+'otto_ios17': 'iOS 17.5.1 | 3 rows',
+'felix23_ios16': 'iOS 16.5 | 1 row',
+'hickman_ios14': 'iOS 14.3 | 1 row',
+'jess_ios15': 'iOS 15.0.2 | 1 row',
+'magnet_ios16': 'iOS 16.1.1 | 1 row',
+}
+}
+}
+
+import plistlib
+from scripts.ilapfuncs import artifact_processor
+
+@artifact_processor
+def Ph086assetsdcloudServiceEnableLogPlist(context):
+    files_found = list(dict.fromkeys(str(path) for path in context.get_files_found()))
+    data_list = []
+
+    for source_path in files_found:
+        with open(source_path, "rb") as fp:
+            pl = plistlib.load(fp)
+        if len(pl) > 0:
+            for key in pl:
+                if 'timestamp' in key:
+                    timestamputc = key['timestamp']
+                else:
+                    timestamputc = ''
+                if 'type' in key:
+                    servicetype = key['type']
+                else:
+                    servicetype = ''
+                if 'enabled' in key:
+                    enabledstate = key['enabled']
+                else:
+                    enabledstate = ''
+
+                data_list.append((timestamputc, servicetype, enabledstate, context.get_relative_path(source_path)))
+
+    data_headers = (
+    ('TimestampUTC', 'datetime'),
+    'Service-Type',
+    'Enabled-State',
+    'Source File')
+    return data_headers, data_list, '\n'.join(files_found)

@@ -1,0 +1,93 @@
+""" See notes below """
+
+__artifacts_v2__ = {
+    "photos_migration": {
+        "name": "Migrations",
+        "description": "Parses migration records from photos.sqlite database",
+        'author': '@AlexisBrignoni, Codex',
+        'creation_date': '2023-08-01',
+        'last_update_date': '2026-10-07',
+        "requirements": "none",
+        "category": "OS Updates",
+        'notes': ('Parses migration records found in the Photos.sqlite database. The query is adapted from Scott '
+                  "Koenig's migration history query "
+                  '(https://github.com/ScottKjr3347/iOS_Local_PL_Photos.sqlite_Queries/blob/860ea4c4ebf80a827bee5c4b639d848bf1350d7b/iOS14/Previous_Queries/iOS14_LPL_Phsql_MigrationHistory.txt).'
+                  " ZMIGRATIONTYPE (as stored) reports the query's migration-type value without the former OS update, "
+                  'reset or placeholder labels. What each value means is not established here. A database lacking the '
+                  'column projects SQL NULL, which this output does not distinguish from a stored SQL NULL. Timestamp '
+                  'is ZMIGRATIONDATE read as Core Data seconds since 2001, in UTC. OS Version is looked up from the '
+                  'stored build string. Original artifact contribution: @JohnHyla; migration query research: Scott '
+                  'Koenig.'),
+        "paths": ('*/PhotoData/Photos.sqlite*',),
+        "output_types": "standard",
+        'artifact_icon': "chevrons-up",
+        "sample_data": {
+            "ctf2020_ios12": "iOS 12.4 | 0 rows",
+            "dexter_ios18": "iOS 18.3.2 | 1 row",
+            "felix_ios17": "iOS 17.6.1 | 3 rows",
+            "fsfull002_ios17": "iOS 17.1 | 2 rows",
+            "hc_ios18_7": "iOS 18.7.8 | 3 rows",
+            "iphone11_ios17": "iOS 17.3 | 2 rows",
+            "iphone12_ios18": "iOS 18.7 | 1 row",
+            "iphone14plus_ios18": "iOS 18.0 | 1 row",
+            "otto_ios17": "iOS 17.5.1 | 5 rows",
+            "abe_ios16": "iOS 16.5 | 3 rows",
+            "felix23_ios16": "iOS 16.5 | 2 rows",
+            "hickman_ios13": "iOS 13.3.1 | 0 rows",
+            "hickman_ios14": "iOS 14.3 | 2 rows",
+            "jess_ios15": "iOS 15.0.2 | 1 row",
+            "magnet_ios16": "iOS 16.1.1 | 1 row",
+        }
+    }
+}
+
+from scripts.ilapfuncs import artifact_processor, get_file_path, does_table_exist_in_db, logfunc, get_sqlite_db_records, null_absent_columns, \
+    convert_cocoa_core_data_ts_to_utc
+
+
+@artifact_processor
+def photos_migration(context):
+    """ See artifact description """
+    data_source = get_file_path(context.get_files_found(), "Photos.sqlite")
+    data_list = []
+
+    query = """
+        SELECT zMigrationHistory.Z_PK AS 'zMigrationHistory-zPK',
+          zMigrationHistory.Z_ENT AS 'zMigrationHistory-zENT',
+          zMigrationHistory.Z_OPT AS 'zMigrationHistory-zOPT',
+          zMigrationHistory.ZMIGRATIONDATE,
+          zMigrationHistory.ZINDEX AS 'zMigrationHistory-Index',
+          zMigrationHistory.ZMIGRATIONTYPE AS 'zMigrationHistory-Migration Type',
+          zMigrationHistory.ZFORCEREBUILDREASON AS 'zMigrationHistory-Force Rebuild Reason',
+          zMigrationHistory.ZSOURCEMODELVERSION AS 'zMigrationHistory-Source Model Version',
+          zMigrationHistory.ZMODELVERSION AS 'zMigrationHistory-Model Version',
+          zMigrationHistory.ZOSVERSION AS 'zMigrationHistory-OSVersion-BuildfromDB',
+          zMigrationHistory.ZORIGIN AS 'zMigrationHistory-Origin',
+          zMigrationHistory.ZSTOREUUID AS 'zMigrationHistory-Store UUID',
+          zMigrationHistory.ZGLOBALKEYVALUES AS 'zMigrationHistory-Global Key Values/HEX'
+        FROM ZMIGRATIONHISTORY zMigrationHistory
+        ORDER BY zMigrationHistory.ZMIGRATIONDATE
+    """
+
+    data_headers = (
+        ('Timestamp', 'datetime'), 'Migration Index', 'ZMIGRATIONTYPE (as stored)', 'Force Rebuild Reason',
+        'Source Model Version', 'Model Version', 'OS Build', 'OS Version', 'Origin',
+        'Store UUID')
+
+    if does_table_exist_in_db(data_source, 'ZMIGRATIONHISTORY'):
+        db_records = get_sqlite_db_records(data_source, null_absent_columns(data_source, query))
+    else:
+        # This release does not carry the table, so there is nothing to read.
+        # Absence here is not evidence the feature was unused, only that this
+        # schema does not hold it.
+        logfunc(f'Photos migration: {data_source} has no ZMIGRATIONHISTORY table; no rows reported')
+        db_records = []
+
+    for record in db_records:
+        os_version = context.get_apple_os_version(record[9])
+        timestamp = convert_cocoa_core_data_ts_to_utc(record[3])
+
+        data_list.append((timestamp, record[4], record[5], record[6], record[7],
+                          record[8], record[9], os_version, record[10], record[11]))
+
+    return data_headers, data_list, data_source

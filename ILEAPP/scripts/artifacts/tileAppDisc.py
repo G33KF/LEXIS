@@ -1,0 +1,46 @@
+__artifacts_v2__ = {
+    'tileAppDisc': {
+        'name': 'Tile App Discovered Tiles',
+        'description': 'Tile UUIDs discovered by the app (ZTILENTITY_DISCOVEREDTILE); ownership by other users is not established',
+        'author': '@AlexisBrignoni',
+        'creation_date': '2020-09-03',
+        'last_update_date': '2026-07-31',
+        'requirements': 'none',
+        'category': 'Tile App',
+        'notes': '',
+        'paths': (
+            '*/mobile/Containers/Shared/AppGroup/*/com.thetileapp.tile-DiscoveredTileDB.sqlite*', ),
+        'output_types': 'standard',
+        'artifact_icon': 'user'
+    }
+}
+
+
+from scripts.ilapfuncs import artifact_processor, \
+    get_file_path, get_sqlite_db_records, \
+    convert_cocoa_core_data_ts_to_utc
+
+
+@artifact_processor
+def tileAppDisc(context):
+    source_path = get_file_path(
+        context.get_files_found(), 'com.thetileapp.tile-DiscoveredTileDB.sqlite')
+    data_list = []
+
+    query = '''
+    SELECT
+        ZLAST_MODIFIED_TIMESTAMP,
+        ZTILE_UUID
+    FROM ZTILENTITY_DISCOVEREDTILE
+    '''
+
+    data_headers = (('Last Modified Timestamp', 'datetime'), 'Tile UUID')
+
+    db_records = get_sqlite_db_records(source_path, query)
+
+    for record in db_records:
+        last_modified_timestamp = convert_cocoa_core_data_ts_to_utc(
+            record['ZLAST_MODIFIED_TIMESTAMP'])
+        data_list.append((last_modified_timestamp, record[1]))
+
+    return data_headers, data_list, source_path

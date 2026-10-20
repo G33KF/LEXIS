@@ -1,0 +1,112 @@
+<UserControl x:Class="AleappReader.App.Views.MapView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:wv="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf">
+    <DockPanel>
+        <Border DockPanel.Dock="Top" Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Padding="10,8">
+            <DockPanel>
+                <CheckBox DockPanel.Dock="Right" IsChecked="{Binding OnlineTiles}" VerticalAlignment="Center"
+                          Content="Online map tiles (OpenStreetMap)"
+                          ToolTip="Tiles are downloaded from tile.openstreetmap.org: the tile server learns which area is being viewed. Untick to plot points on a blank background."/>
+                <StackPanel>
+                    <TextBlock Style="{StaticResource ViewTitle}" Text="{Binding Title}"/>
+                    <TextBlock Text="{Binding Info}" Foreground="{StaticResource MutedBrush}"/>
+                    <WrapPanel Margin="0,6,0,0">
+                        <TextBlock Text="From" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <DatePicker SelectedDate="{Binding From}" Width="115" VerticalAlignment="Center" ToolTip="From this day, in the display time zone"/>
+                        <TextBlock Text="to" VerticalAlignment="Center" Margin="6,0"/>
+                        <DatePicker SelectedDate="{Binding To}" Width="115" VerticalAlignment="Center" ToolTip="To this day, included"/>
+                        <Button Style="{StaticResource FlatButton}" Content="Whole period" Command="{Binding ClearPeriodCommand}" Margin="6,0,18,0"/>
+                        <CheckBox Content="Route" IsChecked="{Binding Route}" VerticalAlignment="Center"
+                                  ToolTip="Joins the positions in time order (per device on the joint map) into numbered stops. Positions close together at the current zoom make one stop, with the time of the first and the last: zoom in to split them."/>
+                    </WrapPanel>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+        <Border DockPanel.Dock="Left" Width="280" Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0">
+            <Grid>
+                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*" MinHeight="40"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto" MinHeight="30"/></Grid.RowDefinitions>
+                <!-- zones of interest: circles on the map of the positions shown, listed in a window of their own; a zone picked is centred on the map.
+                     Dragging the splitter above sizes the two lists (the zones' height cap lifts on the first drag) -->
+                <GridSplitter Grid.Row="2" Height="5" HorizontalAlignment="Stretch" ResizeDirection="Rows" ResizeBehavior="PreviousAndNext"
+                              Background="{StaticResource BorderBrush}" DragStarted="Splitter_DragStarted" ToolTip="Drag to size the sources and the zones"/>
+                <DockPanel x:Name="ZonesPanel" Grid.Row="3" MaxHeight="460" Margin="8,6,8,8">
+                    <TextBlock DockPanel.Dock="Top" FontWeight="SemiBold" Text="Co-presences" Visibility="{Binding IsCoPresence, Converter={StaticResource Vis}}"/>
+                    <CheckBox DockPanel.Dock="Top" IsChecked="{Binding ShowZones}" FontWeight="SemiBold" Content="Zones of interest"
+                              Visibility="{Binding IsCoPresence, Converter={StaticResource Vis}, ConverterParameter=invert}"
+                              ToolTip="Gathers the dated positions shown (sources ticked, period) into circles of the radius set and draws them on the map: each zone with its visits and, on the joint map, the periods in which more than one device was there"/>
+                    <StackPanel DockPanel.Dock="Top" Visibility="{Binding ShowZones, Converter={StaticResource Vis}}" Margin="18,4,0,0">
+                        <WrapPanel Visibility="{Binding IsCoPresence, Converter={StaticResource Vis}, ConverterParameter=invert}">
+                            <TextBlock Text="Radius (m)" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                            <TextBox Text="{Binding Radius}" Width="50" Margin="0,0,10,2" ToolTip="A position joins the zone whose centre is within this distance"/>
+                            <TextBlock Text="New visit after (min)" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                            <TextBox Text="{Binding GapMinutes}" Width="40" Margin="0,0,0,2" ToolTip="Two positions of a device in a zone further apart in time than this are two visits"/>
+                        </WrapPanel>
+                        <WrapPanel>
+                            <WrapPanel.Style>
+                                <Style TargetType="WrapPanel">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Joint}" Value="False"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger>
+                                        <DataTrigger Binding="{Binding IsCoPresence}" Value="True"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </WrapPanel.Style>
+                            <TextBlock Text="Together within (min)" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                            <TextBox Text="{Binding TogetherMinutes}" Width="40" Margin="0,0,0,2" ToolTip="Visits of two devices to a zone count as together when they overlap or are this close in time"/>
+                            <CheckBox Content="Only zones of more than one device" IsChecked="{Binding OnlyShared}" Margin="0,2"/>
+                        </WrapPanel>
+                        <WrapPanel>
+                            <Button Style="{StaticResource FlatButton}" Content="Find zones again" Command="{Binding FindZonesCommand}" Margin="0,2,8,2"
+                                    Visibility="{Binding IsCoPresence, Converter={StaticResource Vis}, ConverterParameter=invert}"/>
+                            <Button Style="{StaticResource FlatButton}" Content="List…" Click="ZonesList_Click" Margin="0,2"
+                                    ToolTip="The zones in a window of their own: first and last time, visits, devices; searchable and sortable"/>
+                        </WrapPanel>
+                        <TextBlock Text="{Binding ZonesInfo}" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,2,0,4"/>
+                    </StackPanel>
+                </DockPanel>
+                <TextBlock Text="SOURCES" Style="{StaticResource SectionHeader}"/>
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                <ItemsControl ItemsSource="{Binding Sources}" Margin="8,0">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <CheckBox IsChecked="{Binding IsVisible}" Margin="0,3">
+                                <StackPanel Orientation="Horizontal">
+                                    <Border Width="10" Height="10" CornerRadius="5" Background="{Binding Swatch}" Margin="0,0,5,0" VerticalAlignment="Center"
+                                            Visibility="{Binding Color, Converter={StaticResource Vis}}"/>
+                                    <TextBlock TextWrapping="Wrap" MaxWidth="190"><Run Text="{Binding Title, Mode=OneWay}"/> <Run Text="{Binding Count, Mode=OneWay, StringFormat=({0:N0})}" Foreground="{StaticResource MutedBrush}"/></TextBlock>
+                                </StackPanel>
+                            </CheckBox>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                </ScrollViewer>
+            </Grid>
+        </Border>
+        <!-- the positions of a group clicked at one spot, in time order; one picked shows its record -->
+        <Border DockPanel.Dock="Right" Width="300" Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1,0,0,0"
+                Visibility="{Binding Spot.Count, Converter={StaticResource Vis}}">
+            <DockPanel>
+                <DockPanel DockPanel.Dock="Top" Margin="8,6">
+                    <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Content="✕" Command="{Binding CloseSpotCommand}" ToolTip="Close the list"/>
+                    <TextBlock Text="{Binding SpotTitle}" FontWeight="SemiBold" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                </DockPanel>
+                <ListBox ItemsSource="{Binding Spot}" SelectedItem="{Binding SelectedSpot}" BorderThickness="0" HorizontalContentAlignment="Stretch"
+                         VirtualizingPanel.IsVirtualizing="True" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Margin="2,3">
+                                <TextBlock Text="{Binding When}" FontWeight="SemiBold"/>
+                                <TextBlock Text="{Binding Source}" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"/>
+                                <TextBlock Text="{Binding Label}" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </DockPanel>
+        </Border>
+        <Grid>
+            <wv:WebView2 x:Name="Web"/>
+            <TextBlock x:Name="WebError" Visibility="Collapsed" TextWrapping="Wrap" Margin="20" Foreground="{StaticResource MutedBrush}"/>
+        </Grid>
+    </DockPanel>
+</UserControl>

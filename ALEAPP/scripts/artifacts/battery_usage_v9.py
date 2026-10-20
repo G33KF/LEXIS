@@ -1,0 +1,182 @@
+__artifacts_v2__ = {
+    "get_battery_usage_v9": {
+        "name": "Settings Services - Battery Usages v9 - Battery States",
+        "description": "Battery usage states from the Settings Services battery-usage-db-v9 "
+                       "database, seen on Android 14",
+        "author": "Marco Neumann {kalinko@be-binary.de}, @AlexisBrignoni, Codex",
+        "creation_date": "2024-05-12",
+        "last_update_date": "2026-10-06",
+        "requirements": "blackboxprotobuf",
+        "category": "Settings Services - Battery Usage v9 - Battery States",
+        "notes": "Getting battery usage data from Settings Services - Android 14 - Based on post https://bebinary4n6.blogspot.com/2024/05/android-14-battery-usage-and-app-usage.html. Battery Status is labelled on the reading that the stored status code holds the AOSP BatteryManager status constants (1 Unknown, 2 Charging, 3 Discharging, 4 Not Charging, 5 Fully charged); any other code is reported as the raw number. No source for what this database stores in that field is cited here. Battery Health is labelled with this module's map 1 Unknown, 2 Good, 3 Overheat, 4 Dead, 5 Over Voltage, 6 Unspecified Failure and 7 Cold, with unmapped present codes marked Unmapped and absent codes left blank. Raw decoded status/health values are retained separately; these maps remain existing interpretations without verified field bindings. Proto field 20 is retained raw beside the existing numeric /1000 result without a foreground-service or unit claim. Boot Timestamp retains its existing numeric /1000 conversion. A row whose batteryInformation value does not decode is not reported. Reference: AOSP, 'BatteryManager status constants', https://developer.android.com/reference/android/os/BatteryManager",
+        "paths": ('*/user_de/*/com.android.settings/databases/battery-usage-db-v9*',),
+        "output_types": "standard",
+        "artifact_icon": "battery",
+        "sample_data": {
+            "pixel7a_a14": "Android 14 | com.android.settings | 26561 rows",
+        },
+    },
+    "get_app_usage_events": {
+        "name": "Settings Services - App Battery Usages v9 - App Battery Usage Events",
+        "description": 'App battery usage events from the Settings battery-usage-db-v9 AppUsageEventEntity table, Android 14',
+        "author": "Marco Neumann {kalinko@be-binary.de}",
+        "creation_date": "2024-05-12",
+        "last_update_date": "2026-08-01",
+        "requirements": "blackboxprotobuf",
+        "category": "Settings Services - Battery Usage v9 - App Battery Usage Events",
+        "notes": "Getting App Battery Usage Event from Settings Services - Based on https://bebinary4n6.blogspot.com/2024/05/android-14-battery-usage-and-app-usage.html. App Usage Event Type decodes the AppUsageEventEntity.appUsageEventType values defined by the Settings app usage event proto, 0 Unknown, 1 Activity Resumed, 2 Activity Stopped and 3 Device Shutdown; any other code is reported as the raw number. Reference: AOSP Settings, 'app_usage_event.proto', https://android.googlesource.com/platform/packages/apps/Settings/+/refs/tags/android-14.0.0_r1/src/com/android/settings/fuelgauge/protos/app_usage_event.proto#7",
+        "paths": ('*/user_de/*/com.android.settings/databases/battery-usage-db-v9*',),
+        "output_types": "standard",
+        "artifact_icon": "battery",
+        "sample_data": {
+            "pixel7a_a14": "Android 14 | com.android.settings | 3196 rows",
+        },
+    }
+}
+
+import base64
+import datetime
+import sqlite3
+
+from scripts.ilapfuncs import decode_protobuf
+
+from scripts.ilapfuncs import artifact_processor, open_sqlite_db_readonly
+
+_STATUS = {1: 'Unknown', 2: 'Charging', 3: 'Discharging', 4: 'Not Charging', 5: 'Fully charged'}
+_HEALTH = {1: 'Unknown', 2: 'Good', 3: 'Overheat', 4: 'Dead', 5: 'Over Voltage',
+           6: 'Unspecified Failure', 7: 'Cold'}
+
+
+def _ms_to_utc(value):
+    if not value:
+        return ''
+    try:
+        return datetime.datetime.fromtimestamp(int(value) / 1000, datetime.timezone.utc)
+    except (ValueError, OverflowError, OSError, TypeError):
+        return ''
+
+
+def _as_int(value):
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return None
+
+
+def _status(value):
+    '''Battery status name from the BatteryManager set; the raw code when unrecognized.'''
+    code = _as_int(value)
+    if code is None:
+        return ''
+    return _STATUS.get(code, code)
+
+
+def _txt(value):
+    if isinstance(value, bytes):
+        return value.decode('utf-8', 'replace')
+    return value if value is not None else ''
+
+
+def _ms_field(proto, key):
+    '''Optional numeric proto field divided by 1000; '' when the field is absent.'''
+    value = proto.get(key)
+    return value / 1000 if isinstance(value, (int, float)) else ''
+
+
+def _parse_debug(text):
+    out = {}
+    if isinstance(text, bytes):
+        text = text.decode('utf-8', 'replace')
+    for line in (text or '').split('\n'):
+        parts = line.split(':', 1)
+        if len(parts) == 2:
+            out[parts[0].strip()] = parts[1].strip().replace('"', '')
+    return out
+
+
+def _db(files_found):
+    for file_found in files_found:
+        if str(file_found).endswith('battery-usage-db-v9'):
+            return str(file_found)
+    return ''
+
+
+def _run(source_path, sql):
+    if not source_path:
+        return []
+    db = open_sqlite_db_readonly(source_path)
+    cursor = db.cursor()
+    try:
+        cursor.execute(sql)
+        rows = cursor.fetchall()
+    except sqlite3.Error:
+        rows = []
+    db.close()
+    return rows
+
+
+@artifact_processor
+def get_battery_usage_v9(context):
+    files_found = context.get_files_found()
+    source_path = _db(files_found)
+    data_list = []
+    rows = _run(source_path, '''
+        SELECT uid, packageName, timestamp, consumerType, isFullChargeCycleStart,
+        batteryInformation, batteryInformationDebug
+        FROM BatteryState
+    ''')
+    for row in rows:
+        try:
+            proto, _ = decode_protobuf(base64.b64decode(row[5]))
+        except Exception:  # pylint: disable=W0718
+            continue
+        if not isinstance(proto, dict):
+            continue
+        info = proto.get('1') if isinstance(proto.get('1'), dict) else {}
+        debug = _parse_debug(row[6])
+        data_list.append((
+            _ms_to_utc(row[2]),
+            _ms_field(proto, '3'),                             # Existing Boot Timestamp
+            _txt(proto.get('7')),                              # Application label
+            row[1],                                            # Package Name
+            _txt(proto.get('2')),                              # Hidden
+            _txt(proto.get('4')),                              # Timezone
+            debug.get('total_power', 'NOVALUE'),
+            debug.get('consume_power', 'NOVALUE'),
+            _ms_field(proto, '14'),                            # Foreground
+            proto.get('20'),                                  # Raw decoded field
+            _ms_field(proto, '20'),                            # Existing arithmetic only
+            _ms_field(proto, '15'),                            # Background
+            info.get('1', ''),                                 # Battery Level
+            info.get('2'),
+            _status(info.get('2')),                            # Battery Status
+            info.get('3'),
+            _HEALTH.get(_as_int(info.get('3')), 'Unmapped') if info.get('3') is not None else '',       # Battery Health
+            _txt(proto.get('13'))))                            # Drain Type
+
+    data_headers = (('Timestamp', 'datetime'), 'Boot Timestamp', 'Application', 'Package Name',
+                    'Hidden', 'Timezone', 'Total Power', 'Consumed Power',
+                    'Foreground Usage (Seconds)', 'Proto Field 20 (as decoded)',
+                    'Proto Field 20 / 1000 (derived)', 'Background Usage (Seconds)',
+                    'Battery Level (%)', 'Proto 1.2 (stored status)',
+                    'Battery Status (existing interpretation)', 'Proto 1.3 (stored health)',
+                    'Battery Health (existing interpretation)', 'Drain Type')
+    return data_headers, data_list, source_path
+
+
+@artifact_processor
+def get_app_usage_events(context):
+    files_found = context.get_files_found()
+    source_path = _db(files_found)
+    rows = _run(source_path, '''
+        SELECT uid, userId, timestamp,
+        CASE appUsageEventType WHEN 0 THEN 'Unknown' WHEN 1 THEN 'Activity Resumed'
+                               WHEN 2 THEN 'Activity Stopped' WHEN 3 THEN 'Device Shutdown'
+                               ELSE appUsageEventType END,
+        packageName, taskRootPackageName, instanceId
+        FROM AppUsageEventEntity
+    ''')
+    data_list = [(r[0], r[1], _ms_to_utc(r[2]), r[3], r[4], r[5], r[6]) for r in rows]
+    data_headers = ('uid', 'userId', ('Timestamp', 'datetime'), 'App Usage Event Type',
+                    'Package Name', 'Root Package Name', 'Instance Id')
+    return data_headers, data_list, source_path

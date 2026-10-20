@@ -1,0 +1,3 @@
+Upstream: https://github.com/abrignoni/iLEAPP
+Commit: main snapshot as provided (no git metadata), leapp_version 2026.4.5-dev
+Vendored: 2026-10-08 without admin/test (580 MB of test corpora). Local changes are committed in this repo on top of it.

@@ -1,0 +1,50 @@
+# pylint: disable=E0606,W0401,W0612,W0614
+__artifacts_v2__ = {
+    "get_callTranscription": {
+        "name": "Android Call Transcriptions",
+        "description": "Parses the *-transcription.pb files under the Google Dialer fermat_files folder. Fields 2, 3 and 4 of each entry are reported as Transcript, Timestamp (read as Unix milliseconds) and User; the names are this parser's and no schema for the file is cited in this module.",
+        "author": "Alexis Brignoni",
+        "creation_date": "2025-09-19",
+        "last_update_date": "2025-09-19",
+        "requirements": "none",
+        "category": "phone",
+        "notes": "",
+        "paths": ('*/com.google.android.dialer/files/fermat_files/*.pb'),
+        "output_types": "standard",
+        "artifact_icon": "phone"
+    }
+}
+
+from scripts.ilapfuncs import decode_protobuf
+from pathlib import Path
+from datetime import *
+from scripts.ilapfuncs import artifact_processor
+
+@artifact_processor
+def get_callTranscription(context):
+    files_found = context.get_files_found()
+
+    data_list = []
+    for file_found in files_found:
+        if file_found.endswith('-transcription.pb'):
+            path_object = Path(file_found)
+            filename = path_object.name
+            parentpath = path_object.parent
+            with open (file_found, 'rb') as f:
+                pb = f.read()
+                protostuff, types = decode_protobuf(pb)
+                transcription_data = protostuff['1']
+                
+                for data in transcription_data:
+                    timestamp = data['3']
+                    timestamp = timestamp / 1000
+                    usernumber  = data['4']
+                    transcript = data['2'].decode()
+                    data_list.append((timestamp,usernumber,transcript,filename))
+            
+                    
+    data_headers = (('Timestamp','datetime'),'User','Transcript','Filename')
+    return data_headers, data_list, str(parentpath)
+
+
+        

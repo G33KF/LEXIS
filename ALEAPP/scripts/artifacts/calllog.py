@@ -1,0 +1,103 @@
+__artifacts_v2__ = {
+    "get_calllog": {
+        "name": "Call logs ",
+        "description": "Parses the call log (date, number, type, duration, the geocoded location stored for the number and transcription) from the contacts provider calllog.db, or calls.db where a vendor keeps it there.",
+        "author": "@abrignoni, @AlexisBrignoni, Codex",
+        "creation_date": "2020-03-02",
+        "last_update_date": "2026-10-08",
+        "requirements": "none",
+        "category": "Call Logs",
+        "notes": "The Android reference documents the DATE column as milliseconds since epoch and DURATION as seconds, and this parser decodes them that way, so the Call Date column is a converted millisecond timestamp and Duration in Secs is the stored value unchanged. The Type column decodes the AOSP CallLog.Calls codes 1 Incoming, 2 Outgoing, 3 Missed, 4 Voicemail, 5 Rejected, 6 Blocked and 7 Answered Externally. Any other stored value is shown as Unknown. Raw Call Type (as stored) preserves the source value beside the interpreted label. The same codes are applied to the Samsung contacts provider's calllog.db; whether Samsung stores other type values there is not established. Some vendor builds keep the same calls table in the contacts provider's calls.db instead, with these columns among their vendor additions; it is read the same way. Reference: Android Developers, 'CallLog.Calls' API reference, https://developer.android.com/reference/android/provider/CallLog.Calls (read 2026-10-03)",
+        "paths": ('*/com.android.providers.contacts/databases/calllog.db*', '*/com.samsung.android.providers.contacts/databases/calllog.db*', '*/com.android.providers.contacts/databases/calls.db*'),
+        "output_types": "standard",
+        "artifact_icon": "phone",
+        "sample_data": {
+            "anne_a15": "Android 15 | com.samsung.android.providers.contacts | 11 rows",
+            "galaxys10_a10": "Android 10 | com.samsung.android.providers.contacts | 24 rows",
+            "hc_pixel8pro_a16": "Android 16 | com.android.providers.contacts | 705 rows",
+            "kevin_pocox7_a15": "Android 15 | com.android.providers.contacts | 12 rows",
+            "pixel7a_a14": "Android 14 | com.android.providers.contacts | 2655 rows",
+            "samsunga53_a14": "Android 14 | com.samsung.android.providers.contacts | 23 rows",
+            "samsungs20_a13": "Android 13 | com.samsung.android.providers.contacts | 12 rows",
+            "sharon_a14": "Android 14 | com.samsung.android.providers.contacts | 397 rows",
+            "russell_pixel6a_a13": "Android 13 | com.android.providers.contacts | 42 rows",
+            "userb2_a13": "Android 13 | com.android.providers.contacts | 0 rows",
+        },
+        "html_columns": ['Type'],
+    }
+}
+
+import datetime
+import sqlite3
+
+from scripts.ilapfuncs import artifact_processor, open_sqlite_db_readonly, logfunc
+from scripts.artifacts.storagePathViews import unique_files
+
+CALL_TYPE_ICONS = {
+    'Incoming': ' <i data-feather="phone-incoming" stroke="green"></i>',
+    'Outgoing': ' <i data-feather="phone-outgoing" stroke="green"></i>',
+    'Missed': ' <i data-feather="phone-missed" stroke="red"></i>',
+    'Voicemail': ' <i data-feather="voicemail" stroke="brown"></i>',
+    'Rejected': ' <i data-feather="x" stroke="red"></i>',
+    'Blocked': ' <i data-feather="phone-off" stroke="red"></i>',
+    'Answered Externally': ' <i data-feather="phone-forwarded"></i>',
+}
+
+
+@artifact_processor
+def get_calllog(context):
+    files_found = unique_files(context)
+
+    data_list = []
+    source_paths = []
+    for file_found in files_found:
+        file_found = str(file_found)
+        if not file_found.endswith(('calllog.db', 'calls.db')):
+            continue
+
+        db = open_sqlite_db_readonly(file_found)
+        if db is None:
+            continue
+        try:
+            cursor = db.cursor()
+            cursor.execute('''
+            SELECT
+            date,
+            CASE WHEN phone_account_address is NULL THEN ' ' ELSE phone_account_address END as phone_account_address,
+            number,
+            CASE
+                WHEN type = 1 THEN  'Incoming'
+                WHEN type = 2 THEN  'Outgoing'
+                WHEN type = 3 THEN  'Missed'
+                WHEN type = 4 THEN  'Voicemail'
+                WHEN type = 5 THEN  'Rejected'
+                WHEN type = 6 THEN  'Blocked'
+                WHEN type = 7 THEN  'Answered Externally'
+                ELSE 'Unknown'
+            END as types,
+            duration,
+            CASE WHEN geocoded_location is NULL THEN ' ' ELSE geocoded_location END as geocoded_location,
+            countryiso,
+            CASE WHEN _data is NULL THEN ' ' ELSE _data END as _data,
+            CASE WHEN mime_type is NULL THEN ' ' ELSE mime_type END as mime_type,
+            CASE WHEN transcription is NULL THEN ' ' ELSE transcription END as transcription,
+            deleted,
+            type
+            FROM calls
+        ''')
+            all_rows = cursor.fetchall()
+        except sqlite3.Error as error:
+            logfunc(f'Call log: could not read {file_found}: {error}')
+            continue
+        finally:
+            db.close()
+        source_paths.append(file_found)
+
+        for row in all_rows:
+            call_date = datetime.datetime.fromtimestamp(int(row[0]) / 1000, datetime.timezone.utc) if row[0] else ''
+            call_type = row[3]
+            call_type_html = call_type + CALL_TYPE_ICONS.get(call_type, '')
+            data_list.append((call_date, row[1], row[2], row[11], call_type_html, str(row[4]), row[5], row[6], row[7], row[8], row[9], str(row[10])))
+
+    data_headers = (('Call Date', 'datetime'), 'Phone Account Address', ('Partner', 'phonenumber'), 'Raw Call Type (as stored)', 'Type', 'Duration in Secs', 'Partner Location', 'Country ISO', 'Data', 'Mime Type', 'Transcription', 'Deleted')
+    return data_headers, data_list, '\n'.join(source_paths)

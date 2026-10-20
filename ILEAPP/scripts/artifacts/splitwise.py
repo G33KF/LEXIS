@@ -1,0 +1,386 @@
+__artifacts_v2__ = {
+    "splitwiseUsers": {
+        "name": "Splitwise - Users",
+        "description": "Parses the SWPerson table of the Splitwise app's database.sqlite",
+        "author": "@KevinPagano3",
+        "creation_date": "2024-04-09",
+        "last_update_date": "2025-01-07",
+        "requirements": "none",
+        "category": "Finance",
+        "notes": "This artifact has not been recorded returning rows from an image that carries "
+                 "Splitwise data. Created Timestamp and Updated Timestamp are read as Unix time; "
+                 "that reading has not been checked against known data.",
+        "paths": ('*/Library/Application Support/database.sqlite*',),
+        "output_types": "standard",
+        "artifact_icon": "user",
+        "sample_data": {
+            "iphone12_ios18": "iOS 18.7 | Proton VPN: Fast & Secure 6.6.5 | 0 rows",
+        }
+    },
+    "splitwiseExpenses": {
+        "name": "Splitwise - Expenses",
+        "description": "Parses expenses information from Splitwise app",
+        "author": "@KevinPagano3",
+        "creation_date": "2024-04-09",
+        "last_update_date": "2026-07-31",
+        "requirements": "none",
+        "category": "Finance",
+        "notes": "",
+        "paths": ('*/Library/Application Support/database.sqlite*',),
+        "output_types": "standard",
+        "artifact_icon": "currency-dollar",
+        "sample_data": {
+            "iphone12_ios18": "iOS 18.7 | Proton VPN: Fast & Secure 6.6.5 | 0 rows",
+        }
+    },
+    "splitwiseExpenseBalances": {
+        "name": "Splitwise - Expense Balances",
+        "description": "Parses expense balances information from Splitwise app",
+        "author": "@KevinPagano3",
+        "creation_date": "2024-04-09",
+        "last_update_date": "2025-01-07",
+        "requirements": "none",
+        "category": "Finance",
+        "notes": "",
+        "paths": ('*/Library/Application Support/database.sqlite*',),
+        "output_types": "standard",
+        "artifact_icon": "currency-dollar",
+        "sample_data": {
+            "iphone12_ios18": "iOS 18.7 | Proton VPN: Fast & Secure 6.6.5 | 0 rows",
+        }
+    },
+    "splitwiseTotalBalances": {
+        "name": "Splitwise - Total Balances",
+        "description": "Parses total balances information from Splitwise app",
+        "author": "@KevinPagano3",
+        "creation_date": "2024-04-09",
+        "last_update_date": "2025-01-07",
+        "requirements": "none",
+        "category": "Finance",
+        "notes": "",
+        "paths": ('*/Library/Application Support/database.sqlite*',),
+        "output_types": "standard",
+        "artifact_icon": "currency-dollar",
+        "sample_data": {
+            "iphone12_ios18": "iOS 18.7 | Proton VPN: Fast & Secure 6.6.5 | 0 rows",
+        }
+    },
+    "splitwiseGroups": {
+        "name": "Splitwise - Groups",
+        "description": "Parses groups information in Splitwise app",
+        "author": "@KevinPagano3",
+        "creation_date": "2024-04-09",
+        "last_update_date": "2025-01-07",
+        "requirements": "none",
+        "category": "Finance",
+        "notes": "",
+        "paths": ('*/Library/Application Support/database.sqlite*',),
+        "output_types": "standard",
+        "artifact_icon": "users",
+        "sample_data": {
+            "iphone12_ios18": "iOS 18.7 | Proton VPN: Fast & Secure 6.6.5 | 0 rows",
+        },
+        "html_columns": ['Members']
+    },
+    "splitwiseNotifications": {
+        "name": "Splitwise - Notifications",
+        "description": "Parses notifications from Splitwise app",
+        "author": "@KevinPagano3",
+        "creation_date": "2024-04-09",
+        "last_update_date": "2025-01-07",
+        "requirements": "none",
+        "category": "Finance",
+        "notes": "",
+        "paths": ('*/Library/Application Support/database.sqlite*',),
+        "output_types": "standard",
+        "artifact_icon": "bell",
+        "sample_data": {
+            "iphone12_ios18": "iOS 18.7 | Proton VPN: Fast & Secure 6.6.5 | 0 rows",
+        },
+        "html_columns": ['Notification']
+    }
+}
+
+import os
+
+from scripts.ilapfuncs import artifact_processor, get_sqlite_db_records, \
+    null_absent_columns, convert_unix_ts_to_utc, does_table_exist_in_db
+from scripts.html_safe import esc
+
+
+def _splitwise_db(files_found):
+    """Pick the Splitwise store by its schema rather than by filename.
+
+    The declared glob is */Library/Application Support/database.sqlite*, which
+    carries no app-specific component, so it matches that filename in every
+    application container. Taking the first match opened whichever app came
+    first and the queries then failed with "no such table: SWPerson", reporting
+    nothing even where Splitwise data was present.
+    """
+    for file_found in files_found:
+        path = str(file_found)
+        if os.path.basename(path) != 'database.sqlite':
+            continue
+        if does_table_exist_in_db(path, 'SWPerson'):
+            return path
+    return ''
+
+
+@artifact_processor
+def splitwiseUsers(context):
+    source_path = _splitwise_db(context.get_files_found())
+    data_list = []
+
+    query = '''
+    SELECT
+        createdAt,
+        updatedAt,
+        firstName,
+        lastName,
+        email,
+        phone,
+        personId,
+        largeImagePath,
+        currencyCode,
+        countryCode,
+        registrationStatus
+    FROM SWPerson
+    '''
+
+    data_headers = (
+        ('Created Timestamp', 'datetime'), 
+        ('Updated Timestamp', 'datetime'), 
+        'First Name', 
+        'Last Name', 
+        'Email', 
+        ('Phone', 'phonenumber'), 
+        'Person ID', 
+        'Avatar Path', 
+        'Currency', 
+        'Country', 
+        'Registration Status')
+
+    db_records = get_sqlite_db_records(source_path, null_absent_columns(source_path, query))
+    
+    for record in db_records:
+        created_ts = convert_unix_ts_to_utc(record[0])
+        updated_ts = convert_unix_ts_to_utc(record[1])
+        
+        data_list.append(
+            (created_ts, updated_ts, record[2], record[3], record[4], record[5], record[6], 
+             record[7], record[8], record[9], record[10]))
+
+    return data_headers, data_list, source_path
+
+
+@artifact_processor
+def splitwiseExpenses(context):
+    source_path = _splitwise_db(context.get_files_found())
+    data_list = []
+
+    query = '''
+    SELECT
+        SWExpense.createdAtDate,
+        SWExpense.updatedAt,
+        coalesce(SWPerson.firstName,'') || coalesce(SWPerson.lastName,'') || ' ('|| coalesce(SWPerson.email,'') || ')',
+        SWExpense.description,
+        SWExpense.cost,
+        SWExpense.currencyCode,
+        SWExpense.category,            
+        SWGroup.groupName,
+        SWExpense.expenseId,
+        SWExpense.guid
+    FROM SWExpense
+    LEFT JOIN SWPerson ON SWExpense.createdById = SWPerson.personId
+    LEFT JOIN SWGroup ON SWExpense.groupId = SWGroup.groupId
+    '''
+    
+    data_headers = (
+        ('Created Timestamp', 'datetime'), 
+        ('Updated Timestamp', 'datetime'), 
+        'Created By',
+        'Expense Description', 
+        'Cost', 
+        'Currency', 
+        'Category', 
+        'Group Name', 
+        'Expense ID', 
+        'Expense GUID')
+
+    db_records = get_sqlite_db_records(source_path, null_absent_columns(source_path, query))
+    
+    for record in db_records:
+        created_ts = convert_unix_ts_to_utc(record[0])
+        updated_ts = convert_unix_ts_to_utc(record[1])
+        
+        data_list.append(
+            (created_ts, updated_ts, record[2], record[3], record[4], record[5], record[6], 
+             record[7], record[8], record[9]))
+        
+    return data_headers, data_list, source_path
+
+
+@artifact_processor
+def splitwiseExpenseBalances(context):
+    source_path = _splitwise_db(context.get_files_found())
+    data_list = []
+
+    query = '''
+    SELECT
+        SWExpenseMember.createdAt,
+        coalesce(SWPerson.firstName,'') || coalesce(SWPerson.lastName,''),
+        SWPerson.email,
+        SWExpense.description,
+        SWExpenseMember.owedShare,
+        SWExpenseMember.paidShare
+    FROM SWExpenseMember
+    LEFT JOIN SWExpense ON SWExpense.id = SWExpenseMember.sWExpenseId
+    LEFT JOIN SWPerson ON SWPerson.id = SWExpenseMember.sWPersonId
+    '''
+    
+    data_headers = (
+        ('Created Timestamp', 'datetime'), 
+        'Member Name', 
+        'Email', 
+        'Expense', 
+        'Owed Share', 
+        'Paid Share')
+    
+    db_records = get_sqlite_db_records(source_path, null_absent_columns(source_path, query))
+    
+    for record in db_records:
+        created_ts = convert_unix_ts_to_utc(record[0])
+        data_list.append((created_ts, record[1], record[2], record[3], record[4], record[5]))
+        
+    return data_headers, data_list, source_path
+
+
+@artifact_processor
+def splitwiseTotalBalances(context):
+    source_path = _splitwise_db(context.get_files_found())
+    data_list = []
+
+    query = '''
+    SELECT
+        SWBalance.createdAt,
+        SWBalance.updatedAt,
+        coalesce(SWPerson.firstName,'') || coalesce(SWPerson.lastName,''),
+        SWPerson.email,
+        SWBalance.amount,
+        SWBalance.currencyCode
+    FROM SWBalance
+    LEFT JOIN SWFriendship ON SWFriendship.id = SWBalance.sWFriendshipId
+    LEFT JOIN SWPerson ON SWPerson.personId = SWFriendship.personId
+    '''
+    
+    data_headers = (
+        ('Created Timestamp', 'datetime'), 
+        ('Updated Timestamp', 'datetime'), 
+        'Friend Name', 
+        'Email', 
+        'Balance', 
+        'Currency')
+    
+    db_records = get_sqlite_db_records(source_path, null_absent_columns(source_path, query))
+    
+    for record in db_records:
+        created_ts = convert_unix_ts_to_utc(record[0])
+        updated_ts = convert_unix_ts_to_utc(record[1])
+        data_list.append((created_ts, updated_ts, record[2], record[3], record[4], record[5]))
+
+    return data_headers, data_list, source_path
+
+
+
+@artifact_processor
+def splitwiseGroups(context):
+    source_path = _splitwise_db(context.get_files_found())
+    data_list = []
+    data_list_html = []
+
+    query = '''
+    SELECT
+        SWGroup.createdAtDate,
+        SWGroup.updatedAtDate,
+        SWGroup.groupName,
+        group_concat(
+        (select coalesce(SWPerson.firstName,'') || ' ' || coalesce(SWPerson.lastName,'') || '(' || coalesce(SWPerson.email,'') || ')'
+            from SWPerson
+            where SWPerson.personId = SWGroupMember.personId
+        ), '; '
+        ) as "Members",
+        SWGroup.groupId,
+        SWGroup.groupType,
+        SWGroup.inviteLink,
+        SWGroup.whiteboard,
+        SWGroup.imagePath,
+        SWGroup.coverPhotoURLString
+    FROM SWGroup
+    LEFT JOIN SWGroupMember ON SWGroup.id = SWGroupMember.sWGroupId
+    GROUP BY SWGroup.groupId
+    '''
+    
+    data_headers = (
+        ('Created Timestamp', 'datetime'), 
+        ('Updated Timestamp', 'datetime'), 
+        'Group Name', 
+        'Members', 
+        'Group ID', 
+        'Group Type', 
+        'Invite Link', 
+        'Whiteboard', 
+        'Avatar URL', 
+        'Cover Photo URL')
+    
+    db_records = get_sqlite_db_records(source_path, null_absent_columns(source_path, query))
+
+    for record in db_records:
+        created_ts = convert_unix_ts_to_utc(record[0])
+        updated_ts = convert_unix_ts_to_utc(record[1])
+        
+        member_split = record[3].split('; ')
+        members = ''
+        for section in member_split:
+            members += section + ';' + chr(13)
+        
+        group_title = record[5].title() if record[5] else record[5]
+        data_list.append(
+            (created_ts, updated_ts, record[2], members, record[4], group_title, record[6], 
+             record[7], record[8], record[9]))
+        data_list_html.append(
+            (created_ts, updated_ts, record[2], esc(members).replace(chr(13), '<br>')[:-2], record[4],
+             group_title, record[6], record[7], record[8], record[9]))
+
+    return data_headers, (data_list, data_list_html), source_path
+
+
+@artifact_processor
+def splitwiseNotifications(context):
+    source_path = _splitwise_db(context.get_files_found())
+    data_list = []
+    data_list_html = []
+
+    query = '''
+    SELECT
+        createdAtDate,
+        content,
+        sourceType,
+        notificationId
+    FROM SWNotification
+    '''
+    
+    data_headers = (
+        ('Created Timestamp', 'datetime'), 
+        'Notification', 
+        'Source Type', 
+        'Notification ID')
+    
+    db_records = get_sqlite_db_records(source_path, null_absent_columns(source_path, query))
+
+    for record in db_records:
+        created_ts = convert_unix_ts_to_utc(record[0])
+        data_list_html.append((created_ts, esc(record[1]), record[2], record[3]))
+        remove_html = record[1].replace('<strong>', '').replace('</strong>', '')
+        data_list.append((created_ts, remove_html, record[2], record[3]))
+
+    return data_headers, (data_list, data_list_html), source_path

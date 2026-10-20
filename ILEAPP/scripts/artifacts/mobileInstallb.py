@@ -1,0 +1,192 @@
+__artifacts_v2__ = {
+    "mobileInstallb": {
+        "name": "Mobile Installation Logs History",
+        "description": "Selected mobile_installation.log lines (install start and success, patch "
+                       "update attempts, container lines, uninstall, container destruction and "
+                       "reboot), on images whose iOS version is 17 or later",
+        "author": "@AlexisBrignoni, Codex",
+        "creation_date": "2026-06-23",
+        "last_update_date": "2026-10-04",
+        "requirements": "none",
+        "category": "Mobile Installation Logs",
+        "notes": "Timestamps are reported as written in the log, which carries no timezone marker; "
+                 "the time zone is not established, so the timestamps are reported as text. Type is a label this artifact assigns from a phrase in the line; "
+                 "'Update' and 'Parallel Update' mark a line that says a patch update was "
+                 "attempted, which is not a completed update, and 'Install' marks an 'Installing' "
+                 "line, which is not a completed install. The Notice column holds the text of the "
+                 "line after its prefix. Both capitalization forms of Install successful for "
+                 "are matched, and Delta, Parallel and ParallelWithArchives patch attempts "
+                 "are included. Nothing is reported when the image's iOS version reads as "
+                 "earlier than 17. Apps - Historical Combined reads the same logs without these "
+                 "limits.",
+        "paths": ('*/mobile_installation.log.*',),
+        "output_types": ["html", "tsv", "lava"],
+        "artifact_icon": "package",
+        "sample_data": {
+            "ctf2020_ios12": "iOS 12.4 | 0 rows",
+            "dexter_ios18": "iOS 18.3.2 | 700 rows",
+            "felix_ios17": "iOS 17.6.1 | 697 rows",
+            "fsfull002_ios17": "iOS 17.1 | 714 rows",
+            "hc_ios18_7": "iOS 18.7.8 | 408 rows",
+            "iphone11_ios17": "iOS 17.3 | 416 rows",
+            "iphone12_ios18": "iOS 18.7 | 681 rows",
+            "iphone14plus_ios18": "iOS 18.0 | 960 rows",
+            "otto_ios17": "iOS 17.5.1 | 714 rows",
+            "abe_ios16": "iOS 16.5 | 0 rows",
+            "felix23_ios16": "iOS 16.5 | 0 rows",
+            "hickman_ios13": "iOS 13.3.1 | 0 rows",
+            "hickman_ios14": "iOS 14.3 | 0 rows",
+            "jess_ios15": "iOS 15.0.2 | 0 rows",
+            "magnet_ios16": "iOS 16.1.1 | 0 rows",
+        }
+    },
+    "mobileInstallb_reboots": {
+        "name": "Reboots - Mobile Installation Logs",
+        "description": "Reboot events from mobile_installation.log (iOS 17+)",
+        "author": "@AlexisBrignoni, Codex",
+        "creation_date": "2026-06-23",
+        "last_update_date": "2026-10-04",
+        "requirements": "none",
+        "category": "Mobile Installation Logs",
+        "notes": "Timestamps are reported as written in the log, which carries no timezone marker; "
+                 "the time zone is not established, so the timestamps are reported as text. Nothing is reported when the image's iOS version reads as earlier "
+                 "than 17.",
+        "paths": ('*/mobile_installation.log.*',),
+        "output_types": ["html", "tsv", "lava"],
+        "artifact_icon": "refresh",
+        "sample_data": {
+            "ctf2020_ios12": "iOS 12.4 | 0 rows",
+            "dexter_ios18": "iOS 18.3.2 | 4 rows",
+            "felix_ios17": "iOS 17.6.1 | 2 rows",
+            "fsfull002_ios17": "iOS 17.1 | 15 rows",
+            "hc_ios18_7": "iOS 18.7.8 | 26 rows",
+            "iphone11_ios17": "iOS 17.3 | 3 rows",
+            "iphone12_ios18": "iOS 18.7 | 6 rows",
+            "iphone14plus_ios18": "iOS 18.0 | 6 rows",
+            "otto_ios17": "iOS 17.5.1 | 3 rows",
+            "abe_ios16": "iOS 16.5 | 0 rows",
+            "felix23_ios16": "iOS 16.5 | 0 rows",
+            "hickman_ios13": "iOS 13.3.1 | 0 rows",
+            "hickman_ios14": "iOS 14.3 | 0 rows",
+            "jess_ios15": "iOS 15.0.2 | 0 rows",
+            "magnet_ios16": "iOS 16.1.1 | 0 rows",
+        }
+    }
+}
+
+import re
+
+from packaging import version
+
+from scripts.ilapfuncs import artifact_processor, iOS
+
+_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+# marker substring -> event Type label (first match wins, matching the original elif order)
+_EVENTS = {
+    'Attempting Delta patch update': 'Update',
+    'Installing <MIInstallableBundle': 'Install',
+    'Data container for': 'Container',
+    'Made container live for': 'Container Live',
+    'Reboot detected': 'Reboot',
+    'Install Successful for': 'Install Successful',
+    'Install successful for': 'Install Successful',
+    'Running installation as': 'Running Installation',
+    'Attempting Parallel patch update': 'Parallel Update',
+    'Attempting ParallelWithArchives patch update': 'Parallel Update',
+    'Uninstalling identifier': 'Uninstalling',
+    'Destroying container': 'Destroying',
+}
+
+
+def _line_splitting(line):
+    if not re.match(r"^[a-zA-Z]", line):
+        return None
+    splitline = line.split(' ', 6)
+    if len(splitline) < 7:
+        return None
+    notice = splitline.pop(6)
+    _weekday, month, space, day, time, year = splitline
+    if space != '':
+        splitline = line.split(' ', 5)
+        notice = splitline.pop(5)
+        _weekday, month, day, time, year = splitline
+    if 'Reboot detected' in notice:
+        notice = notice.split('main: ')[-1]
+    elif ':]: ' in notice:
+        notice = notice.split(':]: ')[-1]
+    else:
+        notice = notice.split(': ')[-1]
+    try:
+        month_num = _MONTHS.index(month) + 1
+    except ValueError:
+        return None
+    timestamp = f'{year}-{month_num:02d}-{int(day):02d} {time}'
+    return timestamp, notice.strip()
+
+
+def _parse(context):
+    """Return (rows, source) where rows are (timestamp_no_zone, type, notice, source_rel); iOS 17+ only."""
+    rows = []
+    sources = []
+    if version.parse(iOS.get_version()) < version.parse("17"):
+        return rows, ''
+    for file_found in context.get_files_found():
+        file_found = str(file_found)
+        rel = context.get_relative_path(file_found)
+        try:
+            with open(file_found, 'r', encoding='utf8', errors='ignore') as f:
+                lines = f.readlines()
+        except OSError:
+            continue
+        if rel not in sources:
+            sources.append(rel)
+        for line in lines:
+            for marker, desc in _EVENTS.items():
+                if marker in line:
+                    values = _line_splitting(line)
+                    if values:
+                        rows.append((values[0], desc, values[1], rel))
+                    break
+
+    return rows, ', '.join(sources)
+
+
+def _add_rows(context, add_row):
+    """Add (timestamp_no_zone, type, notice, source_rel) rows; iOS 17+ only."""
+    if version.parse(iOS.get_version()) < version.parse("17"):
+        return
+    for file_found in context.get_files_found():
+        file_found = str(file_found)
+        rel = context.get_relative_path(file_found)
+        try:
+            with open(file_found, 'r', encoding='utf8', errors='ignore') as f:
+                for line in f:
+                    for marker, desc in _EVENTS.items():
+                        if marker in line:
+                            values = _line_splitting(line)
+                            if values:
+                                add_row((values[0], desc, values[1], rel))
+                            break
+        except OSError:
+            continue
+
+
+@artifact_processor
+def mobileInstallb(context):
+    data_headers = ('Timestamp (no zone recorded)', 'Type', 'Notice', 'Source File')
+    rows, source = _parse(context)
+    results = context.create_artifact_result(
+        headers=data_headers,
+        source_path=source,
+    )
+    for row in rows:
+        results.add_row(row)
+    return results
+
+
+@artifact_processor
+def mobileInstallb_reboots(context):
+    data_headers = ('Timestamp (no zone recorded)', 'Type', 'Notice', 'Source File')
+    rows, source = _parse(context)
+    return data_headers, [row for row in rows if row[1] == 'Reboot'], source

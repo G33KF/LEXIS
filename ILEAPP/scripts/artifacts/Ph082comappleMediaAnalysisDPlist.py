@@ -1,0 +1,48 @@
+__artifacts_v2__ = {
+    "Ph082ComAppleMediaAnalysisDPlist": {
+        "name": "Ph082-Com-Apple-MediaAnalysisD-Plist",
+        "description": "Parses distinct files matched by */mobile/Library/Preferences/com.apple.mediaanalysisd.plist"
+        " and lists each key with its value as stored. What the keys mean is not established here.",
+        "author": "Scott Koenig, @AlexisBrignoni, Codex",
+        "creation_date": "2025-01-05",
+        "last_update_date": "2026-10-04",
+        "requirements": "Acquisition that contains com.apple.mediaanalysisd.plist",
+        "category": "Photos.sqlite",
+        "notes": "",
+        "paths": ('*/mobile/Library/Preferences/com.apple.mediaanalysisd.plist',),
+        "output_types": ["html", "tsv", "lava"],
+        "artifact_icon": "book",
+        "sample_data": {
+            "ctf2020_ios12": "iOS 12.4 | 1 row",
+            "dexter_ios18": "iOS 18.3.2 | 17 rows",
+            "felix_ios17": "iOS 17.6.1 | 9 rows",
+            "fsfull002_ios17": "iOS 17.1 | 9 rows",
+            "hc_ios18_7": "iOS 18.7.8 | 19 rows",
+            "iphone11_ios17": "iOS 17.3 | 9 rows",
+            "iphone12_ios18": "iOS 18.7 | 17 rows",
+            "iphone14plus_ios18": "iOS 18.0 | 15 rows",
+            "otto_ios17": "iOS 17.5.1 | 9 rows",
+            "abe_ios16": "iOS 16.5 | 7 rows",
+            "felix23_ios16": "iOS 16.5 | 7 rows",
+            "jess_ios15": "iOS 15.0.2 | 2 rows",
+            "magnet_ios16": "iOS 16.1.1 | 8 rows",
+        }
+    }
+}
+
+import plistlib
+from scripts.ilapfuncs import artifact_processor
+
+@artifact_processor
+def Ph082ComAppleMediaAnalysisDPlist(context):
+    files_found = list(dict.fromkeys(str(path) for path in context.get_files_found()))
+    data_list = []
+
+    for source_path in files_found:
+        with open(source_path, "rb") as fp:
+            pl = plistlib.load(fp)
+            for key, val in pl.items():
+                data_list.append((key, str(val), context.get_relative_path(source_path)))
+
+    data_headers = ('Property', 'Property Value', 'Source File')
+    return data_headers, data_list, '\n'.join(files_found)

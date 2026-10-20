@@ -1,0 +1,378 @@
+"""Biome _DKEvent.* streams that share the DuetKnowledge event wrapper schema.
+
+Every record carries: the event stream name (field 1.1), a start and end
+timestamp (fields 2 and 3, Cocoa epoch doubles), the event value (field 4.4),
+an event GUID (field 5) and the device UTC offset in seconds (field 10).
+Field 7 holds optional metadata entries, each pairing a numeric key with a
+string or integer value (for example the audio route name, or the alarm
+identifier).
+"""
+__artifacts_v2__ = {
+    "get_biomeDKAudioInputRoute": {
+        "name": "Biome - Audio Input Route DKEvent",
+        "description": "Parses audio input route events from the "
+                       "_DKEvent.Audio.InputRoute biome stream. Route details are "
+                       "reported as stored in the Metadata column.",
+        "author": "@abrignoni, @mattiaepi (Mattia Epifani)",
+        "creation_date": "2026-07-25",
+        "last_update_date": "2026-08-20",
+        "requirements": "none",
+        "category": "Biome",
+        "notes": "",
+        "paths": ('*/streams/*/_DKEvent.Audio.InputRoute/local/*',),
+        "output_types": "standard",
+        "artifact_icon": "mic",
+        "sample_data": {
+            "hc_ios18_7": "iOS 18.7.8 | 260 rows",
+            "iphone11_ios17": "iOS 17.3 | 360 rows",
+        },
+    },
+    "get_biomeDKAudioOutputRoute": {
+        "name": "Biome - Audio Output Route DKEvent",
+        "description": "Parses audio output route events from the "
+                       "_DKEvent.Audio.OutputRoute biome stream. "
+                       "Route details are reported as stored in the Metadata column.",
+        "author": "@abrignoni, @mattiaepi (Mattia Epifani)",
+        "creation_date": "2026-07-25",
+        "last_update_date": "2026-08-20",
+        "requirements": "none",
+        "category": "Biome",
+        "notes": "",
+        "paths": ('*/streams/*/_DKEvent.Audio.OutputRoute/local/*',),
+        "output_types": "standard",
+        "artifact_icon": "volume-2",
+        "sample_data": {
+            "hc_ios18_7": "iOS 18.7.8 | 1475 rows",
+            "iphone11_ios17": "iOS 17.3 | 546 rows",
+        },
+    },
+    "get_biomeDKClockAlarm": {
+        "name": "Biome - Clock Alarm DKEvent",
+        "description": "Parses alarm state changes from the _DKEvent.Clock.Alarm biome stream. "
+                       "Metadata is reported as stored.",
+        "author": "@abrignoni, @mattiaepi (Mattia Epifani)",
+        "creation_date": "2026-07-25",
+        "last_update_date": "2026-08-20",
+        "requirements": "none",
+        "category": "Biome",
+        "notes": "The cited research lists the values 0, 1 and 2 for this stream. Published "
+                 "research states this "
+                 "stream captures alarm states such as firing and snoozed; exact value "
+                 "semantics are not confirmed, so the raw value is reported. Reference: Mattia "
+                 "Epifani, '84 Streams Later, Part 2: Inside Apple Biome', "
+                 "https://blog.digital-forensics.it/2026/07/84-streams-later-part-2-inside-apple.html",
+        "paths": ('*/streams/*/_DKEvent.Clock.Alarm/local/*',),
+        "output_types": "standard",
+        "artifact_icon": "clock",
+        "sample_data": {
+            "hc_ios18_7": "iOS 18.7.8 | 12 rows",
+            "iphone11_ios17": "iOS 17.3 | 5 rows",
+        },
+    },
+    "get_biomeDKDeviceIsLockedImputed": {
+        "name": "Biome - Screen Lock Imputed DKEvent",
+        "description": "Parses imputed screen lock state changes from the "
+                       "_DKEvent.Device.IsLockedImputed biome stream.",
+        "author": "@abrignoni, @mattiaepi (Mattia Epifani)",
+        "creation_date": "2026-07-25",
+        "last_update_date": "2026-08-20",
+        "requirements": "none",
+        "category": "Biome",
+        "notes": "This is the imputed variant of the screen lock stream: what \"imputed\" "
+                 "means for this stream is not documented. No source is cited here for "
+                 "the Locked and Unlocked labels given to values 1 and 0 on this "
+                 "stream; the stored value is reported in Value (raw).",
+        "paths": ('*/streams/*/_DKEvent.Device.IsLockedImputed/local/*',),
+        "output_types": "standard",
+        "artifact_icon": "lock",
+        "sample_data": {
+            "hc_ios18_7": "iOS 18.7.8 | 920 rows",
+            "iphone11_ios17": "iOS 17.3 | 700 rows",
+        },
+    },
+    "get_biomeDKDeviceLowPowerMode": {
+        "name": "Biome - Low Power Mode DKEvent",
+        "description": "Parses Low Power Mode records from the _DKEvent.Device.LowPowerMode "
+                       "biome stream. Value reads Off for 0 and On for 1, with the stored "
+                       "value in Value (raw). Reference: Mattia Epifani, '84 Streams Later, "
+                       "Part 2: Inside Apple Biome', "
+                       "https://blog.digital-forensics.it/2026/07/84-streams-later-part-2-inside-apple.html",
+        "author": "@abrignoni, @mattiaepi (Mattia Epifani)",
+        "creation_date": "2026-07-25",
+        "last_update_date": "2026-08-20",
+        "requirements": "none",
+        "category": "Biome",
+        "notes": "",
+        "paths": ('*/streams/*/_DKEvent.Device.LowPowerMode/local/*',),
+        "output_types": "standard",
+        "artifact_icon": "battery-charging",
+        "sample_data": {
+            "hc_ios18_7": "iOS 18.7.8 | 21 rows",
+            "iphone11_ios17": "iOS 17.3 | 2 rows",
+        },
+    },
+    "get_biomeDKDisplayOrientation": {
+        "name": "Biome - Display Orientation DKEvent",
+        "description": "Parses device orientation changes from the _DKEvent.Display.Orientation "
+                       "biome stream.",
+        "author": "@abrignoni, @mattiaepi (Mattia Epifani)",
+        "creation_date": "2026-07-25",
+        "last_update_date": "2026-08-20",
+        "requirements": "none",
+        "category": "Biome",
+        "notes": "The meaning of the stored value is not established for this stream. On the nine "
+                 "tested images (abe_ios16, dexter_ios18, felix_ios17, hc_ios18_7, hc_ios26, "
+                 "iphone11_ios17, iphone12_ios18, iphone14plus_ios18, otto_ios17) the stored "
+                 "value was 0, 1 or 2 on every written record (163, 139 and 20 rows); 3 to 6 did "
+                 "not occur. Published research lists the values 0, 1 and 2 for this stream, and "
+                 "APOLLO labels the knowledgeC /display/orientation stream 0 Portrait and 1 "
+                 "Landscape "
+                 "(https://github.com/mac4n6/APOLLO/blob/bd725461fbd22c8ceadd04f0c4ded49b66147439/modules/knowledge_device_orientation.txt). "
+                 "The Value column applies UIDeviceOrientation names (0 Unknown, 1 Portrait, 2 "
+                 "Portrait Upside Down, 3 Landscape Left, 4 Landscape Right, 5 Face Up, 6 Face "
+                 "Down); that this stream uses that enumeration was not tested. The stored value "
+                 "is in Value (raw). Deleted records carry no value. Enumeration source: Apple "
+                 "UIKit header UIDevice.h, "
+                 "mirrored at "
+                 "https://github.com/silent0123/OSXDev/blob/c943c2158bcd3a6caa3023e396e653cbe3832ae1/"
+                 "uSav-Mac/usavMac/UIKit.framework/Headers/UIDevice.h "
+                 "Stream reference: Mattia Epifani, '84 Streams Later, Part 2: Inside Apple "
+                 "Biome', "
+                 "https://blog.digital-forensics.it/2026/07/84-streams-later-part-2-inside-apple.html",
+        "paths": ('*/streams/*/_DKEvent.Display.Orientation/local/*',),
+        "output_types": "standard",
+        "artifact_icon": "smartphone",
+        "sample_data": {
+            "hc_ios18_7": "iOS 18.7.8 | 94 rows",
+            "iphone11_ios17": "iOS 17.3 | 85 rows",
+        },
+    },
+    "get_biomeDKSiriUi": {
+        "name": "Biome - Siri UI DKEvent",
+        "description": "Parses Siri interface events from the _DKEvent.Siri.Ui biome stream. "
+                       "Start and end timestamps are reported where the record stores them.",
+        "author": "@abrignoni, @mattiaepi (Mattia Epifani)",
+        "creation_date": "2026-07-26",
+        "last_update_date": "2026-08-20",
+        "requirements": "none",
+        "category": "Biome",
+        "notes": "The event detail is carried in the metadata entries rather than the value "
+                 "field, which was absent throughout the sample.",
+        "paths": ('*/streams/*/_DKEvent.Siri.Ui/local/*',),
+        "output_types": "standard",
+        "artifact_icon": "mic",
+        "sample_data": {
+            "abe_ios16": "274 rows",
+            "dexter_ios18": "11 rows",
+            "felix23_ios16": "18 rows",
+            "felix_ios17": "6 rows",
+            "hc_ios26": "26.5.2 | 2 rows",
+            "iphone11_ios17": "26 rows",
+            "otto_ios17": "107 rows",
+        },
+    },
+    "get_biomeDKSettingsDoNotDisturb": {
+        "name": "Biome - Do Not Disturb DKEvent",
+        "description": "Parses records from the _DKEvent.Settings.DoNotDisturb biome "
+                       "stream. No source is cited here for the On and Off labels "
+                       "given to values 1 and 0; the stored value is reported in "
+                       "Value (raw).",
+        "author": "@abrignoni, @mattiaepi (Mattia Epifani)",
+        "creation_date": "2026-07-25",
+        "last_update_date": "2026-08-20",
+        "requirements": "none",
+        "category": "Biome",
+        "notes": "",
+        "paths": ('*/streams/*/_DKEvent.Settings.DoNotDisturb/local/*',),
+        "output_types": "standard",
+        "artifact_icon": "moon",
+        "sample_data": {
+            "hc_ios18_7": "iOS 18.7.8 | 0 rows",
+            "iphone11_ios17": "iOS 17.3 | 586 rows",
+        },
+    },
+}
+
+
+import os
+import struct
+from datetime import timedelta, timezone
+
+from scripts import blackboxprotobuf
+from google.protobuf.message import DecodeError
+from scripts.ccl_segb.ccl_segb import read_segb_file
+from scripts.ccl_segb.ccl_segb_common import EntryState
+from scripts.ilapfuncs import artifact_processor, logfunc, webkit_timestampsconv
+
+_DECODE_ERRORS = (DecodeError, struct.error, KeyError, ValueError, TypeError,
+                  IndexError)
+
+TYPESS = {
+    '1': {
+        'type': 'message',
+        'message_typedef': {
+            '1': {'type': 'str', 'name': ''},
+            '2': {
+                'type': 'message',
+                'message_typedef': {
+                    '1': {'type': 'int', 'name': ''},
+                    '2': {'type': 'int', 'name': ''},
+                },
+                'name': '',
+            },
+        },
+        'name': '',
+    },
+    '2': {'type': 'double', 'name': ''},
+    '3': {'type': 'double', 'name': ''},
+    '5': {'type': 'bytes', 'name': ''},
+    '10': {'type': 'int', 'name': ''},
+}
+
+ON_OFF = {0: 'Off', 1: 'On'}
+LOCKED = {0: 'Unlocked', 1: 'Locked'}
+ORIENTATION = {0: 'Unknown', 1: 'Portrait', 2: 'Portrait Upside Down', 3: 'Landscape Left',
+               4: 'Landscape Right', 5: 'Face Up', 6: 'Face Down'}
+
+
+def _to_str(value):
+    if isinstance(value, bytes):
+        try:
+            return value.decode('utf-8')
+        except UnicodeDecodeError:
+            return value.decode('latin-1', 'replace')
+    if value is None:
+        return ''
+    return str(value)
+
+
+def _cocoa(value):
+    if not isinstance(value, (int, float)) or not value:
+        return None
+    try:
+        return webkit_timestampsconv(value)
+    except (OverflowError, OSError, ValueError):
+        return None
+
+
+def _metadata(protostuff):
+    # Field 7 entries pair a numeric key (7.N.3) with a string (7.N.2.3) or int (7.N.2.4) value.
+    entries = protostuff.get('7', [])
+    if isinstance(entries, dict):
+        entries = [entries]
+    parts = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        key = entry.get('3', '')
+        payload = entry.get('2', {})
+        if not isinstance(payload, dict):
+            continue
+        if '3' in payload:
+            value = _to_str(payload.get('3'))
+        elif '4' in payload:
+            value = _to_str(payload.get('4'))
+        else:
+            continue
+        if value:
+            parts.append(f'{key}={value}')
+    return '; '.join(parts)
+
+
+def _utc_offset(value):
+    if not isinstance(value, int):
+        return ''
+    delta = timedelta(seconds=value)
+    sign = '-' if delta.total_seconds() < 0 else '+'
+    hours, remainder = divmod(abs(delta).seconds + abs(delta).days * 86400, 3600)
+    minutes = remainder // 60
+    return f'UTC{sign}{hours:02d}:{minutes:02d}'
+
+
+def _parse(context, label, value_map):
+    data_headers = (('SEGB Timestamp', 'datetime'), ('Start Timestamp', 'datetime'),
+                    ('End Timestamp', 'datetime'), 'SEGB State', 'Value', 'Value (raw)',
+                    'Metadata', 'Event', 'GUID', 'Device UTC Offset', 'Filename', 'Offset')
+    data_list = []
+    source_dirs = set()
+    for file_found in sorted(context.get_files_found()):
+        file_found = str(file_found)
+        filename = os.path.basename(file_found)
+        if filename.startswith('.'):
+            continue
+        if os.path.isfile(file_found):
+            if 'tombstone' in context.get_relative_path(file_found):
+                continue
+        else:
+            continue
+
+        source_dirs.add(os.path.dirname(file_found))
+        for record in read_segb_file(file_found):
+            ts = record.timestamp1
+            ts = ts.replace(tzinfo=timezone.utc)
+
+            if record.state == EntryState.Written:
+                try:
+                    protostuff, _ = blackboxprotobuf.decode_message(record.data, TYPESS)
+                except _DECODE_ERRORS as ex:
+                    logfunc(f'{label}: could not decode record at offset '
+                            f'{record.data_start_offset} in {filename}: {ex}')
+                    continue
+
+                event = _to_str(protostuff.get('1', {}).get('1', b'')) \
+                    if isinstance(protostuff.get('1'), dict) else ''
+                raw_value = protostuff.get('4', {}).get('4', '') \
+                    if isinstance(protostuff.get('4'), dict) else ''
+                value = value_map.get(raw_value, '') if value_map else ''
+
+                data_list.append((ts, _cocoa(protostuff.get('2')), _cocoa(protostuff.get('3')),
+                                  record.state.name, value, raw_value, _metadata(protostuff),
+                                  event, _to_str(protostuff.get('5', b'')),
+                                  _utc_offset(protostuff.get('10')), filename,
+                                  record.data_start_offset))
+
+            elif record.state == EntryState.Deleted:
+                data_list.append((ts, None, None, record.state.name, None, None, None, None,
+                                  None, None, filename, record.data_start_offset))
+
+    return data_headers, data_list, '\n'.join(sorted(source_dirs))
+
+
+@artifact_processor
+def get_biomeDKAudioInputRoute(context):
+    return _parse(context, 'Audio Input Route DKEvent', None)
+
+
+@artifact_processor
+def get_biomeDKAudioOutputRoute(context):
+    return _parse(context, 'Audio Output Route DKEvent', None)
+
+
+@artifact_processor
+def get_biomeDKClockAlarm(context):
+    return _parse(context, 'Clock Alarm DKEvent', None)
+
+
+@artifact_processor
+def get_biomeDKDeviceIsLockedImputed(context):
+    return _parse(context, 'Screen Lock Imputed DKEvent', LOCKED)
+
+
+@artifact_processor
+def get_biomeDKDeviceLowPowerMode(context):
+    return _parse(context, 'Low Power Mode DKEvent', ON_OFF)
+
+
+@artifact_processor
+def get_biomeDKDisplayOrientation(context):
+    return _parse(context, 'Display Orientation DKEvent', ORIENTATION)
+
+
+@artifact_processor
+def get_biomeDKSettingsDoNotDisturb(context):
+    return _parse(context, 'Do Not Disturb DKEvent', ON_OFF)
+
+
+@artifact_processor
+def get_biomeDKSiriUi(context):
+    return _parse(context, 'Siri UI DKEvent', None)

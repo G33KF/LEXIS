@@ -1,0 +1,77 @@
+__artifacts_v2__ = {
+    "get_firefoxDownloads": {
+        "name": "Firefox - Downloads",
+        "description": "Parses Firefox downloads (created time, file name, URL, MIME type, size, status and destination) from the mozac downloads database. The Tor Browser path is also matched.",
+        "author": "Kevin Pagano (@stark4n6)",
+        "creation_date": "2022-01-12",
+        "last_update_date": "2026-10-04",
+        "notes": "Two schema variants are handled: destination_directory and directory_path. Reference: Mozilla android-components, 'DownloadState.Status (INITIATED=1, DOWNLOADING=2, PAUSED=3, CANCELLED=4, FAILED=5, COMPLETED=6); statuses 3 to 6 are shown as Paused, Canceled, Failed and Finished, and statuses 1 and 2 and any other value are shown as stored', https://github.com/mozilla-firefox/firefox/blob/6d751cf5d0af4b7fcc1b232b6c2ba0551afabe1d/mobile/android/android-components/components/browser/state/src/main/java/mozilla/components/browser/state/state/content/DownloadState.kt",
+        "requirements": "none",
+        "category": "Firefox",
+        "paths": ('*/org.mozilla.firefox/databases/mozac_downloads_database*',
+                  '*/org.torproject.torbrowser/databases/mozac_downloads_database*'),
+        "output_types": "standard",
+        "artifact_icon": "globe",
+        "sample_data": {
+            "pixel7a_a14": "Android 14 | org.mozilla.firefox vc 2016030615 | 0 rows",
+        },
+    }
+}
+
+import os
+
+from scripts.ilapfuncs import artifact_processor, open_sqlite_db_readonly, convert_human_ts_to_utc
+
+
+@artifact_processor
+def get_firefoxDownloads(context):
+    files_found = context.get_files_found()
+    data_list = []
+    source_paths = []
+    for file_found in files_found:
+        file_found = str(file_found)
+        if not os.path.basename(file_found) == 'mozac_downloads_database':  # skip -journal and other files
+            continue
+
+        source_paths.append(file_found)
+        db = open_sqlite_db_readonly(file_found)
+        cursor = db.cursor()
+
+        # Two schema variants are handled: destination_directory and directory_path
+        table_columns = [row[1] for row in cursor.execute('PRAGMA table_info(downloads)')]
+        directory_column = 'directory_path' if 'directory_path' in table_columns else 'destination_directory'
+
+        cursor.execute(f'''
+        SELECT
+        datetime(created_at/1000,'unixepoch') AS CreatedDate,
+        file_name AS FileName,
+        url AS URL,
+        content_type AS MimeType,
+        content_length AS FileSize,
+        CASE status
+            WHEN 3 THEN 'Paused'
+            WHEN 4 THEN 'Canceled'
+            WHEN 5 THEN 'Failed'
+            WHEN 6 THEN 'Finished'
+            ELSE status
+        END AS Status,
+        {directory_column} AS DestDir
+        FROM downloads
+        ''')
+
+        all_rows = cursor.fetchall()
+        for row in all_rows:
+            data_list.append((convert_human_ts_to_utc(row[0]),row[1],row[2],row[3],row[4],row[5],row[6]))
+
+        db.close()
+
+    data_headers = (
+        ('Created Timestamp', 'datetime'),
+        'File Name',
+        'URL',
+        'MIME Type',
+        'File Size (Bytes)',
+        'Status',
+        'Destination Directory',
+    )
+    return data_headers, data_list, '\n'.join(source_paths)

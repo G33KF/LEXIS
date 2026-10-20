@@ -1,0 +1,66 @@
+__artifacts_v2__ = {
+    "medicalID": {
+        "name": "Medical ID",
+        "description": "Medical ID information from MedicalIDData.archive. Apple documents Medical ID as entered by the user in the Health app; the contents are not verified as describing the device owner.",
+        "author": "@AlexisBrignoni",
+        "creation_date": "2026-06-22",
+        "last_update_date": "2026-07-31",
+        "requirements": "none",
+        "category": "Health",
+        "notes": "Reference: Apple Support, 'Set up and view your Medical ID', https://support.apple.com/guide/iphone/set-up-and-view-your-medical-id-iph08022b192/ios",
+        "paths": ('*/mobile/Library/MedicalID/MedicalIDData.archive',),
+        "output_types": "standard",
+        "artifact_icon": "heart",
+        "sample_data": {
+            "ctf2020_ios12": "iOS 12.4 | 16 rows",
+            "otto_ios17": "iOS 17.5.1 | 36 rows",
+            "abe_ios16": "iOS 16.5 | 36 rows",
+        }
+    }
+}
+
+import nska_deserialize as nd
+
+from scripts.ilapfuncs import artifact_processor
+
+
+def get_name(name_with_prefix):
+    retval = name_with_prefix
+    if name_with_prefix.startswith('HKMedicalIDData'):
+        retval = name_with_prefix[15:]
+    if retval.endswith('Key'):
+        retval = retval[:-3]
+    return retval
+
+
+@artifact_processor
+def medicalID(context):
+    data_headers = ('Key', 'Value')
+    data_list = []
+
+    source_path = ''
+    for file_found in context.get_files_found():
+        file_found = str(file_found)
+        if file_found.endswith('MedicalIDData.archive'):
+            source_path = file_found
+            break
+    if not source_path:
+        return data_headers, data_list, ''
+
+    with open(source_path, 'rb') as f:
+        deserialized_plist = nd.deserialize_plist(f)
+        for key, value in deserialized_plist.items():
+            key_name = get_name(key)
+            if isinstance(value, dict):
+                unit = value.get('UnitKey', {}).get('HKUnitStringKey', '')
+                val = str(value.get('ValueKey', ''))
+                if unit:
+                    val += ' ' + unit
+                data_list.append((key_name, val))
+            elif isinstance(value, list):
+                # not seen!
+                data_list.append((key_name, str(value)))
+            else:
+                data_list.append((key_name, value))
+
+    return data_headers, data_list, source_path

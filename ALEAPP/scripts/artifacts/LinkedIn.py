@@ -1,0 +1,252 @@
+__artifacts_v2__ = {
+
+    
+    "linkedin_account": {
+        "name": "LinkedIn - Account",
+        "description": "Existing account in LinkedIn App, with the Public Identifier as stored.",
+        "author": "Marco Neumann {kalinko@be-binary.de}",
+        "creation_date": "2025-04-26",
+        'last_update_date': '2026-07-10',
+        "requirements": "xml, json",
+        "category": "LinkedIn",
+        "notes": "",
+        "paths": ('*/com.linkedin.android/shared_prefs/linkedInPrefsName.xml',),
+        "output_types": "standard",
+        "artifact_icon": "user",
+        "sample_data": {
+            "anne_a15": "Android 15 | com.linkedin.android vc 198600 | 1 row",
+        }
+    },
+    "linkedin_messages": {
+        "name": "LinkedIn - Messages",
+        "description": "Messages from the LinkedIn app's messenger-sdk database. Sent is 1 where the sender's participant record carries the distance value SELF and 0 otherwise. Status (as stored) is the integer in the message row's status column; what its values mean is not established.",
+        "author": "Marco Neumann {kalinko@be-binary.de}",
+        'creation_date': '2025-04-26',
+        'last_update_date': '2026-10-04',
+        "requirements": "",
+        "category": "LinkedIn",
+        "notes": "The query uses only SQL functions available across the SQLite versions bundled "
+                 "with supported Python builds; an earlier revision used concat(), which SQLite "
+                 "added in 3.44.0 (2023-11-01, sqlite.org/changes.html), so on older SQLite "
+                 "builds the query failed and the artifact reported no rows while the same "
+                 "statement succeeded in tools carrying a newer SQLite."
+                 " Status (as stored) is MessagesData.status as the database holds it. No source "
+                 "for the values was found, so no label is applied; on anne_a15 the one message "
+                 "row holds 5. Each database file the paths match is read, after the duplicate "
+                 "storage views of one file are collapsed, and Source File names the database a "
+                 "row came from; anne_a15 holds one database. A message whose conversation has "
+                 "no ConversationsData row is still reported; its Conversation Label then comes "
+                 "from the conversation's participant rows where those remain and is blank "
+                 "otherwise. "
+                 "MessagesData.conversationUrn is declared as a foreign key to "
+                 "ConversationsData.entityUrn with ON DELETE CASCADE in the anne_a15 database, "
+                 "which held no such message, so that case was exercised only on a copy of "
+                 "that database with the ConversationsData row removed (1 row with the "
+                 "conversation row present, 1 row with it removed).",
+        "paths": ('*/com.linkedin.android/databases/messenger-sdk*',),
+        "output_types": "standard",
+        "data_views": {
+            "conversation": {
+                "directionSentValue": 1,
+                "conversationDiscriminatorColumn": "Conversation Urn",
+                "textColumn": "Message",
+                "directionColumn": "Sent",
+                "timeColumn": "Delivery Date",
+                "senderColumn": "Sender Name",
+                "conversationLabelColumn": "Conversation Label"
+            }
+        },
+        "artifact_icon": "message",
+        "sample_data": {
+            "anne_a15": "Android 15 | com.linkedin.android vc 198600 | 1 row",
+        }
+    }
+}
+
+# Tested with the following versions:
+# 2024-08-16: Android 14, App: 4.1.966
+# 2025-02-07: Android 16, App: 4.1.1166
+
+# Requirements:  json, xml
+import json
+import re
+import xml.etree.ElementTree as ET
+
+from scripts.ilapfuncs import artifact_processor, convert_unix_ts_to_utc, get_sqlite_db_records, logfunc
+from scripts.artifacts.storagePathViews import unique_files
+
+INVALID_XML_CHARS = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f]')
+BARE_AMPERSAND = re.compile(r'&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[0-9A-Fa-f]+);)')
+
+
+def _parse_xml(file_found):
+    """Parse XML, recovering from invalid tokens / unescaped ampersands; empty element if unparseable."""
+    try:
+        return ET.parse(file_found).getroot()
+    except ET.ParseError:
+        with open(file_found, encoding='utf-8', errors='replace') as f:
+            xml = BARE_AMPERSAND.sub('&amp;', INVALID_XML_CHARS.sub('', f.read()))
+        try:
+            return ET.fromstring(xml)
+        except ET.ParseError as ex:
+            logfunc(f'Skipping unparseable XML {file_found}: {ex}')
+            return ET.Element('empty')
+
+
+@artifact_processor
+def linkedin_account(context):
+    files_found = context.get_files_found()
+    
+    # Get data from xml into a dict to work with
+    xml_dict = {}
+    with open(files_found[0], 'rb') as xml_file:
+        root = _parse_xml(xml_file)
+        for elem in root:
+            name = elem.attrib.get('name')
+
+            if elem.tag == 'set':
+                # Gather all child elements' text into a list
+                values = [child.text for child in elem if child.text is not None]
+                xml_dict[name] = values
+            else:
+                # Prefer value attribute, fallback to text
+                value = elem.attrib.get('value') if 'value' in elem.attrib else elem.text
+                xml_dict[name] = value
+
+    # Now get the data from the dict and put it into the data_list.
+    # Not every install carries the account keys (e.g. never signed in).
+    last_login = xml_dict.get('lastLoggedInTimestamp')
+    last_login = convert_unix_ts_to_utc(int(last_login)) if last_login else ''
+    account_mail = xml_dict.get('memberEmail', '')
+    member_id = last_name = first_name = headline = public_identifier = ''
+    me_model = xml_dict.get('meModel')
+    if me_model:
+        temp_meModel = json.loads(me_model)
+        mini_profile = temp_meModel.get('miniProfile', {})
+        member_id = temp_meModel.get('plainId', '')
+        last_name = mini_profile.get('lastName', '')
+        first_name = mini_profile.get('firstName', '')
+        headline = mini_profile.get('occupation', '')
+        public_identifier = mini_profile.get('publicIdentifier', '')
+
+    data_list = []
+    if any((last_login, member_id, account_mail, last_name, first_name, headline, public_identifier)):
+        data_list = [(last_login, member_id, account_mail, last_name, first_name, headline, public_identifier)]
+    else:
+        logfunc('No LinkedIn account details found in linkedInPrefsName.xml')
+
+    data_headers = (    
+                        ('Last Login', 'datetime'),
+                        'Member ID',
+                        'Account Mail',
+                        'Last Name',
+                        'First Name',
+                        'Headline',
+                        'Public Identifier'
+                    )
+
+    return data_headers, data_list, files_found[0]
+
+
+
+@artifact_processor
+def linkedin_messages(context):
+    files_found = [str(x) for x in context.get_files_found()]
+    files_found = [x for x in files_found if not x.endswith('wal') and not x.endswith('shm')
+                   and not x.endswith('journal')]
+    files_found = unique_files(context, files_found)
+
+    query = ('''
+            SELECT
+            md.deliveredAt[deliveredAt],
+            md.status [Status],
+            TRIM(COALESCE(json_extract(pd.entityData, '$.participantType.member.firstName.text'), '') || ' ' || COALESCE(json_extract(pd.entityData, '$.participantType.member.lastName.text'), '')) [Sender Name],
+            json_extract(pd.entityData, '$.participantType.member.headline.text') [Sender Headline],
+            json_extract(pd.entityData, '$.participantType.member.profileUrl') [Sender Profile URL],
+            json_extract(pd.entityData, '$.participantType.member.distance') [Sender Distance],
+            json_extract(md.entityData, '$.subject') [Subject],
+            json_extract(md.entityData, '$.body.text') [Message],
+            md.conversationUrn [Conversation Urn],
+            CASE WHEN json_extract(pd.entityData, '$.participantType.member.distance') = 'SELF'
+                THEN 1
+                ELSE 0
+            END [SENT],
+            CASE 
+                WHEN json_extract(cd.entityData, '$.groupChat') = 1
+                THEN COALESCE(
+                    json_extract(cd.entityData, '$.name'),
+                    (
+                        SELECT 
+                            json_extract(p2.entityData, '$.participantType.member.firstName.text') || ' ' ||
+                            json_extract(p2.entityData, '$.participantType.member.lastName.text') ||
+                            ' +' || (COUNT(*) - 1) || ' others'
+                        FROM ConversationParticipantCrossRef cp2
+                        JOIN ParticipantsData p2 ON p2.entityUrn = cp2.participantUrn
+                        WHERE cp2.conversationUrn = md.conversationUrn
+                        AND json_extract(p2.entityData, '$.participantType.member.distance') != 'SELF'
+                    )
+                )
+                ELSE (
+                    SELECT 
+                        json_extract(p2.entityData, '$.participantType.member.firstName.text') || ' ' ||
+                        json_extract(p2.entityData, '$.participantType.member.lastName.text')
+                    FROM ConversationParticipantCrossRef cp2
+                    JOIN ParticipantsData p2 ON p2.entityUrn = cp2.participantUrn
+                    WHERE cp2.conversationUrn = md.conversationUrn
+                    AND json_extract(p2.entityData, '$.participantType.member.distance') != 'SELF'
+                    LIMIT 1
+                )
+            END [Conversation Label]
+            FROM MessagesData md
+            LEFT JOIN ConversationsData cd ON cd.entityUrn = md.conversationUrn
+            LEFT JOIN ParticipantsData pd on pd.entityUrn = md.senderUrn
+    ''')
+    data_list = []
+    sources = []
+    for file_found in files_found:
+        source_file = context.get_relative_path(file_found)
+        sources.append(file_found)
+        for row in get_sqlite_db_records(file_found, query):
+            delivery_date = convert_unix_ts_to_utc(int(row[0])/1000) if row[0] is not None else ''
+            delivery_status = row[1]
+            sender_name = row[2]
+            sender_headline = row[3]
+            sender_profile_url = row[4]
+            sender_distance = row[5]
+            subject = row[6]
+            message = row[7]
+            conversationurn = row[8]
+            sent = row[9]
+            conversation_label = row[10]
+
+            data_list.append((
+                delivery_date,
+                sent,
+                sender_name,
+                conversation_label,
+                message,
+                delivery_status,
+                sender_headline,
+                sender_profile_url,
+                sender_distance,
+                subject,
+                conversationurn,
+                source_file,
+            ))
+
+    data_headers = (
+        ('Delivery Date', 'datetime'),
+        'Sent',
+        'Sender Name',
+        'Conversation Label',
+        'Message',
+        'Status (as stored)',
+        'Sender Headline',
+        'Sender Profile Url',
+        'Sender Distance',
+        'Subject',
+        'Conversation Urn',
+        'Source File',
+                    )
+
+    return data_headers, data_list, '\n'.join(sources)

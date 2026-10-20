@@ -1,0 +1,185 @@
+__artifacts_v2__ = {
+    "get_mms_from_backup": {
+        "name": "SMS and MMS Backup - MMS",
+        "description": "MMS messages recovered from backup.ab telephony backup files",
+        "author": "@ydkhatri",
+        "creation_date": "2024-08-15",
+        "last_update_date": "2026-07-03",
+        "requirements": "none",
+        "category": "SMS & MMS from backup.ab",
+        "notes": "",
+        "paths": ('*/com.android.providers.telephony/d_f/*_backup',
+                  '*/user_de/*/com.android.providers.telephony/files/*_backup'),
+        "output_types": "standard",
+        "artifact_icon": "message",
+        "data_views": {
+            "conversation": {
+                "conversationDiscriminatorColumn": "Recipients",
+                "textColumn": "Body",
+                "directionColumn": "Message Box",
+                "directionSentValue": "Sent",
+                "timeColumn": "Date",
+                "senderColumn": "Recipients",
+                "sentMessageStaticLabel": "Local User"
+            }
+        },
+    },
+    "get_sms_from_backup": {
+        "name": "SMS and MMS Backup - SMS",
+        "description": "SMS messages recovered from backup.ab telephony backup files",
+        "author": "@ydkhatri",
+        "creation_date": "2024-08-15",
+        "last_update_date": "2026-07-03",
+        "requirements": "none",
+        "category": "SMS & MMS from backup.ab",
+        "notes": "",
+        "paths": ('*/com.android.providers.telephony/d_f/*_backup',
+                  '*/user_de/*/com.android.providers.telephony/files/*_backup'),
+        "output_types": "standard",
+        "artifact_icon": "message",
+        "data_views": {
+            "conversation": {
+                "conversationDiscriminatorColumn": "Address",
+                "textColumn": "Body",
+                "directionColumn": "Direction",
+                "directionSentValue": "Sent",
+                "timeColumn": "Date",
+                "senderColumn": "Address",
+                "sentMessageStaticLabel": "Local User"
+            }
+        },
+    }
+}
+
+import datetime
+import json
+import zlib
+
+from scripts.ilapfuncs import artifact_processor, logfunc, is_platform_windows
+
+# Backup agent code defined here:
+# https://cs.android.com/android/platform/superproject/main/+/main:packages/providers/TelephonyProvider/src/com/android/providers/telephony/TelephonyBackupAgent.java
+
+slash = '\\' if is_platform_windows() else '/'
+
+EPOCH = datetime.datetime(1970, 1, 1, tzinfo=datetime.timezone.utc)
+
+MMS_BOX = {'0': 'All messages', '1': 'Inbox', '2': 'Sent', '3': 'Drafts', '4': 'Outbox', '5': 'Failed'}
+# Telephony.Sms type values stored in the backup XML
+SMS_TYPE = {'1': 'Received', '2': 'Sent', '3': 'Draft', '4': 'Outbox', '5': 'Failed', '6': 'Queued'}
+
+
+def ReadUnixTimeMs(unix_time):
+    '''Returns tz-aware UTC datetime from epoch milliseconds, or '' on error.'''
+    if unix_time not in ('0', 0, None, ''):
+        try:
+            return EPOCH + datetime.timedelta(seconds=float(unix_time) / 1000)
+        except (ValueError, OverflowError, TypeError) as ex:
+            logfunc("ReadUnixTimeMs() Failed to convert " + str(unix_time) + " Error: " + str(ex))
+    return ''
+
+
+def ReadUnixTime(unix_time):
+    '''Returns tz-aware UTC datetime from epoch seconds, or '' on error.'''
+    if unix_time not in ('0', 0, None, ''):
+        try:
+            return EPOCH + datetime.timedelta(seconds=float(unix_time))
+        except (ValueError, OverflowError, TypeError) as ex:
+            logfunc("ReadUnixTime() Failed to convert " + str(unix_time) + " Error: " + str(ex))
+    return ''
+
+
+def read_messages_from_backup(file_found):
+    logfunc(f'Processing file {file_found}')
+    with open(file_found, 'rb') as f:
+        file_content = f.read()
+    if file_content[0:1] != b'\x78':  # not zlib compressed
+        logfunc('Not the right format!')
+        return []
+    try:
+        data = zlib.decompress(file_content)
+    except zlib.error as ex:
+        logfunc(str(ex))
+        return []
+    try:
+        return json.loads(data.decode('utf8', 'ignore'))
+    except json.JSONDecodeError as ex:
+        logfunc(str(ex))
+        return []
+
+
+def _backup_files(files_found, suffix):
+    out = []
+    for file_found in files_found:
+        file_found = str(file_found)
+        if file_found.find('{0}mirror{0}'.format(slash)) >= 0:
+            continue  # Skip mirror, it should be duplicate data
+        if file_found.endswith(suffix):
+            out.append(file_found)
+    return out
+
+
+@artifact_processor
+def get_mms_from_backup(context):
+    files_found = context.get_files_found()
+    data_list = []
+    source_path = ''
+    for file_found in _backup_files(files_found, 'mms_backup'):
+        source_path = file_found
+        for mms in read_messages_from_backup(file_found):
+            body = mms.get('mms_body', '')
+            data_list.append((
+                ReadUnixTime(mms.get('date', 0)),
+                ReadUnixTime(mms.get('date_sent', 0)),
+                MMS_BOX.get(mms.get('msg_box', ''), mms.get('msg_box', '')),
+                ', '.join(mms.get('recipients', [])),
+                body,
+                mms.get('ct_l', ''),
+                mms.get('sub', ''),
+                mms.get('read', ''),
+                str(mms.get('mms_addresses', [])),
+                mms.get('tr_id', ''),
+                mms.get('v', ''),
+                mms.get('m_type', ''),
+            ))
+
+    data_headers = (
+        ('Date', 'datetime'),
+        ('Date sent', 'datetime'),
+        'Message Box',
+        'Recipients',
+        'Body',
+        'Content Location',
+        'Subject',
+        'Read',
+        'MMS Addresses',
+        'Transaction ID',
+        'MMS Version',
+        'Message Type',
+    )
+    return data_headers, data_list, source_path
+
+
+@artifact_processor
+def get_sms_from_backup(context):
+    files_found = context.get_files_found()
+    data_list = []
+    source_path = ''
+    for file_found in _backup_files(files_found, 'sms_backup'):
+        source_path = file_found
+        for sms in read_messages_from_backup(file_found):
+            body = sms.get('body', '')
+            data_list.append((
+                ReadUnixTimeMs(sms.get('date', 0)),
+                ReadUnixTimeMs(sms.get('date_sent', 0)),
+                SMS_TYPE.get(sms.get('type', ''), sms.get('type', '')),
+                sms.get('address', ''),
+                body,
+                sms.get('read', ''),
+                sms.get('type', ''),
+                ', '.join(sms.get('recipients', [])),
+                sms.get('status', ''),
+            ))
+
+    data_headers = (('Date', 'datetime'), ('Date sent', 'datetime'), 'Direction', ('Address', 'phonenumber'), 'Body', 'Read', 'Type', 'recipients', 'Status')
+    return data_headers, data_list, source_path

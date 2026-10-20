@@ -1,0 +1,135 @@
+<UserControl x:Class="AleappReader.App.Views.ArtifactView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:AleappReader.App">
+    <DockPanel>
+        <Border DockPanel.Dock="Top" Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Padding="10,8"><ScrollViewer Style="{StaticResource HeaderScroll}">
+            <DockPanel>
+                <WrapPanel Orientation="Horizontal" DockPanel.Dock="Right">
+                    <Button Style="{StaticResource FlatButton}" Command="{Binding OpenChatCommand}" Visibility="{Binding CanOpenChat, Converter={StaticResource Vis}}"
+                            ToolTip="Open the selected row's chat from the app's messages (or double-click the row)">
+                        <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE8BD;"/><TextBlock Text=" Open chat"/></StackPanel>
+                    </Button>
+                    <Button Style="{StaticResource FlatButton}" Command="{Binding ShowOnMapCommand}"
+                            Visibility="{Binding HasGeo, Converter={StaticResource Vis}}">
+                        <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE707;"/><TextBlock Text=" Map"/></StackPanel>
+                    </Button>
+                    <Button Style="{StaticResource FlatButton}" Command="{Binding AiCommand}" IsEnabled="{Binding Enabled, Source={x:Static local:AiState.Instance}}" ToolTipService.ShowOnDisabled="True"
+                            ToolTip="AI on the checked records, or on every record in view: summary, questions, translation, thematic review. Labelled and cited, never changes the evidence">
+                        <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE945;"/><TextBlock Text=" AI"/></StackPanel>
+                    </Button>
+                    <Button Style="{StaticResource FlatButton}" Command="{Binding ExportCsvCommand}" Content="Export CSV/JSON"/>
+                    <Button Style="{StaticResource FlatButton}" Command="{Binding ExportHtmlCommand}" Content="Export HTML"/>
+                </WrapPanel>
+                <StackPanel>
+                    <TextBlock Style="{StaticResource ViewTitle}" Text="{Binding Artifact.Name}"/>
+                    <TextBlock Foreground="{StaticResource MutedBrush}" TextTrimming="CharacterEllipsis" MaxWidth="900" HorizontalAlignment="Left"
+                               ToolTip="{Binding SourcesTip}">
+                        <Run Text="{Binding Artifact.Category, Mode=OneWay}"/> · <Run Text="{Binding Artifact.Module, Mode=OneWay}"/>
+                        · <Run Text="{Binding SourceLine, Mode=OneWay}"/>
+                    </TextBlock>
+                </StackPanel>
+            </DockPanel>
+        </ScrollViewer></Border>
+
+        <TabControl SelectedIndex="{Binding SelectedTab}" BorderThickness="0" Padding="0">
+            <TabItem Header="Table">
+                <DockPanel>
+                    <DockPanel DockPanel.Dock="Top" Margin="6,6,6,4">
+                        <StackPanel Orientation="Horizontal" DockPanel.Dock="Right">
+                            <Button Style="{StaticResource FlatButton}" Content="Clear column filters" Command="{Binding ClearColumnFiltersCommand}"
+                                    Visibility="{Binding HasColumnFilters, Converter={StaticResource Vis}}"/>
+                            <TextBlock Text="{Binding CountText}" VerticalAlignment="Center" Margin="10,0" Foreground="{StaticResource MutedBrush}"/>
+                            <TextBlock Text="{Binding CheckedText}" VerticalAlignment="Center" Margin="4,0" FontWeight="SemiBold"
+                                       ToolTip="Translate, Summarize, AI and Export checked act on the checked records in view. Space checks or unchecks the selected rows."/>
+                            <Button Style="{StaticResource FlatButton}" Command="{Binding CheckAllCommand}" ToolTip="Check every record">
+                                <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE73A;"/><TextBlock Text=" Check all"/></StackPanel>
+                            </Button>
+                            <Button Style="{StaticResource FlatButton}" Command="{Binding ClearChecksCommand}" ToolTip="Uncheck every record">
+                                <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE739;"/><TextBlock Text=" Uncheck all"/></StackPanel>
+                            </Button>
+                            <Button Style="{StaticResource FlatButton}" Content="Export checked…" Command="{Binding ExportCheckedCommand}"/>
+                            <ContentControl Content="{Binding Translation}" ContentTemplate="{StaticResource TranslationPicker}" Focusable="False" Margin="8,0,0,0"/>
+                            <Button Style="{StaticResource FlatButton}" Command="{Binding TranslateCommand}" IsEnabled="{Binding Enabled, Source={x:Static local:AiState.Instance}}" ToolTipService.ShowOnDisabled="True"
+                                    ToolTip="Translate the checked records in view with the AI and show the translation here, without the AI window">
+                                <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xF2B7;"/><TextBlock Text=" Translate"/></StackPanel>
+                            </Button>
+                            <Button Style="{StaticResource FlatButton}" Command="{Binding SummarizeCommand}" IsEnabled="{Binding Enabled, Source={x:Static local:AiState.Instance}}" ToolTipService.ShowOnDisabled="True" ToolTip="Summarize the checked records in view with the AI">
+                                <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE8FD;"/><TextBlock Text=" Summarize"/></StackPanel>
+                            </Button>
+                        </StackPanel>
+                        <TextBlock Style="{StaticResource Icon}" Text="&#xE71C;" Foreground="{StaticResource MutedBrush}" Margin="0,0,6,0"/>
+                        <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Content="Clear" Command="{Binding ClearFilterCommand}"/>
+                        <TextBox Style="{StaticResource SearchBox}" Text="{Binding Filter, UpdateSourceTrigger=PropertyChanged}" ToolTip="Filter all columns (Enter): a b (both), a | b (either), -a (not), &quot;exact phrase&quot;, /regex/">
+                            <TextBox.InputBindings><KeyBinding Key="Enter" Command="{Binding ApplyFilterCommand}"/></TextBox.InputBindings>
+                        </TextBox>
+                    </DockPanel>
+                    <Grid>
+                        <DataGrid x:Name="RowsGrid" ItemsSource="{Binding Rows}" SelectedItem="{Binding SelectedRow}"
+                                  local:DynamicColumns.Columns="{Binding Columns}" local:DynamicColumns.SortCommand="{Binding SortCommand}"
+                                  local:RecordGrid.Enabled="True" BorderThickness="0"
+                                  ToolTip="Right-click: tags, check, AI, export. Double-click: every detail of the record.">
+                            <DataGrid.Resources><local:BindingProxy x:Key="Ctx" Data="{Binding}"/></DataGrid.Resources>
+                            <DataGrid.Columns>
+                                <DataGridTemplateColumn Width="28" CanUserSort="False" CanUserResize="False">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <CheckBox IsChecked="{Binding IsChecked, UpdateSourceTrigger=PropertyChanged}" HorizontalAlignment="Center"
+                                                      VerticalAlignment="Center" Focusable="False" ToolTip="Checked records can be exported together"
+                                                      Visibility="{Binding IsPlaceholder, Converter={StaticResource Vis}, ConverterParameter=invert}"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTemplateColumn Header="&#xE8EC;" Width="26" CanUserSort="False">
+                                    <DataGridTemplateColumn.HeaderStyle>
+                                        <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource {x:Type DataGridColumnHeader}}">
+                                            <Setter Property="FontFamily" Value="{StaticResource IconFont}"/>
+                                        </Style>
+                                    </DataGridTemplateColumn.HeaderStyle>
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Style="{StaticResource Icon}" Text="&#xE8EC;" Foreground="{Binding Tag, Converter={StaticResource TagColor}}" FontSize="13"
+                                                       ToolTip="{Binding Tag}" Visibility="{Binding Tag, Converter={StaticResource Vis}}"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTemplateColumn Header="Translation (AI)" Width="320" CanUserSort="False"
+                                                        Visibility="{Binding Data.Translation.Shown, Source={StaticResource Ctx}, Converter={StaticResource Vis}}">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Style="{StaticResource WrapCell}" FontStyle="Italic" Foreground="{StaticResource AiBrush}">
+                                                <TextBlock.Text>
+                                                    <MultiBinding Converter="{StaticResource Tr}">
+                                                        <Binding Path="RowId"/>
+                                                        <Binding Path="DataContext.Translation.ByRow" RelativeSource="{RelativeSource AncestorType=DataGrid}"/>
+                                                    </MultiBinding>
+                                                </TextBlock.Text>
+                                                <TextBlock.ToolTip><Binding Path="Text" RelativeSource="{RelativeSource Self}"/></TextBlock.ToolTip>
+                                            </TextBlock>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                        <ProgressBar IsIndeterminate="True" Height="3" VerticalAlignment="Top" Visibility="{Binding Loading, Converter={StaticResource Vis}}"/>
+                        <TextBlock Text="{Binding EmptyText}" Style="{StaticResource EmptyText}" Visibility="{Binding EmptyText, Converter={StaticResource Vis}}"/>
+                    </Grid>
+                </DockPanel>
+            </TabItem>
+            <TabItem Header="Chat view" Visibility="{Binding HasConversation, Converter={StaticResource Vis}}">
+                <ContentControl Content="{Binding Conversation}" Focusable="False"/>
+            </TabItem>
+            <TabItem Header="Thumbnails" Visibility="{Binding HasThumbnails, Converter={StaticResource Vis}}">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="{Binding TilesText}" Margin="10,6" Foreground="{StaticResource MutedBrush}"
+                               ToolTip="The files of the records the table's filters keep. A tile's box is its record's box. Click: the record's details."/>
+                    <ListBox ItemsSource="{Binding Tiles}" SelectedItem="{Binding SelectedTile}" BorderThickness="0" SelectionMode="Extended"
+                             local:RecordGrid.Enabled="True" ItemTemplate="{StaticResource MediaTile}"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled" VirtualizingPanel.IsVirtualizing="True">
+                        <ListBox.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ListBox.ItemsPanel>
+                    </ListBox>
+                </DockPanel>
+            </TabItem>
+        </TabControl>
+    </DockPanel>
+</UserControl>

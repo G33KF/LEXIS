@@ -1,0 +1,119 @@
+__artifacts_v2__ = {
+    "get_wifiConfigstore": {
+        "name": "WiFi Config Store",
+        "description": "Saved Wi-Fi network configuration details from WifiConfigStore.xml",
+        "author": "@abrignoni, @AlexisBrignoni, Codex",
+        "creation_date": "2023-05-11",
+        "last_update_date": "2026-10-04",
+        "requirements": "none",
+        "category": "WiFi Profiles",
+        "notes": "ConnectChoiceTimeStamp is read as Unix milliseconds and reported as UTC; that "
+                 "unit follows Android 10 WifiConfiguration's setConnectChoiceTimestamp contract "
+                 "(https://android.googlesource.com/platform/frameworks/base/+/android-10.0.0_r1/"
+                 "wifi/java/android/net/wifi/WifiConfiguration.java), which specifies "
+                 "System.currentTimeMillis. The stored field is read by XmlUtil as that timestamp. It is "
+                 "blank when the stored value is not all digits or is 1 or less. CreationTime is "
+                 "reported as the text the file stores.",
+        "paths": ('*/misc/wifi/WifiConfigStore.xml', '*/misc**/apexdata/com.android.wifi/WifiConfigStore.xml'),
+        "output_types": "standard",
+        "artifact_icon": "wifi",
+        "sample_data": {
+            "anne_a15": "Android 15 | 12 rows",
+            "galaxys10_a10": "Android 10 | 4 rows",
+            "hc_pixel8pro_a16": "Android 16 | 1 row",
+            "kevin_pocox7_a15": "Android 15 | 20 rows",
+            "pixel7a_a14": "Android 14 | 11 rows",
+            "samsunga53_a14": "Android 14 | 2 rows",
+            "samsungs20_a13": "Android 13 | 2 rows",
+            "sharon_a14": "Android 14 | 18 rows",
+            "russell_pixel6a_a13": "Android 13 | 8 rows",
+            "userb2_a13": "Android 13 | 1 row",
+        },
+    }
+}
+
+import datetime
+import re
+import xml.etree.ElementTree as ET
+
+from scripts.ilapfuncs import artifact_processor, abxread, checkabx
+
+TEXT_FIELDS = {
+    'ConfigKey': 'ConfigKey', 'SSID': 'SSID', 'BSSID': 'BSSID', 'PreSharedKey': 'PreSharedKey',
+    'WEPKeys': 'WEPKeys', 'HiddenSSID': 'HiddenSSID', 'RandomizedMacAddress': 'RandomizedMacAddress',
+    'CreatorName': 'CreatorName', 'CreationTime': 'CreationTime', 'ConnectChoice': 'ConnectChoice',
+    'IpAssignment': 'IpAssignment',
+}
+COLUMNS = ['ConfigKey', 'SSID', 'BSSID', 'PreSharedKey', 'WEPKeys', 'HiddenSSID', 'RandomizedMacAddress',
+           'CreatorName', 'CreationTime', 'ConnectChoice', 'ConnectChoiceTimeStamp', 'HasEverConnected',
+           'IpAssignment', 'ProxySettings']
+
+
+def _ms_to_utc(value):
+    if not value:
+        return ''
+    try:
+        return datetime.datetime.fromtimestamp(int(value) / 1000, datetime.timezone.utc)
+    except (ValueError, OverflowError, OSError, TypeError):
+        return ''
+
+
+def _parse_xml(file_found):
+    try:
+        return ET.parse(file_found).getroot()
+    except ET.ParseError:
+        with open(file_found, 'r', encoding='utf-8', errors='replace') as f:
+            text = f.read()
+        text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', text)
+        text = re.sub(r'&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[0-9A-Fa-f]+);)', '&amp;', text)
+        try:
+            return ET.fromstring(text)
+        except ET.ParseError:
+            return ET.Element('empty')
+
+
+def _xml_root(file_found):
+    if checkabx(file_found):
+        return abxread(file_found, False).getroot()
+    return _parse_xml(file_found)
+
+
+@artifact_processor
+def get_wifiConfigstore(context):
+    files_found = context.get_files_found()
+    data_list = []
+    source_paths = []
+    for file_found in files_found:
+        file_found = str(file_found)
+        if not file_found.endswith('WifiConfigStore.xml'):
+            continue
+        source_paths.append(file_found)
+        root = _xml_root(file_found)
+
+        for network in root.iter('WifiConfiguration'):
+            fields = {k: '' for k in COLUMNS}
+            # iterate all descendant field elements (IpAssignment/ProxySettings can be nested)
+            for elem in network.iter():
+                name = elem.attrib.get('name')
+                if not name:
+                    continue
+                value = elem.attrib.get('value', '')
+                text = elem.text or ''
+                if name in TEXT_FIELDS:
+                    fields[name] = text
+                elif name == 'ConnectChoiceTimeStamp':
+                    fields['ConnectChoiceTimeStamp'] = _ms_to_utc(value) if value.isdigit() and int(value) > 1 else ''
+                elif name == 'HasEverConnected':
+                    fields['HasEverConnected'] = value
+                elif name == 'ProxySettings':
+                    fields['ProxySettings'] = f'{text} - {value}' if value else text
+
+            if any(fields.values()):
+                data_list.append(tuple(fields[c] for c in ('ConnectChoiceTimeStamp', 'CreationTime') +
+                                       tuple(c for c in COLUMNS if c not in ('ConnectChoiceTimeStamp', 'CreationTime'))))
+
+    data_headers = (
+        ('ConnectChoiceTimeStamp', 'datetime'), 'CreationTime',
+        'ConfigKey', 'SSID', 'BSSID', 'PreSharedKey', 'WEPKeys', 'HiddenSSID', 'RandomizedMacAddress',
+        'CreatorName', 'ConnectChoice', 'HasEverConnected', 'IpAssignment', 'ProxySettings')
+    return data_headers, data_list, ', '.join(source_paths)

@@ -1,0 +1,21 @@
+<Window x:Class="AleappReader.App.Views.ChatExportWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Export chat report" SizeToContent="WidthAndHeight" ResizeMode="NoResize" WindowStartupLocation="CenterOwner"
+        Background="{StaticResource PanelBrush}">
+    <StackPanel Margin="16" Width="400">
+        <TextBlock Style="{StaticResource ViewTitle}" x:Name="Heading"/>
+        <TextBlock Text="Look" Margin="0,10,0,2"/>
+        <ComboBox x:Name="Theme" SelectedIndex="0">
+            <ComboBoxItem Content="WhatsApp"/>
+            <ComboBoxItem Content="Telegram (avatars)"/>
+        </ComboBox>
+        <CheckBox x:Name="Tags" Margin="0,12,0,0">
+            <TextBlock TextWrapping="Wrap" Text="Include the examiner's tags and notes (they are the examiner's work, not the evidence)"/>
+        </CheckBox>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+            <Button Style="{StaticResource AccentButton}" Content="Export…" IsDefault="True" Click="Ok_Click"/>
+            <Button Style="{StaticResource FlatButton}" Content="Cancel" IsCancel="True"/>
+        </StackPanel>
+    </StackPanel>
+</Window>

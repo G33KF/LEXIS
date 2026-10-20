@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>AleappReader</AssemblyName>
+    <RootNamespace>AleappReader.App</RootNamespace>
+    <Product>LEXIS - LEAPP Reader</Product>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <Version>1.2.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4258.31" />
+  </ItemGroup>
+
+  <!-- build.ps1 zips the PyInstaller builds of ../../ALEAPP and ../../ILEAPP here; without them (development build) the repo checkout runs instead. -->
+  <ItemGroup Condition="Exists('engine\aleapp-engine.zip')">
+    <EmbeddedResource Include="engine\aleapp-engine.zip" LogicalName="aleapp-engine.zip" />
+  </ItemGroup>
+  <ItemGroup Condition="Exists('engine\ileapp-engine.zip')">
+    <EmbeddedResource Include="engine\ileapp-engine.zip" LogicalName="ileapp-engine.zip" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AleappReader.Core\AleappReader.Core.csproj" />
+  </ItemGroup>
+
+</Project>

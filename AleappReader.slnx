@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/AleappReader.App/AleappReader.App.csproj" />
+    <Project Path="src/AleappReader.Core/AleappReader.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/AleappReader.Core.Tests/AleappReader.Core.Tests.csproj" />
+  </Folder>
+</Solution>

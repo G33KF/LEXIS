@@ -1,0 +1,119 @@
+__artifacts_v2__ = {
+    "get_googleKeepNotes": {
+        "name": "Google Keep - Notes",
+        "description": "Rows of list_item in keep.db joined to account and tree_entity. Creator Email is the name of the account the item is stored under; that it names the note's creator is not established. No tested image held a row.",
+        "author": "@bolisettynihith",
+        "creation_date": "2021-05-17",
+        "last_update_date": "2021-05-17",
+        "requirements": "none",
+        "category": "Google Keep",
+        "notes": "",
+        "paths": ('*/com.google.android.keep/databases/keep.db*',),
+        "output_types": "standard",
+        "artifact_icon": "file-text",
+        "sample_data": {
+            "hc_pixel8pro_a16": "Android 16 | com.google.android.keep vc 220663535 | 0 rows",
+            "kevin_pocox7_a15": "Android 15 | com.google.android.keep vc 220627544 | 0 rows",
+            "pixel7a_a14": "Android 14 | com.google.android.keep vc 220548335 | 0 rows",
+            "russell_pixel6a_a13": "Android 13 | com.google.android.keep vc 220522207 | 0 rows",
+            "userb2_a13": "Android 13 | com.google.android.keep vc 220589177 | 0 rows",
+        },
+    },
+    "get_googleKeepNotes_sharing": {
+        "name": "Google Keep - Notes Sharing",
+        "description": "Rows of the sharing table in keep.db joined to the note and its account. Sync Status shows 'Synced' for a stored 1 and 'Not Synced' for any other value; that reading is not sourced. No tested image held a row.",
+        "author": "@bolisettynihith",
+        "creation_date": "2021-05-17",
+        "last_update_date": "2021-05-17",
+        "requirements": "none",
+        "category": "Google Keep",
+        "notes": "",
+        "paths": ('*/com.google.android.keep/databases/keep.db*',),
+        "output_types": "standard",
+        "artifact_icon": "share-2",
+        "sample_data": {
+            "hc_pixel8pro_a16": "Android 16 | com.google.android.keep vc 220663535 | 0 rows",
+            "kevin_pocox7_a15": "Android 15 | com.google.android.keep vc 220627544 | 0 rows",
+            "pixel7a_a14": "Android 14 | com.google.android.keep vc 220548335 | 0 rows",
+            "russell_pixel6a_a13": "Android 13 | com.google.android.keep vc 220522207 | 0 rows",
+            "userb2_a13": "Android 13 | com.google.android.keep vc 220589177 | 0 rows",
+        },
+    }
+}
+
+import datetime
+import os
+import sqlite3
+
+from scripts.ilapfuncs import artifact_processor, open_sqlite_db_readonly
+
+
+def _ms_to_utc(value):
+    if not value:
+        return ''
+    try:
+        return datetime.datetime.fromtimestamp(int(value) / 1000, datetime.timezone.utc)
+    except (ValueError, OverflowError, OSError, TypeError):
+        return ''
+
+
+def _keep_db(files_found):
+    for file_found in files_found:
+        file_found = str(file_found)
+        if file_found.endswith(('-wal', '-shm', '-journal')):
+            continue
+        if os.path.basename(file_found) == 'keep.db':
+            return file_found
+    return ''
+
+
+def _run(source_path, sql):
+    if not source_path:
+        return []
+    db = open_sqlite_db_readonly(source_path)
+    cursor = db.cursor()
+    try:
+        cursor.execute(sql)
+        rows = cursor.fetchall()
+    except sqlite3.Error:
+        rows = []
+    db.close()
+    return rows
+
+
+@artifact_processor
+def get_googleKeepNotes(context):
+    files_found = context.get_files_found()
+    source_path = _keep_db(files_found)
+    rows = _run(source_path, '''
+        SELECT list_item.time_created, list_item.time_last_updated, list_parent_id, name, title, text,
+        synced_text, list_item.is_deleted, last_modifier_email
+        FROM account
+        INNER JOIN list_item ON account._id == list_item.account_id
+        INNER JOIN tree_entity ON tree_entity._id == list_item._id
+    ''')
+    data_list = [(_ms_to_utc(r[0]), _ms_to_utc(r[1]), r[2], r[3], r[4], r[5], r[6],
+                  'True' if r[7] == 1 else 'False', r[8]) for r in rows]
+    data_headers = (('Notes Creation Time', 'datetime'), ('Notes Last Modified Time', 'datetime'),
+                    'List Parent ID', 'Creator Email', 'Title', 'Text', 'Synced Text', 'Is deleted',
+                    'Last Modifier Email')
+    return data_headers, data_list, source_path
+
+
+@artifact_processor
+def get_googleKeepNotes_sharing(context):
+    files_found = context.get_files_found()
+    source_path = _keep_db(files_found)
+    rows = _run(source_path, '''
+        SELECT tree_entity.shared_timestamp, list_item.list_parent_id, account.name, sharing.email,
+        title, text, sync_status, sharing.is_deleted
+        FROM account
+        INNER JOIN list_item ON list_item.account_id == account._id
+        INNER JOIN tree_entity ON tree_entity._id == list_item._id
+        INNER JOIN sharing ON list_item._id == sharing.tree_entity_id
+    ''')
+    data_list = [(_ms_to_utc(r[0]), r[1], r[2], r[3], r[4], r[5],
+                  'Synced' if r[6] == 1 else 'Not Synced', 'True' if r[7] == 1 else 'False') for r in rows]
+    data_headers = (('Notes Shared Timestamp', 'datetime'), 'List Parent ID', 'Creator Email', 'Shared Email',
+                    'Title', 'Text', 'Sync Status', 'Is deleted')
+    return data_headers, data_list, source_path

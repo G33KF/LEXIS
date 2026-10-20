@@ -1,0 +1,69 @@
+# pylint: disable=W0718
+__artifacts_v2__ = {
+    "get_googleInitiatedNav": {
+        "name": "Google Initiated Navigation",
+        "description": "Entries decoded from Google Maps' new_recent_history_cache_navigated.cs: protobuf field 2 read as Unix microseconds and the text of field 4.1. No source for the field meanings is cited. What the timestamp marks, and whether navigation was started, is not established.",
+        "author": "@abrignoni",
+        "creation_date": "2023-10-16",
+        "last_update_date": "2023-10-16",
+        "requirements": "none",
+        "category": "GEO Location",
+        "notes": "",
+        "paths": ('*/new_recent_history_cache_navigated.cs',),
+        "output_types": "standard",
+        "artifact_icon": "map-pin",
+        "sample_data": {
+            "kevin_pocox7_a15": "Android 15 | com.google.android.apps.maps vc 1068243484 | 2 rows",
+            "russell_pixel6a_a13": "Android 13 | com.google.android.apps.maps vc 1067057900 | 7 rows",
+        },
+    }
+}
+
+import datetime
+
+from scripts.ilapfuncs import decode_protobuf
+
+from scripts.ilapfuncs import artifact_processor
+from scripts.artifacts.storagePathViews import unique_files
+
+
+def _us_to_utc(value):
+    if not value:
+        return ''
+    try:
+        return datetime.datetime.fromtimestamp(int(value) / 1000000, datetime.timezone.utc)
+    except (ValueError, OverflowError, OSError, TypeError):
+        return ''
+
+
+@artifact_processor
+def get_googleInitiatedNav(context):
+    files_found = unique_files(context)
+    data_list = []
+    source_path = ''
+    for file_found in files_found:
+        file_found = str(file_found)
+        source_path = file_found
+        try:
+            with open(file_found, 'rb') as f:
+                data = f.read()
+            values, _ = decode_protobuf(data[8:])
+        except Exception:
+            continue
+        if not isinstance(values, dict):
+            continue
+        entry = values.get('1')
+        if isinstance(entry, list):
+            items = entry
+        elif isinstance(entry, dict):
+            items = [entry]
+        else:
+            items = []
+        for item in items:
+            try:
+                data_list.append((_us_to_utc(item['2']), item['4']['1'].decode()))
+            except (KeyError, TypeError, AttributeError):
+                continue
+
+    data_headers = (('Timestamp', 'datetime'), 'Initiated Navigation Destination')
+    return data_headers, data_list, source_path

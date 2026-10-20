@@ -1,0 +1,137 @@
+__artifacts_v2__ = {
+    "fbg_master": {
+        "name": "Files By Google - Files Master",
+        "description": "Parses the master files list from the Files by Google application",
+        "author": "Kevin Pagano (@stark4n6), @AlexisBrignoni, Codex",
+        "creation_date": "2021-01-18",
+        "last_update_date": "2026-10-05",
+        "requirements": "none",
+        "category": "Files By Google",
+        "notes": "Root Path is read from each file entry rather than from where the database "
+                 "sits, so it does not name the database, and Source File names the database "
+                 "each row came from. Media Type (as stored) holds media_type without an enum label, "
+                 "preserving NULL and unknown values. The former media-type labels were not "
+                 "sourced; no meaning for the stored values is asserted.",
+        "paths": ('*/com.google.android.apps.nbu.files/databases/files_master_database*'),
+        "output_types": "standard",
+        "artifact_icon": "file",
+        "sample_data": {
+            "hc_pixel8pro_a16": "Android 16 | com.google.android.apps.nbu.files vc 1849879 | 71 rows",
+            "kevin_pocox7_a15": "Android 15 | com.google.android.apps.nbu.files vc 1508395 | 434 rows",
+            "pixel7a_a14": "Android 14 | com.google.android.apps.nbu.files vc 695143 | 228 rows",
+            "russell_pixel6a_a13": "Android 13 | com.google.android.apps.nbu.files vc 492527 | 95 rows",
+            "userb2_a13": "Android 13 | com.google.android.apps.nbu.files vc 1107071 | 8 rows",
+        }
+    },
+    "fbg_searchhistory": {
+        "name": "Files By Google - Search History",
+        "description": "Parses the Files by Google application search history",
+        "author": "Kevin Pagano (@stark4n6)",
+        "creation_date": "2021-01-18",
+        "last_update_date": "2025-09-09",
+        "requirements": "none",
+        "category": "Files By Google",
+        "notes": "Rows come from the search_history_content table; the timestamp column is read as "
+                 "Unix milliseconds. No sample_data is recorded for this artifact.",
+        "paths": ('*/com.google.android.apps.nbu.files/databases/search_history_database*'),
+        "output_types": "standard",
+        "artifact_icon": "search"
+    },
+}
+
+from scripts.ilapfuncs import artifact_processor, open_sqlite_db_readonly, convert_ts_human_to_utc, convert_utc_human_to_timezone
+from scripts.artifacts.storagePathViews import unique_files
+
+@artifact_processor
+def fbg_master(context):
+    files_found = unique_files(context)
+    data_list_master = []
+    source_paths = set()
+
+    for file_found in files_found:
+        file_found = str(file_found)
+
+        # Master list
+        if file_found.endswith('files_master_database'):
+            source_paths.add(file_found)
+            db = open_sqlite_db_readonly(file_found)
+            cursor = db.cursor()
+            cursor.execute('''
+            select
+                case file_date_modified_ms
+                    when 0 then ''
+                    else datetime(file_date_modified_ms/1000,'unixepoch')
+                end as file_date_modified_ms,
+                root_path,
+                root_relative_file_path,
+                file_name,
+                size,
+                mime_type,
+                media_type,
+                uri,
+                case is_hidden
+                    when 0 then ''
+                    when 1 then 'Yes'
+                end as is_hidden,
+                title,
+                parent_folder_name
+            from files_master_table
+            ''')
+
+            all_rows = cursor.fetchall()
+            usageentries = len(all_rows)
+            if usageentries > 0:
+                for row in all_rows:
+                    last_mod_date = row[0]
+                    if last_mod_date is None:
+                        pass
+                    else:
+                        last_mod_date = convert_utc_human_to_timezone(convert_ts_human_to_utc(last_mod_date),'UTC')
+                
+                    data_list_master.append((last_mod_date,row[1],row[2],row[3],row[4],row[5],row[6],row[7],row[8],row[9],row[10],context.get_relative_path(file_found)))
+            db.close()
+            
+    data_headers = (('Date Modified','datetime'),'Root Path','Root Relative Path','File Name','Size','Mime Type','Media Type (as stored)','URI','Hidden','Title','Parent Folder','Source File') # Don't remove the comma, that is required to make this a tuple as there is only 1 element
+    return data_headers, data_list_master, '\n'.join(sorted(source_paths))
+            
+@artifact_processor
+def fbg_searchhistory(context):
+    files_found = unique_files(context)
+    data_list_search = []
+    source_paths = set()
+
+    for file_found in files_found:
+        file_found = str(file_found)
+
+        # Search History
+        if file_found.endswith('search_history_database'):
+            source_paths.add(file_found)
+            db = open_sqlite_db_readonly(file_found)
+            cursor = db.cursor()
+            cursor.execute('''
+            select
+                case timestamp
+                    when 0 then ''
+                    else datetime(timestamp/1000,'unixepoch')
+                end as timestamp,
+                searched_term
+            from search_history_content
+            ''')
+
+            all_rows = cursor.fetchall()
+            usageentries = len(all_rows)
+            if usageentries > 0:
+                for row in all_rows:
+                    timestamp = row[0]
+                    if timestamp is None:
+                        pass
+                    else:
+                        timestamp = convert_utc_human_to_timezone(convert_ts_human_to_utc(timestamp),'UTC')
+                    data_list_search.append((timestamp,row[1],context.get_relative_path(file_found)))
+            db.close()
+            
+        else:
+            continue # Skip all other files
+            
+    data_headers = (('Timestamp','datetime'),'Search Term','Source File') # Don't remove the comma, that is required to make this a tuple as there is only 1 element
+    return data_headers, data_list_search, '\n'.join(sorted(source_paths))

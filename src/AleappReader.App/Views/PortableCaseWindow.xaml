@@ -1,0 +1,66 @@
+<Window x:Class="AleappReader.App.Views.PortableCaseWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:AleappReader.App.ViewModels"
+        Title="Create portable case" Height="680" Width="720" WindowStartupLocation="CenterOwner" Background="{StaticResource PanelBrush}">
+    <DockPanel Margin="14">
+        <StackPanel DockPanel.Dock="Top">
+            <TextBlock Style="{StaticResource ViewTitle}" Text="Portable case"/>
+            <TextBlock TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Margin="0,4,0,10"
+                       Text="A zip with the chosen data (and SHA256SUMS.txt over every file in it) and the reader exe beside it. The recipient runs the exe: it opens the zip next to it, with no installation."/>
+            <TextBlock Text="Destination zip"/>
+            <DockPanel Margin="0,2,0,8"><Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Content="…" Command="{Binding BrowseCommand}"/>
+                <TextBox Text="{Binding ZipPath, UpdateSourceTrigger=PropertyChanged}" VerticalContentAlignment="Center"/></DockPanel>
+            <WrapPanel>
+                <CheckBox IsChecked="{Binding TaggedOnly}" Margin="0,2,18,2">
+                    <TextBlock><Run Text="Tagged records only"/> <Run Text="{Binding TaggedCount, Mode=OneWay, StringFormat=({0:N0} tagged)}" Foreground="{StaticResource MutedBrush}"/></TextBlock>
+                </CheckBox>
+                <CheckBox Content="Media files" IsChecked="{Binding IncludeMedia}" Margin="0,2,18,2" ToolTip="Pictures, videos and other files the records refer to"/>
+                <CheckBox Content="Reader exe beside the zip" IsChecked="{Binding IncludeReader}" Margin="0,2,18,2"/>
+                <CheckBox Content="Sign with my examiner key" IsChecked="{Binding Sign}" Margin="0,2,18,2" ToolTip="{Binding SignText}"/>
+                <CheckBox Content="Include file system" IsChecked="{Binding IncludeFileSystem}" Margin="0,2,18,2"
+                          ToolTip="Copies the extraction's files into the case (Case/extraction), each checked against ALEAPP's copy: the recipient can browse them in Extraction Files"/>
+                <CheckBox IsChecked="{Binding IncludeTaggedFiles}" Margin="0,2,18,2" IsEnabled="{Binding HasTaggedFiles}"
+                          ToolTip="Copies the files tagged in Extraction Files or the gallery into the case's file system (a file inside an archive brings the archive), with their tags">
+                    <TextBlock><Run Text="Tagged files"/> <Run Text="{Binding TaggedFileCount, Mode=OneWay, StringFormat=({0:N0} tagged)}" Foreground="{StaticResource MutedBrush}"/></TextBlock>
+                </CheckBox>
+            </WrapPanel>
+            <TextBlock Margin="22,2,0,0" Text="{Binding FileSystemText}" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"
+                       Visibility="{Binding IncludeFileSystem, Converter={StaticResource Vis}, ConverterParameter=invert}"/>
+            <StackPanel Margin="22,2,0,0" Visibility="{Binding IncludeFileSystem, Converter={StaticResource Vis}}">
+                <WrapPanel>
+                    <RadioButton Content="Source files of the included artifacts" IsChecked="True" Margin="0,2,18,2" GroupName="FsScope"/>
+                    <RadioButton Content="Every file the parsing read" IsChecked="{Binding AllRead}" Margin="0,2,18,2" GroupName="FsScope"/>
+                </WrapPanel>
+                <TextBlock Text="{Binding FileSystemText}" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"/>
+            </StackPanel>
+            <DockPanel Margin="0,10,0,4">
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <Button Style="{StaticResource FlatButton}" Content="All" Command="{Binding SelectAllCommand}" CommandParameter="all"/>
+                    <Button Style="{StaticResource FlatButton}" Content="None" Command="{Binding SelectAllCommand}" CommandParameter="none"/>
+                </StackPanel>
+                <TextBlock VerticalAlignment="Center"><Run Text="Content" FontWeight="SemiBold"/> · <Run Text="{Binding SelectionText, Mode=OneWay}" Foreground="{StaticResource MutedBrush}"/></TextBlock>
+            </DockPanel>
+        </StackPanel>
+        <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0" LastChildFill="False">
+            <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Content="Close" IsCancel="True"/>
+            <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Content="Cancel" Command="{Binding CancelCommand}"/>
+            <Button DockPanel.Dock="Right" Style="{StaticResource AccentButton}" Content="Create" Command="{Binding BuildCommand}"/>
+        </DockPanel>
+        <TextBox DockPanel.Dock="Bottom" Margin="0,6,0,0" Text="{Binding StatusText, Mode=OneWay}" IsReadOnly="True" BorderThickness="0"
+                 Background="Transparent" TextWrapping="Wrap" FontWeight="SemiBold"/>
+        <ProgressBar DockPanel.Dock="Bottom" Height="10" Margin="0,10,0,0" Value="{Binding Progress}" Style="{StaticResource RunBar}"/>
+        <TextBox DockPanel.Dock="Bottom" Height="110" Margin="0,10,0,0" Text="{Binding Log, Mode=OneWay}" IsReadOnly="True" FontFamily="Consolas" FontSize="11.5"
+                 VerticalScrollBarVisibility="Auto" TextChanged="Log_TextChanged"/>
+        <TreeView ItemsSource="{Binding Groups}" BorderBrush="{StaticResource BorderBrush}">
+            <TreeView.Resources>
+                <HierarchicalDataTemplate DataType="{x:Type vm:PortableGroup}" ItemsSource="{Binding Items}">
+                    <CheckBox IsChecked="{Binding IsChecked}" Content="{Binding Name}" FontWeight="SemiBold" Margin="0,2"/>
+                </HierarchicalDataTemplate>
+                <DataTemplate DataType="{x:Type vm:PortableItem}">
+                    <CheckBox IsChecked="{Binding IsChecked}" Content="{Binding Label}" Margin="0,1"/>
+                </DataTemplate>
+            </TreeView.Resources>
+        </TreeView>
+    </DockPanel>
+</Window>

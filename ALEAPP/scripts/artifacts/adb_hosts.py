@@ -1,0 +1,51 @@
+# pylint: disable=W0613,W0702
+__artifacts_v2__ = {
+    "adb_hosts": {
+        "name": "ADB Hosts",
+        "description": "Username and hostname comments recorded beside the public keys in the "
+                       "device's misc/adb/adb_keys file.",
+        "author": "@AlexisBrignoni",
+        "creation_date": "2020-11-21",
+        "last_update_date": "2025-03-15",
+        "requirements": "none",
+        "category": "Device Information",
+        "notes": "",
+        "paths": ('*/misc/adb/adb_keys'),
+        "output_types": ["html", "lava", "tsv"],
+        "artifact_icon": "terminal",
+        "sample_data": {
+            "galaxys10_a10": "Android 10 | 1 row",
+            "hc_pixel8pro_a16": "Android 16 | 1 row",
+            "pixel7a_a14": "Android 14 | 0 rows",
+            "samsungs20_a13": "Android 13 | 1 row",
+            "sharon_a14": "Android 14 | 0 rows",
+            "russell_pixel6a_a13": "Android 13 | 1 row",
+            "userb2_a13": "Android 13 | 1 row",
+        }
+    }
+}
+
+
+from scripts.ilapfuncs import artifact_processor, \
+    get_file_path, get_txt_file_content, device_info
+
+
+@artifact_processor
+def adb_hosts(context):
+    files_found = context.get_files_found()
+    source_path = get_file_path(files_found, "adb_keys")
+    data_list = []
+    
+    file = get_txt_file_content(source_path)
+    for line in file:
+        try:
+            adb_host = line.split(" ")[1].rstrip('\n')
+            if 'unknown' not in adb_host:
+                device_info("ADB Hosts", "Hosts", adb_host, source_path)
+            data_list.append(adb_host.split('@', 1))
+        except:
+            pass
+    
+    data_headers = ('Username', 'Hostname')
+
+    return data_headers, data_list, source_path

@@ -1,0 +1,168 @@
+__artifacts_v2__ = {
+    "plz_interaction": {
+        "name": "Swissmeteo - Place interaction records",
+        "description": "Parse the plz_interaction table: postal code entries with the timestamp read as Unix "
+                       "milliseconds in UTC and a map link built from the lat and lon the row stores",
+        "author": "jerome.arn@vd.ch, @AlexisBrignoni, Codex",
+        "creation_date": "2025-09-25",
+        "last_update_date": "2026-08-15",
+        "requirements": "none",
+        "category": "Meteo",
+        "notes": "What event writes a row of plz_interaction is not established here. Recorded "
+                 "Coordinates is an OpenStreetMap link built from the row's own lat and lon and is "
+                 "blank when either is empty. Meteo of the city shows the primary_name of the plz "
+                 "table row in localdata.sqlite that matches the row's plz value, and the plz value "
+                 "as stored when there is no match. The 'Meteo of the city (link)' coordinates are "
+                 "converted from the x and y columns of the plz table in localdata.sqlite. Which of "
+                 "those columns holds the LV03 easting and which holds the northing is unverified, so "
+                 "the resulting position should be corroborated before use. The citation given here "
+                 "covers the LV03 to WGS84 conversion formula only; it does not establish the meaning "
+                 "of any column reported by this artifact. Reference: Swisstopo-WGS84-LV03, "
+                 "'wgs84_ch1903.py', "
+                 "https://github.com/ValentinMinder/Swisstopo-WGS84-LV03/blob/f1a7e0129d93647c1c11e151b95a208a53e57ce6/scripts/py/wgs84_ch1903.py",
+        "paths": ('*/data/ch.admin.meteoswiss/databases/favorites_prediction_db.sqlite*', '*/data/ch.admin.meteoswiss/files/db/localdata.sqlite*'),
+        "output_types": "standard",
+        "html_columns": ['Meteo of the city (link)', 'Recorded Coordinates'],
+        "artifact_icon": "flag"
+    },
+    "swissmeteo_plz": {
+        "name": "Swissmeteo - app_open table rows",
+        "description": "Rows of the app_open table of favorites_prediction_db.sqlite: the "
+                       "timestamp column read as Unix milliseconds in UTC, and the lat and lon "
+                       "columns as stored.",
+        "author": "jerome.arn@vd.ch, @AlexisBrignoni, Codex",
+        "creation_date": "2025-09-25",
+        "last_update_date": "2026-10-04",
+        "requirements": "none",
+        "category": "Meteo",
+        "notes": "What writes a row, what the timestamp marks and what position the coordinates "
+                 "describe are not established here; the artifact is named for the table it reads. "
+                 "Timestamp is the table's timestamp column converted as Unix milliseconds. That "
+                 "unit comes from the module as contributed and was not checked against data here: "
+                 "no registered test image holds this database. Map link is an OpenStreetMap "
+                 "address built from the row's lat and lon.",
+        "paths": ('*/data/ch.admin.meteoswiss/databases/favorites_prediction_db.sqlite*', '*/data/ch.admin.meteoswiss/files/db/localdata.sqlite*'),
+        "output_types": "standard",
+        "html_columns": ['Map link'],
+        "artifact_icon": "flag"
+    }
+}
+
+from scripts.ilapfuncs import artifact_processor, get_file_path, \
+    get_sqlite_db_records, logfunc, open_sqlite_db_readonly
+from scripts.html_safe import esc
+
+@artifact_processor
+def plz_interaction(context):
+    files_found = context.get_files_found()
+    source_path = get_file_path(files_found, "favorites_prediction_db.sqlite")
+    data_headers = (('Interaction Timestamp', 'datetime'), "Meteo of the city", "Meteo of the city (link)", "Recorded Coordinates")
+    data_list = []
+    cursor = None
+    prediction_db = ""
+    localdata_db = ""
+
+    for file_found in files_found:
+        file_found = str(file_found)
+        if file_found.endswith('favorites_prediction_db.sqlite'):
+            prediction_db = file_found
+        if file_found.endswith('localdata.sqlite'):
+            localdata_db = file_found
+
+    if prediction_db != "":
+        query = '''
+        SELECT
+            datetime(timestamp/1000, 'unixepoch') AS created_date,
+            plz,
+            lat,
+            lon
+        FROM plz_interaction
+        '''
+
+        db_records = get_sqlite_db_records(prediction_db, query)
+
+        local_data = []
+        if localdata_db != "":
+            db = open_sqlite_db_readonly(localdata_db)
+            cursor = db.cursor()
+
+        for record in db_records:
+            local_data = get_location_infos(cursor, record[1]) if cursor else []
+            if not (record[2] and record[3]):
+                cons_link = ''
+            else:
+                cons_link = coordinate_to_osm(record[2], record[3])
+            # test for 1111 postal code case
+            if len(local_data) > 0:
+                meteo_link = lv03_to_osm(local_data[0][1], local_data[0][2])
+                data_list.append((record[0], local_data[0][4], meteo_link, cons_link))
+            else:
+                data_list.append((record[0], record[1], '', cons_link))
+    else:
+        logfunc('No Swissmeteo')
+
+    return data_headers, data_list, source_path
+
+@artifact_processor
+def swissmeteo_plz(context):
+    files_found = context.get_files_found()
+    source_path = get_file_path(files_found, "favorites_prediction_db.sqlite")
+    data_headers = (('Timestamp', 'datetime'), 'Latitude', 'Longitude', "Map link")
+    data_list = []
+    prediction_db = ""
+
+    for file_found in files_found:
+        file_found = str(file_found)
+        if file_found.endswith('favorites_prediction_db.sqlite'):
+            prediction_db = file_found
+
+    if prediction_db != "":
+        query = '''
+        SELECT
+            datetime(timestamp/1000, 'unixepoch') AS created_date,
+            lat,
+            lon
+        FROM app_open
+        '''
+
+        db_records = get_sqlite_db_records(prediction_db, query)
+        for record in db_records:
+            data_list.append((record[0], record[1], record[2], coordinate_to_osm(record[1], record[2])))
+    else:
+        logfunc('Swissmeteo favorites_prediction_db.sqlite not found')
+
+    return data_headers, data_list, source_path
+
+def coordinate_to_osm(lat, lon):
+    return f"https://www.openstreetmap.org/?mlat={esc(lat)}&mlon={esc(lon)}&zoom=15"
+
+def lv03_to_osm(E, N): 
+    # based on https://github.com/ValentinMinder/Swisstopo-WGS84-LV03/blob/f1a7e0129d93647c1c11e151b95a208a53e57ce6/scripts/py/wgs84_ch1903.py
+    y, x = (E-600000)/1e6, (N-200000)/1e6
+    lat = (16.9023892 + (3.238272 * x)) + \
+            - (0.270978 * pow(y, 2)) + \
+            - (0.002528 * pow(x, 2)) + \
+            - (0.0447 * pow(y, 2) * x) + \
+            - (0.0140 * pow(x, 3))
+    lon = (2.6779094 + (4.728982 * y) + \
+                + (0.791484 * y * x) + \
+                + (0.1306 * y * pow(x, 2))) + \
+                - (0.0436 * pow(y, 3))
+    lat, lon = lat*100/36, lon*100/36
+    return f"https://www.openstreetmap.org/?mlat={lat}&mlon={lon}&zoom=15"
+
+def get_location_infos(cursor, NPA):
+    query = '''
+    SELECT 
+        plz_pk,
+        x,
+        y,
+        altitude,
+        primary_name
+    FROM plz
+    WHERE plz_pk = ?
+    '''
+
+    cursor.execute(query, (NPA,))
+    local_data = cursor.fetchall()
+    return local_data

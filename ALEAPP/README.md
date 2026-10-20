@@ -1,0 +1,308 @@
+![ALEAPP](assets/ALEAPP_logo.png)
+
+# Android Logs Events And Protobuf Parser
+
+If you want to contribute hit me up here: https://abrignoni.github.io
+
+Blog posts here: https://leapps.org/blog
+
+## Download
+
+Pre-built releases need no Python installation: [ALEAPP GitHub Releases](https://github.com/abrignoni/ALEAPP/releases),
+or [LEAPPs Releases](https://leapps.org/releases) for the whole LEAPP family.
+
+| Platform | Download |
+| -------- | -------- |
+| Windows (Intel/AMD) | `ALEAPP-*-windows-x64-setup.exe` (installer) or `ALEAPP-*-windows-x64-portable.zip` |
+| Windows (ARM) | `ALEAPP-*-windows-arm64-setup.exe` or `ALEAPP-*-windows-arm64-portable.zip` |
+| macOS (Apple Silicon) | `ALEAPP-*-macos-arm64.dmg` |
+| macOS (Intel) | `ALEAPP-*-macos-x64.dmg` |
+| Linux (Intel/AMD) | `ALEAPP-*-linux-x64.AppImage` |
+| Linux (ARM) | `ALEAPP-*-linux-arm64.AppImage` |
+
+Each download holds one program, `aleapp`. `SHA256SUMS.txt` in each release lets you check a download.
+
+**GUI**: open ALEAPP the usual way: from the Start menu after installing on Windows, by
+double-clicking `aleapp.exe` in the portable folder, ALEAPP in Applications on macOS, or
+the AppImage on Linux. Started without arguments, it opens the window.
+
+**CLI**: give `aleapp` arguments in a terminal and it runs as a command line instead. The
+output folder must already exist. On Windows, keep `aleapp.exe` in its folder with the
+files beside it.
+
+```
+aleapp.exe -t zip -i C:\path\to\extraction.zip -o C:\path\to\output\
+```
+
+On Linux, run the AppImage with the same arguments. On macOS it is inside the app; to
+type just `aleapp` in a terminal, link it onto your PATH once:
+
+```
+sudo ln -s /Applications/ALEAPP.app/Contents/MacOS/aleapp /usr/local/bin/aleapp
+```
+
+## Requirements
+
+**Python 3.10 or above**
+
+### Dependencies
+
+Dependencies for your python environment are listed in `requirements.txt`. Install them using the below command. Ensure
+the `py` part is correct for your environment, eg `py`, `python`, or `python3`, etc.
+
+`py -m pip install -r requirements.txt`
+or
+`pip3 install -r requirements.txt`
+
+For the exact mister_skinnylegs dependency chain the releases are built with, install
+`requirements-msl-lock.txt` over that, without dependencies:
+
+`pip3 install --no-deps -r requirements-msl-lock.txt`
+
+To run on **Linux**, you will also need to install `tkinter` separately like so:
+
+`sudo apt-get install python3-tk`
+
+## Building the binaries
+
+`packaging/build.py` builds `aleapp` with PyInstaller for the machine it runs on, from the
+same virtual environment. It installs `requirements.txt`, the pinned build tools and
+`requirements-msl-lock.txt` first.
+
+```
+python packaging/build.py exe          # dist/ALEAPP/, and dist/ALEAPP.app on macOS
+python packaging/build.py smoke        # run what it built, without opening a window
+python packaging/build.py installer    # Windows: Inno Setup installer; macOS: .dmg; Linux: AppImage
+```
+
+`exe --onefile` makes `dist/aleapp` (`dist\aleapp.exe` on Windows) as a single file
+instead. The Windows installer needs [Inno Setup](https://jrsoftware.org/isdl.php); on
+Linux, `smoke` needs a display, which `xvfb-run` provides. `python packaging/build.py --help`
+has the rest.
+
+## Usage
+
+### CLI
+
+```
+$ python aleapp.py -t <zip | tar | fs | gz | raw> -i <path_to_extraction> -o <path_for_report_output>
+```
+
+`raw` reads a disk image (`.img`, `.dd`, `.bin`, or any numbered `.001` segment of
+a split set), or an acquisition and the segments or files beside it (EnCase/EWF
+`.E01`, SMART `.s01`, EWF2 `.Ex01`, AFF `.aff`, AFM `.afm`, any `.aff` in an AFD folder,
+AFF4 `.aff4`, an Apple `.dmg`, with any `.dmgpart` files beside it, `.sparseimage` or
+`.sparsebundle` folder, or a virtual machine disk, `.vhd`, `.vhdx`, `.vmdk` or `.qcow2`), in
+place: no mounting and no administrator rights. Its NTFS, FAT32, exFAT, ext2/3/4,
+F2FS, HFS+, APFS, QNX6, QNX4, ETFS, EFS, SquashFS, JFFS2, UBI/UBIFS, YAFFS and QNX IFS
+volumes are searched directly (and a U-Boot environment or Belkin NVRM store is read as one
+file), and
+only the files an artifact asks for are read out of the image. Logical evidence, an
+EnCase `.L01` or an FTK Imager `.ad1`, is read as the files it holds. The GUI picks
+`raw` on its own for those extensions, and for a sparse bundle or AFD folder chosen with
+its folder button. See `admin/docs/raw_image_input.md`.
+
+An encrypted image opens with its password (`--image_password_file` or
+`--image_password_env`), or, when it is sealed to a certificate, with that certificate's
+RSA private key (`--image_private_key`). A BitLocker volume in an image opens with its
+password or recovery password, given the same way, or its startup key
+(`--bitlocker_key`, repeatable), and an APFS volume macOS encrypted in software with its
+password or personal recovery key, given the same way. At a terminal whatever is missing
+is asked for, and the GUI asks in dialogs; a BitLocker or APFS volume nothing opens is
+reported and not searched.
+
+`tar` also reads an xz-compressed tar (`.tar.xz`), and the GUI picks `tar` for that
+extension. A compressed tar, `.tar.gz` included, is decompressed once into the report folder
+before any file is read, so the run needs free space there for the uncompressed tar. The
+copy is deleted when the run ends, and the run log says how long the step took.
+
+### GUI
+
+```
+$ python aleappGUI.py
+```
+
+### Help
+
+```
+$ python aleapp.py --help
+```
+
+## Contributing artifact plugins
+
+Each plugin is a Python source file which should be added to the `scripts/artifacts` folder which will be loaded dynamically each time ALEAPP is run.
+
+The plugin source file must contain a dictionary named `__artifacts_v2__` at the very beginning of the module, which defines the artifacts that the plugin processes. The keys in the `__artifacts_v2__` dictionary should be IDs for the artifact(s) which must be unique within ALEAPP. The values should be dictionaries containing the following keys:
+
+- `name`: The name of the artifact as a string.
+- `description`: A description of the artifact as a string.
+- `author`: The author of the plugin as a string.
+- `version`: The version of the artifact as a string.
+- `date`: The date of the last update to the artifact as a string.
+- `requirements`: Any requirements for processing the artifact as a string.
+- `category`: The category of the artifact as a string.
+- `notes`: Any additional notes as a string.
+- `paths`: A tuple of strings containing glob search patterns to match the path of the data that the plugin expects for the artifact.
+- `function`: The name of the function which is the entry point for the artifact's processing as a string.
+
+For example:
+
+```python
+__artifacts_v2__ = {
+    "cool_artifact_1": {
+        "name": "Cool Artifact 1",
+        "description": "Extracts cool data from database files",
+        "author": "@username",
+        "version": "0.1",
+        "date": "2022-10-25",
+        "requirements": "none",
+        "category": "Really cool artifacts",
+        "notes": "",
+        "paths": ('*/com.android.cooldata/databases/database*.db',),
+        "function": "get_cool_data1"
+    },
+    "cool_artifact_2": {
+        "name": "Cool Artifact 2",
+        "description": "Extracts cool data from XML files",
+        "author": "@username",
+        "version": "0.1",
+        "date": "2022-10-25",
+        "requirements": "none",
+        "category": "Really cool artifacts",
+        "notes": "",
+        "paths": ('*/com.android.cooldata/files/cool.xml',),
+        "function": "get_cool_data2"
+    }
+}
+```
+
+The functions referenced as entry points in the `__artifacts__` dictionary must take the following arguments:
+
+- An iterable of the files found which are to be processed (as strings)
+- The path of ALEAPP's output folder(as a string)
+- The seeker (of type FileSeekerBase) which found the files
+- A Boolean value indicating whether or not the plugin is expected to wrap text
+
+For example:
+
+```python
+def get_cool_data1(files_found, report_folder, seeker, wrap_text):
+    pass  # do processing here
+```
+
+Plugins are generally expected to provide output in ALEAPP's HTML output format, TSV, and optionally submit records to
+the timeline. Functions for generating this output can be found in the `artifact_report` and `ilapfuncs` modules.
+At a high level, an example might resemble:
+
+```python
+__artifacts_v2__ = {
+    "cool_artifact_1": {
+        "name": "Cool Artifact 1",
+        "description": "Extracts cool data from database files",
+        "author": "@username",  # Replace with the actual author's username or name
+        "version": "0.1",  # Version number
+        "date": "2022-10-25",  # Date of the latest version
+        "requirements": "none",
+        "category": "Really cool artifacts",
+        "notes": "",
+        "paths": ('*/com.android.cooldata/databases/database*.db',),
+        "function": "get_cool_data1"
+    }
+}
+
+import datetime
+from scripts.artifact_report import ArtifactHtmlReport
+import scripts.ilapfuncs
+
+def get_cool_data1(files_found, report_folder, seeker, wrap_text):
+    # let's pretend we actually got this data from somewhere:
+    rows = [
+     (datetime.datetime.now(), "Cool data col 1, value 1", "Cool data col 1, value 2", "Cool data col 1, value 3"),
+     (datetime.datetime.now(), "Cool data col 2, value 1", "Cool data col 2, value 2", "Cool data col 2, value 3"),
+    ]
+
+    headers = ["Timestamp", "Data 1", "Data 2", "Data 3"]
+
+    # HTML output:
+    report = ArtifactHtmlReport("Cool stuff")
+    report_name = "Cool DFIR Data"
+    report.start_artifact_report(report_folder, report_name)
+    report.add_script()
+    report.write_artifact_data_table(headers, rows, files_found[0])  # assuming only the first file was processed
+    report.end_artifact_report()
+
+    # TSV output:
+    scripts.ilapfuncs.tsv(report_folder, headers, rows, report_name, files_found[0])  # assuming first file only
+
+    # Timeline:
+    scripts.ilapfuncs.timeline(report_folder, report_name, rows, headers)
+
+```
+
+## Test data and sample_data for your PR
+
+A PR that adds or changes an artifact is easiest to review and merge when it arrives with
+two things: a small test fixture cut from a real extraction, and `sample_data` values that
+record what the module produced. Scripts generate both. Here is the whole flow.
+
+One rule before anything else: whatever you commit here becomes public. Only use data you
+are allowed to share, like a test device you populated yourself, a public research image,
+or a file you sanitized by hand. Never casework.
+
+**1. Cut a fixture from your extraction**
+
+```
+python admin/test/scripts/make_test_data.py <module> --case 1 --input <extraction.zip>
+```
+
+This pulls the files your module's `paths` patterns match out of the extraction and writes
+the case file `admin/test/cases/testdata.<module>.json` plus one small zip per artifact
+under `admin/test/cases/data/<module>/`.
+
+Size rules: under 10 MB per zip, commit it with the PR. Between 10 and 25 MB, commit the
+case file and attach the zip to a PR comment. Bigger than that, say so in the PR and a
+maintainer will arrange a handoff.
+
+**2. Record the expected output**
+
+```
+TZ=UTC python admin/test/scripts/test_module.py <module> -a all -c all
+```
+
+This runs the module against the fixture and writes a snapshot of the output under
+`admin/test/results/<module>/`. Commit the snapshot too. It becomes the baseline that
+guards the module after merge. Keep the `TZ=UTC` part: the committed snapshots are UTC
+and CI runs UTC.
+
+**3. Run the same comparison CI will run**
+
+```
+python admin/test/scripts/run_test_cases.py --module <module>
+```
+
+**4. Generate the sample_data values**
+
+```
+python admin/scripts/validate_sample_data.py --emit <extraction.zip> --key <image_name>
+```
+
+This runs ALEAPP end to end on your extraction and prints ready-to-paste `sample_data`
+blocks for the modules changed on your branch. Paste them into your module's
+`__artifacts_v2__` and add the app name and version you saw on the image. If a count is
+zero, check the source file really is empty before recording it.
+
+**5. Commit it all and open the PR**
+
+Commit the module, the case file, the fixture zips, and the recorded snapshot together.
+More detail lives in
+[admin/docs/testing/create_module_test_cases.md](admin/docs/testing/create_module_test_cases.md).
+
+If your extraction cannot be shared, open the PR anyway and say so. A fixture can often be
+cut from a public research image instead, or the real file can be sanitized by hand. The
+review does not stop while we work that out.
+
+## Acknowledgements
+
+This tool is the result of a collaborative effort of many people in the DFIR community.
+
+ALEAPP logo courtesy of Kevin Pagano. The earlier ALEAPP logo was by Derek Eiri.

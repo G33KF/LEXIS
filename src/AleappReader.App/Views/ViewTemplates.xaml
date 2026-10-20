@@ -1,0 +1,1949 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:vm="clr-namespace:AleappReader.App.ViewModels"
+                    xmlns:views="clr-namespace:AleappReader.App.Views"
+                    xmlns:local="clr-namespace:AleappReader.App"
+                    xmlns:core="clr-namespace:AleappReader.Core;assembly=AleappReader.Core">
+
+    <local:NullToCollapsedConverter x:Key="Vis"/>
+    <local:MediaImageConverter x:Key="MediaImage"/>
+    <local:MediaUriConverter x:Key="MediaUri"/>
+    <local:PreviewFitConverter x:Key="PreviewFit"/>
+    <local:InSetConverter x:Key="InSet"/>
+    <local:ToArrayConverter x:Key="ToArray"/>
+    <local:TranslationConverter x:Key="Tr"/>
+    <local:MediaNoteConverter x:Key="MediaNote"/>
+    <local:TagColorConverter x:Key="TagColor"/>
+    <local:TagOfConverter x:Key="TagOf"/>
+    <local:EqualsConverter x:Key="IsApps" Value="Apps"/>
+    <local:FillWidthConverter x:Key="FillWidth"/>
+    <Style x:Key="FilterCaption" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="10.5"/>
+        <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+        <Setter Property="Margin" Value="1,0,0,2"/>
+    </Style>
+
+    <!-- Original / Translated / Both: how the saved AI translations of the records show (DataContext: a TranslationView). -->
+    <DataTemplate x:Key="TranslationPicker">
+        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" ToolTip="AI translations of these records (made with Translate): the original text, the translation, or both">
+            <TextBlock Style="{StaticResource Icon}" Text="&#xE8C1;" VerticalAlignment="Center" Margin="0,0,4,0"/>
+            <ComboBox ItemsSource="{x:Static vm:TranslationView.Modes}" SelectedItem="{Binding Mode}" Width="95" VerticalAlignment="Center"/>
+            <TextBlock Text="{Binding CountText}" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" Margin="6,0"/>
+        </StackPanel>
+    </DataTemplate>
+
+    <!-- Header strip shared by the list views. -->
+    <Style x:Key="ViewHeader" TargetType="Border">
+        <Setter Property="Background" Value="White"/>
+        <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+        <Setter Property="BorderThickness" Value="0,0,0,1"/>
+        <Setter Property="Padding" Value="10,8"/>
+        <Setter Property="DockPanel.Dock" Value="Top"/>
+    </Style>
+
+    <DataTemplate DataType="{x:Type vm:ArtifactViewModel}"><views:ArtifactView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vm:MapViewModel}"><views:MapView/></DataTemplate>
+
+    <!-- Text that reads as a label but can be selected and copied -->
+    <Style x:Key="Selectable" TargetType="TextBox">
+        <Setter Property="IsReadOnly" Value="True"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Padding" Value="0"/>
+        <Setter Property="TextWrapping" Value="Wrap"/>
+    </Style>
+
+    <Style x:Key="WrapCell" TargetType="TextBlock">
+        <Setter Property="TextWrapping" Value="Wrap"/>
+    </Style>
+
+    <!-- Case summary -->
+    <DataTemplate x:Key="FieldList">
+        <ItemsControl ItemsSource="{Binding}">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <DockPanel Margin="0,2"><TextBox Style="{StaticResource Selectable}" Text="{Binding Name, Mode=OneWay}" Width="170" Foreground="{StaticResource MutedBrush}"/>
+                        <TextBox Style="{StaticResource Selectable}" Text="{Binding Value, Mode=OneWay}"/></DockPanel>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+    </DataTemplate>
+
+    <!-- The LEAPP's device information, one block per category: label, value, and the artifact it came from -->
+    <DataTemplate x:Key="FactGroups">
+        <ItemsControl ItemsSource="{Binding}">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <StackPanel Margin="0,0,0,10">
+                        <TextBlock Text="{Binding Title}" Style="{StaticResource SectionHeader}" Margin="0,0,0,4"/>
+                        <ItemsControl ItemsSource="{Binding Facts}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <DockPanel Margin="0,2">
+                                        <TextBox Style="{StaticResource Selectable}" Text="{Binding Label, Mode=OneWay}" Width="200" Foreground="{StaticResource MutedBrush}"/>
+                                        <TextBlock DockPanel.Dock="Right" Text="{Binding Source}" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="10,0,0,0"
+                                                   MaxWidth="260" TextTrimming="CharacterEllipsis" ToolTip="Artifact the LEAPP read this from"/>
+                                        <TextBox Text="{Binding Shown, Mode=OneWay}" IsReadOnly="True" BorderThickness="0" TextWrapping="Wrap" Background="Transparent"/>
+                                    </DockPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+    </DataTemplate>
+
+    <!-- Artifacts with records, each a link to its table -->
+    <DataTemplate x:Key="ArtifactLinks">
+        <ItemsControl ItemsSource="{Binding}">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <TextBlock Margin="0,2">
+                        <Hyperlink Command="{Binding DataContext.OpenArtifactCommand, RelativeSource={RelativeSource AncestorType=TabControl}}" CommandParameter="{Binding}">
+                            <Run Text="{Binding Name, Mode=OneWay}"/></Hyperlink>
+                        <Run Text="{Binding RecordCount, Mode=OneWay, StringFormat=' {0:N0} records'}" Foreground="{StaticResource MutedBrush}"/>
+                        <Run Text="{Binding Category, Mode=OneWay, StringFormat=' · {0}'}" Foreground="{StaticResource MutedBrush}"/>
+                    </TextBlock>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+    </DataTemplate>
+
+    <!-- An investigation case at a glance: the case, then one card per device; a device's name opens its overview -->
+    <DataTemplate DataType="{x:Type vm:CaseOverviewViewModel}">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Margin="16">
+                <StackPanel.Resources>
+                    <Style x:Key="Card" TargetType="Border">
+                        <Setter Property="Background" Value="White"/>
+                        <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+                        <Setter Property="BorderThickness" Value="1"/>
+                        <Setter Property="CornerRadius" Value="4"/>
+                        <Setter Property="Padding" Value="12,8"/>
+                        <Setter Property="Margin" Value="0,0,10,10"/>
+                        <Setter Property="Width" Value="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=WrapPanel}, Converter={StaticResource FillWidth}, ConverterParameter=440}"/>
+                    </Style>
+                    <Style x:Key="Label" TargetType="TextBox" BasedOn="{StaticResource Selectable}">
+                        <Setter Property="Width" Value="170"/>
+                        <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+                    </Style>
+                </StackPanel.Resources>
+                <DockPanel Margin="0,0,0,10">
+                    <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Content="{Binding EditText}" Command="{Binding EditCommand}"
+                            ToolTip="The case's name and number, its devices, their names, colours and order"/>
+                    <TextBlock Style="{StaticResource ViewTitle}" Text="{Binding Case.Title}"/>
+                </DockPanel>
+                <WrapPanel>
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="CASE" Style="{StaticResource SectionHeader}" Margin="0,0,0,4"/>
+                            <ContentControl Content="{Binding CaseInfo}" ContentTemplate="{StaticResource FieldList}" Focusable="False"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource Card}" Visibility="{Binding SharedNames, Converter={StaticResource Vis}}">
+                        <StackPanel>
+                            <TextBlock Text="NAMES ON MORE THAN ONE DEVICE" Style="{StaticResource SectionHeader}" Margin="0,0,0,4"/>
+                            <TextBox Style="{StaticResource Selectable}" Text="{Binding SharedNames, Mode=OneWay}"/>
+                            <TextBlock Foreground="{StaticResource MutedBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0"
+                                       Text="Names recorded with the users' accounts, as each device's overview lists them, spelled the same on two devices or more: a lead, not an identification."/>
+                        </StackPanel>
+                    </Border>
+                </WrapPanel>
+                <TextBlock Text="DEVICES" Style="{StaticResource SectionHeader}" Margin="0,8,0,6"/>
+                <ItemsControl ItemsSource="{Binding Devices}" Focusable="False">
+                    <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border Style="{StaticResource Card}">
+                                <StackPanel>
+                                    <DockPanel Margin="0,0,0,6">
+                                        <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Content="Rename…" ToolTip="The device's name in this case"
+                                                Command="{Binding DataContext.RenameCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding}"/>
+                                        <StackPanel Orientation="Horizontal" DataContext="{Binding Device}">
+                                            <Border Width="11" Height="11" CornerRadius="5.5" Margin="0,0,6,0" Background="{Binding Color}" VerticalAlignment="Center"/>
+                                            <Image Style="{StaticResource PlatformIcon}" Width="16" Height="16" Margin="0,0,6,0"/>
+                                            <TextBlock FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center">
+                                                <Hyperlink Command="{Binding DataContext.OpenDeviceCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                           CommandParameter="{Binding DataContext, RelativeSource={RelativeSource AncestorType=DockPanel}}" ToolTip="Open the device's overview">
+                                                    <Run Text="{Binding Label, Mode=OneWay}"/></Hyperlink></TextBlock>
+                                            <TextBlock Text="{Binding Platform}" Foreground="{StaticResource MutedBrush}" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </DockPanel>
+                                    <ContentControl Content="{Binding Identity}" ContentTemplate="{StaticResource FieldList}" Focusable="False"/>
+                                    <DockPanel Margin="0,2"><TextBox Style="{StaticResource Label}" Text="Records"/>
+                                        <TextBox Style="{StaticResource Selectable}" Text="{Binding Records, Mode=OneWay, StringFormat=N0}"/></DockPanel>
+                                    <DockPanel Margin="0,2"><TextBox Style="{StaticResource Label}" Text="Artifacts with data"/>
+                                        <TextBox Style="{StaticResource Selectable}" Text="{Binding Artifacts, Mode=OneWay, StringFormat=N0}"/></DockPanel>
+                                    <DockPanel Margin="0,2"><TextBox Style="{StaticResource Label}" Text="Tagged items"/>
+                                        <TextBox Style="{StaticResource Selectable}" Text="{Binding Tagged, Mode=OneWay, StringFormat=N0}"/></DockPanel>
+                                    <DockPanel Margin="0,2"><TextBox Style="{StaticResource Label}" Text="Names"/>
+                                        <TextBox Style="{StaticResource Selectable}" Text="{Binding Names, Mode=OneWay}"/></DockPanel>
+                                    <DockPanel Margin="0,2"><TextBox Style="{StaticResource Label}" Text="Phone numbers"/>
+                                        <TextBox Style="{StaticResource Selectable}" Text="{Binding Phones, Mode=OneWay}"/></DockPanel>
+                                    <DockPanel Margin="0,2"><TextBox Style="{StaticResource Label}" Text="Report"/>
+                                        <TextBox Style="{StaticResource Selectable}" Text="{Binding Report, Mode=OneWay}"/></DockPanel>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </ScrollViewer>
+    </DataTemplate>
+
+    <DataTemplate DataType="{x:Type vm:SummaryViewModel}">
+        <DockPanel>
+            <StackPanel DockPanel.Dock="Top" Margin="16,16,16,0">
+                <TextBlock Style="{StaticResource ViewTitle}" Text="Case Summary" Margin="0,0,0,10"/>
+                <Border Padding="10" Margin="0,0,0,12" CornerRadius="3" Visibility="{Binding Integrity, Converter={StaticResource Vis}}">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Background" Value="#FDECEC"/>
+                            <Style.Triggers><DataTrigger Binding="{Binding IntegrityOk}" Value="True"><Setter Property="Background" Value="#E6F4EA"/></DataTrigger></Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <TextBlock Text="{Binding Integrity}" TextWrapping="Wrap"/>
+                </Border>
+            </StackPanel>
+            <TabControl Margin="12,0,12,12">
+                <TabItem Header="Overview">
+                    <!-- cards of the same width filling each row, in the examiner's order; then the user's contents by kind on demand -->
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel Margin="8">
+                            <StackPanel.Resources>
+                                <Style x:Key="Card" TargetType="Border">
+                                    <Setter Property="Background" Value="White"/>
+                                    <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+                                    <Setter Property="BorderThickness" Value="1"/>
+                                    <Setter Property="CornerRadius" Value="4"/>
+                                    <Setter Property="Padding" Value="12,8"/>
+                                    <Setter Property="Margin" Value="0,0,10,10"/>
+                                    <Setter Property="Width" Value="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=WrapPanel}, Converter={StaticResource FillWidth}, ConverterParameter=440}"/>
+                                </Style>
+                                <Style x:Key="KindHeader" TargetType="Border">
+                                    <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+                                    <Setter Property="BorderThickness" Value="0,0,0,1"/>
+                                    <Setter Property="Padding" Value="0,5"/>
+                                </Style>
+                                <Style x:Key="Tile" TargetType="Border">
+                                    <Setter Property="Background" Value="White"/>
+                                    <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+                                    <Setter Property="BorderThickness" Value="1"/>
+                                    <Setter Property="CornerRadius" Value="4"/>
+                                    <Setter Property="Padding" Value="10,6"/>
+                                    <Setter Property="Margin" Value="0,0,8,8"/>
+                                    <Setter Property="Width" Value="280"/>
+                                </Style>
+                            </StackPanel.Resources>
+                            <WrapPanel Margin="0,0,0,6">
+                                <Border Style="{StaticResource Card}" Visibility="{Binding Glance.Count, Converter={StaticResource Vis}}">
+                                    <StackPanel>
+                                        <TextBlock Text="DEVICE" Style="{StaticResource SectionHeader}" Margin="0,0,0,4"/>
+                                        <ContentControl Content="{Binding Glance}" ContentTemplate="{StaticResource FieldList}" Focusable="False"/>
+                                    </StackPanel>
+                                </Border>
+                                <Border Style="{StaticResource Card}" Visibility="{Binding LastSim.Count, Converter={StaticResource Vis}}">
+                                    <StackPanel>
+                                        <TextBlock Text="LAST SIM CARD" Style="{StaticResource SectionHeader}" Margin="0,0,0,4"/>
+                                        <ContentControl Content="{Binding LastSim}" ContentTemplate="{StaticResource FieldList}" Focusable="False"/>
+                                    </StackPanel>
+                                </Border>
+                                <Border Style="{StaticResource Card}" Visibility="{Binding Users.Count, Converter={StaticResource Vis}}">
+                                    <StackPanel>
+                                        <TextBlock Text="USERS AND PROFILES" Style="{StaticResource SectionHeader}" Margin="0,0,0,4"/>
+                                        <ContentControl Content="{Binding Users}" ContentTemplate="{StaticResource FieldList}" Focusable="False"/>
+                                    </StackPanel>
+                                </Border>
+                                <Border Style="{StaticResource Card}" Visibility="{Binding Lifecycle.Count, Converter={StaticResource Vis}}">
+                                    <StackPanel>
+                                        <TextBlock Text="WIPE, SETUP, ACTIVATION AND RESTORE" Style="{StaticResource SectionHeader}" Margin="0,0,0,4"/>
+                                        <ContentControl Content="{Binding Lifecycle}" ContentTemplate="{StaticResource FieldList}" Focusable="False"/>
+                                    </StackPanel>
+                                </Border>
+                                <Border Style="{StaticResource Card}" Visibility="{Binding Statistics.Count, Converter={StaticResource Vis}}">
+                                    <StackPanel>
+                                        <DockPanel Margin="0,0,0,4">
+                                            <TextBlock DockPanel.Dock="Right"><Hyperlink Command="{Binding OpenStatisticsCommand}">Open Statistics</Hyperlink></TextBlock>
+                                            <TextBlock Text="STATISTICS" Style="{StaticResource SectionHeader}"/>
+                                        </DockPanel>
+                                        <ContentControl Content="{Binding Statistics}" ContentTemplate="{StaticResource FieldList}" Focusable="False"/>
+                                    </StackPanel>
+                                </Border>
+                                <Border Style="{StaticResource Card}">
+                                    <StackPanel>
+                                        <TextBlock Text="EXTRACTION" Style="{StaticResource SectionHeader}" Margin="0,0,0,4"/>
+                                        <ContentControl Content="{Binding ExtractionOverview}" ContentTemplate="{StaticResource FieldList}" Focusable="False"/>
+                                    </StackPanel>
+                                </Border>
+                                <Border Style="{StaticResource Card}" Visibility="{Binding HasCaseInfo, Converter={StaticResource Vis}}">
+                                    <StackPanel>
+                                        <TextBlock Text="CASE" Style="{StaticResource SectionHeader}" Margin="0,0,0,4"/>
+                                        <ContentControl Content="{Binding CaseInfo}" ContentTemplate="{StaticResource FieldList}" Focusable="False"/>
+                                    </StackPanel>
+                                </Border>
+                            </WrapPanel>
+                            <Expander Visibility="{Binding Contents.Count, Converter={StaticResource Vis}}">
+                                <Expander.Header>
+                                    <TextBlock Style="{StaticResource SectionHeader}" Text="USER CONTENTS BY TYPE"/>
+                                </Expander.Header>
+                                <StackPanel Margin="18,6,0,0">
+                                    <TextBlock Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,6"
+                                               Text="What the user made or received, by kind: an app known by its name goes where it belongs, any other source where most of its records do. Logs, settings, networks and app usage are left out. Open a kind for its sources, an artifact for its table."/>
+                                    <ItemsControl ItemsSource="{Binding Contents}" Focusable="False">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Style="{StaticResource KindHeader}">
+                                                    <Expander>
+                                                        <Expander.Header>
+                                                            <TextBlock TextTrimming="CharacterEllipsis"><Run Text="{Binding Name, Mode=OneWay}" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource AccentBrush}"/>
+                                                                <Run Text="{Binding Counts, Mode=OneWay, StringFormat='   {0}'}" Foreground="{StaticResource MutedBrush}"/>
+                                                                <Run Text="{Binding Apps, Mode=OneWay, StringFormat='   ·   {0}'}" Foreground="{StaticResource MutedBrush}"/></TextBlock>
+                                                        </Expander.Header>
+                                                        <ItemsControl ItemsSource="{Binding Tiles}" Focusable="False" Margin="22,8,0,0">
+                                                            <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                                            <ItemsControl.ItemTemplate>
+                                                                <DataTemplate>
+                                                                    <Border Style="{StaticResource Tile}">
+                                                                        <StackPanel>
+                                                                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}"/>
+                                                                            <TextBlock Text="{Binding Counts}" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,2"/>
+                                                                            <ItemsControl ItemsSource="{Binding Top}" Focusable="False">
+                                                                                <ItemsControl.ItemTemplate>
+                                                                                    <DataTemplate>
+                                                                                        <TextBlock Margin="0,1" TextWrapping="Wrap">
+                                                                                            <Hyperlink Command="{Binding DataContext.OpenArtifactCommand, RelativeSource={RelativeSource AncestorType=TabControl}}" CommandParameter="{Binding}">
+                                                                                                <Run Text="{Binding Name, Mode=OneWay}"/></Hyperlink>
+                                                                                            <Run Text="{Binding RecordCount, Mode=OneWay, StringFormat=' {0:N0}'}" Foreground="{StaticResource MutedBrush}"/>
+                                                                                        </TextBlock>
+                                                                                    </DataTemplate>
+                                                                                </ItemsControl.ItemTemplate>
+                                                                            </ItemsControl>
+                                                                        </StackPanel>
+                                                                    </Border>
+                                                                </DataTemplate>
+                                                            </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+                                                    </Expander>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <Border Style="{StaticResource KindHeader}" Visibility="{Binding Albums.Count, Converter={StaticResource Vis}}">
+                                        <Expander>
+                                            <Expander.Header>
+                                                <TextBlock><Run Text="Gallery albums" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource AccentBrush}"/>
+                                                    <Run Text="{Binding Albums.Count, Mode=OneWay, StringFormat='   {0} with most pictures and videos; one opens its rows'}" Foreground="{StaticResource MutedBrush}"/></TextBlock>
+                                            </Expander.Header>
+                                            <ItemsControl ItemsSource="{Binding Albums}" Focusable="False" Margin="22,8,0,0">
+                                                <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border Style="{StaticResource Tile}">
+                                                            <StackPanel>
+                                                                <TextBlock TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}">
+                                                                    <Hyperlink Command="{Binding DataContext.OpenAlbumCommand, RelativeSource={RelativeSource AncestorType=TabControl}}" CommandParameter="{Binding}">
+                                                                        <Run Text="{Binding Name, Mode=OneWay}" FontWeight="SemiBold"/></Hyperlink>
+                                                                    <Run Text="{Binding Count, Mode=OneWay, StringFormat=' {0:N0}'}" Foreground="{StaticResource MutedBrush}"/></TextBlock>
+                                                                <TextBlock Text="{Binding Artifact.Name}" Foreground="{StaticResource MutedBrush}" FontSize="11" TextTrimming="CharacterEllipsis"/>
+                                                            </StackPanel>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </Expander>
+                                    </Border>
+                                </StackPanel>
+                            </Expander>
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+
+
+                <TabItem Header="Device">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel Margin="8" MaxWidth="1100" HorizontalAlignment="Left">
+                            <StackPanel Visibility="{Binding HasUfd, Converter={StaticResource Vis}}" Margin="0,0,0,10">
+                                <TextBlock Text="DEVICE (from the .ufd file, as stored)" Style="{StaticResource SectionHeader}" Margin="0,0,0,4"/>
+                                <ContentControl Content="{Binding Device}" ContentTemplate="{StaticResource FieldList}" Focusable="False"/>
+                            </StackPanel>
+                            <TextBlock Text="{Binding FactsSource}" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,6"/>
+                            <ContentControl Content="{Binding DeviceFacts}" ContentTemplate="{StaticResource FactGroups}" Focusable="False"/>
+                            <TextBlock Text="STARTS, RESETS, SETUP AND ACTIVATION" Style="{StaticResource SectionHeader}" Margin="0,4,0,4"/>
+                            <TextBlock Text="Artifacts with records whose name is about the device's boots, resets, setup or activation. Open one for the dates."
+                                       Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,4"/>
+                            <ContentControl Content="{Binding LifecycleArtifacts}" ContentTemplate="{StaticResource ArtifactLinks}" Focusable="False"/>
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+
+                <TabItem Header="Owner &amp; accounts">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel Margin="8" MaxWidth="1100" HorizontalAlignment="Left">
+                            <TextBlock Text="{Binding FactsSource}" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,6"/>
+                            <ContentControl Content="{Binding OwnerFacts}" ContentTemplate="{StaticResource FactGroups}" Focusable="False"/>
+                            <TextBlock Text="ACCOUNTS IN SHORT" Style="{StaticResource SectionHeader}" Margin="0,4,0,4"/>
+                            <TextBlock Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,4"
+                                       Text="The names, phone numbers and e-mail addresses recorded with the accounts (with the apps they are in), then the accounts of each app and the logins saved for websites: read from the artifacts about accounts, profiles and logins, never passwords. An account on the device is not proof of who used it; the account artifacts below hold every record."/>
+                            <TextBlock Text="Reading the account artifacts…" Foreground="{StaticResource MutedBrush}" Visibility="{Binding Accounts, Converter={StaticResource Vis}, ConverterParameter=invert}"/>
+                            <ItemsControl ItemsSource="{Binding Accounts}" Focusable="False" Margin="0,0,0,10">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <!-- a small table per group: the value, the apps it was found in, the rest; every cell can be selected and copied -->
+                                        <Expander Header="{Binding Header}" IsExpanded="{Binding Expanded, Mode=OneTime}" Margin="0,0,0,2">
+                                            <StackPanel Grid.IsSharedSizeScope="True" Margin="18,2,0,6">
+                                                <StackPanel.Resources>
+                                                    <Style TargetType="TextBox">
+                                                        <Setter Property="IsReadOnly" Value="True"/>
+                                                        <Setter Property="BorderThickness" Value="0"/>
+                                                        <Setter Property="Background" Value="Transparent"/>
+                                                        <Setter Property="TextWrapping" Value="Wrap"/>
+                                                        <Setter Property="Margin" Value="0,1,16,1"/>
+                                                    </Style>
+                                                </StackPanel.Resources>
+                                                <Grid TextBlock.FontWeight="SemiBold" TextBlock.Foreground="{StaticResource MutedBrush}">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition SharedSizeGroup="V" MinWidth="180"/>
+                                                        <ColumnDefinition SharedSizeGroup="W" MinWidth="120"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Text="{Binding ValueHeader}" Margin="2,0,16,2"/>
+                                                    <TextBlock Grid.Column="1" Text="Found in (apps, services)" Margin="2,0,16,2"/>
+                                                    <TextBlock Grid.Column="2" Text="{Binding DetailHeader}" Margin="2,0,0,2"/>
+                                                </Grid>
+                                                <ScrollViewer MaxHeight="360" VerticalScrollBarVisibility="Auto">
+                                                    <ItemsControl ItemsSource="{Binding Rows}" Focusable="False">
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate>
+                                                                <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
+                                                                    <Grid>
+                                                                        <Grid.ColumnDefinitions>
+                                                                            <ColumnDefinition SharedSizeGroup="V" MaxWidth="360"/>
+                                                                            <ColumnDefinition SharedSizeGroup="W" MaxWidth="260"/>
+                                                                            <ColumnDefinition Width="*"/>
+                                                                        </Grid.ColumnDefinitions>
+                                                                        <TextBox Text="{Binding Value, Mode=OneWay}" FontWeight="SemiBold"/>
+                                                                        <TextBox Grid.Column="1" Text="{Binding Where, Mode=OneWay}"/>
+                                                                        <TextBox Grid.Column="2" Text="{Binding Detail, Mode=OneWay}" Foreground="{StaticResource MutedBrush}"/>
+                                                                    </Grid>
+                                                                </Border>
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                    </ItemsControl>
+                                                </ScrollViewer>
+                                            </StackPanel>
+                                        </Expander>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Text="ACCOUNT ARTIFACTS" Style="{StaticResource SectionHeader}" Margin="0,4,0,4"/>
+                            <TextBlock Text="Artifacts with records whose name is about accounts (system, app and social accounts): every record and column is there."
+                                       Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,4"/>
+                            <ContentControl Content="{Binding OwnerArtifacts}" ContentTemplate="{StaticResource ArtifactLinks}" Focusable="False"/>
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+
+                <TabItem Header="SIM cards">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel Margin="8" MaxWidth="1100" HorizontalAlignment="Left">
+                            <TextBlock Text="{Binding FactsSource}" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,6"/>
+                            <ContentControl Content="{Binding SimFacts}" ContentTemplate="{StaticResource FactGroups}" Focusable="False"/>
+                            <TextBlock Text="SIM CARDS AND NUMBERS" Style="{StaticResource SectionHeader}" Margin="0,4,0,4"/>
+                            <TextBlock Text="Artifacts with records whose name is about SIM cards, subscriber identities, carriers or phone numbers: the history of the SIMs seen is there."
+                                       Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,4"/>
+                            <ContentControl Content="{Binding SimArtifacts}" ContentTemplate="{StaticResource ArtifactLinks}" Focusable="False"/>
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+
+                <TabItem Header="Report">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <UniformGrid Columns="2" Margin="8" VerticalAlignment="Top">
+                            <StackPanel Margin="0,0,12,0">
+                                <TextBlock Text="EXTRACTION" Style="{StaticResource SectionHeader}" Margin="0,0,0,4"/>
+                                <ContentControl Content="{Binding Extraction}" ContentTemplate="{StaticResource FieldList}" Focusable="False"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,4,0,0" Visibility="{Binding CanVerify, Converter={StaticResource Vis}}">
+                                    <Button Style="{StaticResource FlatButton}" Command="{Binding VerifyCommand}" Content="Verify extraction hash"
+                                            ToolTip="Recompute the SHA-256 of the extraction file (read-only) and compare it with the one recorded in the .ufd file"/>
+                                </StackPanel>
+                                <Button Style="{StaticResource FlatButton}" Command="{Binding HashContentCommand}" Content="Content manifest and root hash…" HorizontalAlignment="Left" Margin="0,4,0,0"
+                                        Visibility="{Binding CanHashContent, Converter={StaticResource Vis}}"
+                                        ToolTip="Hash every file of the extraction (read-only): one SHA-256 line per file, sorted by path. The SHA-256 of that list is the content root; it stays the same wherever the extraction is copied or zipped"/>
+                                <TextBox Text="{Binding ContentResult, Mode=OneWay}" IsReadOnly="True" BorderThickness="0" Background="Transparent" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                                <TextBlock Text="{Binding VerifyResult}" TextWrapping="Wrap" Margin="0,4,0,0">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Verified}" Value="True"><Setter Property="Foreground" Value="#1E7B34"/></DataTrigger>
+                                                <DataTrigger Binding="{Binding Verified}" Value="False"><Setter Property="Foreground" Value="#B3261E"/></DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                                <StackPanel Visibility="{Binding HasCaseInfo, Converter={StaticResource Vis}}">
+                                    <TextBlock Text="CASE (from the UFD)" Style="{StaticResource SectionHeader}" Margin="0,12,0,4"/>
+                                    <ContentControl Content="{Binding CaseInfo}" ContentTemplate="{StaticResource FieldList}" Focusable="False"/>
+                                </StackPanel>
+                                <TextBlock Text="LEAPP REPORT" Style="{StaticResource SectionHeader}" Margin="0,12,0,4"/>
+                                <ContentControl Content="{Binding Info}" ContentTemplate="{StaticResource FieldList}" Focusable="False"/>
+                                <Expander Header="LEAPP parameters" Margin="0,8,0,0">
+                                    <ContentControl Content="{Binding Parameters}" ContentTemplate="{StaticResource FieldList}" Focusable="False"/>
+                                </Expander>
+                            </StackPanel>
+                            <StackPanel>
+                                <TextBlock Text="CATEGORIES" Style="{StaticResource SectionHeader}" Margin="0,0,0,4"/>
+                                <DataGrid ItemsSource="{Binding Categories}" MaxHeight="320" SelectionMode="Single">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Category" Binding="{Binding Name}" Width="*"/>
+                                        <DataGridTextColumn Header="Artifacts" Binding="{Binding Artifacts}"/>
+                                        <DataGridTextColumn Header="Records" Binding="{Binding Records, StringFormat=N0}"/>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                                <TextBlock Style="{StaticResource SectionHeader}" Margin="0,12,0,4"><Run Text="MODULES  "/><Run Text="{Binding ModulesText, Mode=OneWay}"/></TextBlock>
+                                <DataGrid ItemsSource="{Binding Modules}" MaxHeight="320" SelectionMode="Single">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Module" Binding="{Binding Name}" Width="*"/>
+                                        <DataGridTextColumn Header="Status" Binding="{Binding Status}"/>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </StackPanel>
+                        </UniformGrid>
+                    </ScrollViewer>
+                </TabItem>
+            </TabControl>
+        </DockPanel>
+    </DataTemplate>
+
+    <!-- Statistics: who the device exchanged with, where it was and when its user was active, from the sources checked -->
+    <DataTemplate x:Key="StatChoices">
+        <ItemsControl ItemsSource="{Binding}" Focusable="False">
+            <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate><CheckBox Content="{Binding Text}" IsChecked="{Binding IsChecked}" Margin="0,1,14,1"/></DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+    </DataTemplate>
+    <!-- one square of a heat map: grey when nothing, the accent colour as deep as the count, nothing outside the period -->
+    <DataTemplate x:Key="HeatCell">
+        <Grid Width="11" Height="11" Margin="1" ToolTip="{Binding Tip}" Cursor="Hand">
+            <Grid.InputBindings>
+                <MouseBinding Gesture="LeftClick" Command="{Binding DataContext.OpenDayCommand, RelativeSource={RelativeSource AncestorType=ScrollViewer}}" CommandParameter="{Binding Day}"/>
+            </Grid.InputBindings>
+            <Grid.Style>
+                <Style TargetType="Grid">
+                    <Style.Triggers><DataTrigger Binding="{Binding Opacity}" Value="-1"><Setter Property="Visibility" Value="Hidden"/></DataTrigger></Style.Triggers>
+                </Style>
+            </Grid.Style>
+            <Border Background="#EBEDF0" CornerRadius="2"/>
+            <Border Background="{StaticResource AccentBrush}" CornerRadius="2" Opacity="{Binding Opacity}"/>
+        </Grid>
+    </DataTemplate>
+    <!-- a stretch of the calendar: its title and total, the months over the weeks, a column per week -->
+    <DataTemplate x:Key="HeatYear">
+        <StackPanel Margin="0,0,0,8">
+            <TextBlock Margin="0,0,0,2"><Run Text="{Binding Year, Mode=OneWay}" FontWeight="SemiBold"/>  <Run Text="{Binding Total, Mode=OneWay}" Foreground="{StaticResource MutedBrush}"/></TextBlock>
+            <StackPanel Orientation="Horizontal">
+                <StackPanel Margin="0,12,4,0">
+                    <TextBlock Text="Mon" FontSize="9" Height="13" Foreground="{StaticResource MutedBrush}"/>
+                    <TextBlock Height="13"/>
+                    <TextBlock Text="Wed" FontSize="9" Height="13" Foreground="{StaticResource MutedBrush}"/>
+                    <TextBlock Height="13"/>
+                    <TextBlock Text="Fri" FontSize="9" Height="13" Foreground="{StaticResource MutedBrush}"/>
+                    <TextBlock Height="13"/>
+                    <TextBlock Text="Sun" FontSize="9" Height="13" Foreground="{StaticResource MutedBrush}"/>
+                </StackPanel>
+                <ItemsControl ItemsSource="{Binding Weeks}" Focusable="False">
+                    <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel>
+                                <Canvas Height="12"><TextBlock Text="{Binding Month}" FontSize="9" Foreground="{StaticResource MutedBrush}"/></Canvas>
+                                <ItemsControl ItemsSource="{Binding Days}" ItemTemplate="{StaticResource HeatCell}" Focusable="False"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </StackPanel>
+    </DataTemplate>
+    <DataTemplate x:Key="ContactTable">
+        <DataGrid ItemsSource="{Binding}" SelectionMode="Single" HeadersVisibility="Column" ScrollViewer.VerticalScrollBarVisibility="Disabled">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="#" Binding="{Binding Rank}"/>
+                <DataGridTextColumn Header="Party" Binding="{Binding Contact}" Width="*"/>
+                <DataGridTextColumn Header="Means" Binding="{Binding Kind}" Width="130"/>
+                <DataGridTextColumn Header="Exchanges" Binding="{Binding Count, StringFormat=N0}"/>
+                <DataGridTextColumn Header="Out / in" Binding="{Binding Direction}"/>
+                <DataGridTextColumn Header="Last" Binding="{Binding Last}"/>
+            </DataGrid.Columns>
+        </DataGrid>
+    </DataTemplate>
+    <DataTemplate DataType="{x:Type vm:StatisticsViewModel}">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Margin="16">
+                <StackPanel.Resources>
+                    <Style x:Key="Card" TargetType="Border">
+                        <Setter Property="Background" Value="White"/>
+                        <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+                        <Setter Property="BorderThickness" Value="1"/>
+                        <Setter Property="CornerRadius" Value="4"/>
+                        <Setter Property="Padding" Value="12,8"/>
+                        <Setter Property="Margin" Value="0,0,10,10"/>
+                        <Setter Property="Width" Value="780"/>
+                    </Style>
+                    <Style x:Key="Caption" TargetType="TextBlock">
+                        <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+                        <Setter Property="Margin" Value="0,0,0,2"/>
+                    </Style>
+                </StackPanel.Resources>
+                <WrapPanel Margin="0,0,0,8">
+                    <TextBlock Style="{StaticResource ViewTitle}" Text="Statistics" Margin="0,0,16,0"/>
+                    <TextBlock Text="{Binding Status}" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"/>
+                </WrapPanel>
+                <WrapPanel>
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="USER ACTIVITY" Style="{StaticResource SectionHeader}" Margin="0,0,0,4"/>
+                            <TextBlock Text="Types of data counted" Style="{StaticResource Caption}"/>
+                            <ContentControl Content="{Binding ActivityTypes}" ContentTemplate="{StaticResource StatChoices}" Focusable="False" Margin="0,0,0,6"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                <TextBlock Text="Period from" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <DatePicker SelectedDate="{Binding From}" Width="125"/>
+                                <TextBlock Text="to" VerticalAlignment="Center" Margin="8,0,6,0"/>
+                                <DatePicker SelectedDate="{Binding To}" Width="125"/>
+                                <Button Style="{StaticResource FlatButton}" Content="Whole period" Command="{Binding WholePeriodCommand}" Margin="8,0,0,0"
+                                        ToolTip="From the first to the last event"/>
+                            </StackPanel>
+                            <TextBlock Text="{Binding ActivityText}" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,6"/>
+                            <ContentControl Content="{Binding LastYear}" ContentTemplate="{StaticResource HeatYear}" Focusable="False"
+                                            Visibility="{Binding LastYear, Converter={StaticResource Vis}}"/>
+                            <Expander Header="Year by year" Margin="0,0,0,6" Visibility="{Binding Years.Count, Converter={StaticResource Vis}}">
+                                <ItemsControl ItemsSource="{Binding Years}" ItemTemplate="{StaticResource HeatYear}" Focusable="False" Margin="0,4,0,0"/>
+                            </Expander>
+                            <TextBlock Text="WEEKDAY × HOUR" Style="{StaticResource SectionHeader}" Margin="0,8,0,4"/>
+                            <ItemsControl ItemsSource="{Binding Hours}" Focusable="False">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="{Binding Label}" Width="34" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"/>
+                                            <ItemsControl ItemsSource="{Binding Cells}" Focusable="False">
+                                                <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Grid Width="20" Height="16" Margin="1" ToolTip="{Binding Tip}">
+                                                            <Border Background="#EBEDF0" CornerRadius="2"/>
+                                                            <Border Background="{StaticResource AccentBrush}" CornerRadius="2" Opacity="{Binding Opacity}"/>
+                                                        </Grid>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <ItemsControl ItemsSource="{Binding HourLabels}" Margin="34,0,0,0" Focusable="False">
+                                <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate><DataTemplate><TextBlock Text="{Binding}" Width="22" FontSize="10" Foreground="{StaticResource MutedBrush}"/></DataTemplate></ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Text="BUSIEST DAYS" Style="{StaticResource SectionHeader}" Margin="0,8,0,4"/>
+                            <ItemsControl ItemsSource="{Binding Peaks}" Focusable="False">
+                                <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Width="230" Margin="0,1">
+                                            <Hyperlink Command="{Binding DataContext.OpenDayCommand, RelativeSource={RelativeSource AncestorType=ScrollViewer}}" CommandParameter="{Binding Day}"
+                                                       ToolTip="Open the timeline of this day"><Run Text="{Binding Text, Mode=OneWay}"/></Hyperlink>
+                                            <Run Text="{Binding Count, Mode=OneWay, StringFormat=' {0:N0} events'}" Foreground="{StaticResource MutedBrush}"/>
+                                        </TextBlock>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="TOP 10 PARTIES, ONE-TO-ONE" Style="{StaticResource SectionHeader}" Margin="0,0,0,4"/>
+                            <TextBlock Text="Means counted (a party's exchanges are added up over them)" Style="{StaticResource Caption}"/>
+                            <ContentControl Content="{Binding Means}" ContentTemplate="{StaticResource StatChoices}" Focusable="False" Margin="0,0,0,6"/>
+                            <ContentControl Content="{Binding Top}" ContentTemplate="{StaticResource ContactTable}" Focusable="False"/>
+                            <TextBlock Text="LAST 10 PARTIES" Style="{StaticResource SectionHeader}" Margin="0,12,0,6"/>
+                            <ContentControl Content="{Binding Recent}" ContentTemplate="{StaticResource ContactTable}" Focusable="False"/>
+                            <TextBlock Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,6,0,0"
+                                       Text="Calls from one call log per means (the biggest: other artifacts copy it); messages from the chats with one party besides the device. A number counts once whatever its prefix."/>
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource Card}" Visibility="{Binding PositionSources.Count, Converter={StaticResource Vis}}">
+                        <StackPanel>
+                            <TextBlock Text="LOCATIONS" Style="{StaticResource SectionHeader}" Margin="0,0,0,4"/>
+                            <TextBlock Text="Artifacts counted (positions)" Style="{StaticResource Caption}"/>
+                            <ContentControl Content="{Binding PositionSources}" ContentTemplate="{StaticResource StatChoices}" Focusable="False" Margin="0,0,0,6"/>
+                            <ContentControl Content="{Binding Locations}" ContentTemplate="{StaticResource FieldList}" Focusable="False"/>
+                            <DataGrid ItemsSource="{Binding Places}" SelectionMode="Single" HeadersVisibility="Column" Margin="0,8,0,0"
+                                      Visibility="{Binding Places.Count, Converter={StaticResource Vis}}" ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="#" Binding="{Binding Rank}"/>
+                                    <DataGridTemplateColumn Header="Place (centre)" Width="*">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Margin="2,0"><Hyperlink Command="{Binding DataContext.ShowPlaceCommand, RelativeSource={RelativeSource AncestorType=ScrollViewer, AncestorLevel=2}}"
+                                                    CommandParameter="{Binding}" ToolTip="Show on the map"><Run Text="{Binding Where, Mode=OneWay}"/></Hyperlink></TextBlock>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTextColumn Header="Positions" Binding="{Binding Positions, StringFormat=N0}"/>
+                                    <DataGridTextColumn Header="Visits" Binding="{Binding Visits, StringFormat=N0}"/>
+                                    <DataGridTextColumn Header="First" Binding="{Binding First}"/>
+                                    <DataGridTextColumn Header="Last" Binding="{Binding Last}"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </StackPanel>
+                    </Border>
+                </WrapPanel>
+            </StackPanel>
+        </ScrollViewer>
+    </DataTemplate>
+
+    <!-- Timeline -->
+    <DataTemplate DataType="{x:Type vm:TimelineViewModel}">
+        <DockPanel>
+            <Border Style="{StaticResource ViewHeader}"><ScrollViewer Style="{StaticResource HeaderScroll}">
+                <local:HeaderPanel>
+                    <TextBlock DockPanel.Dock="Right" Text="{Binding CountText}" VerticalAlignment="Center" Margin="10,0" Foreground="{StaticResource MutedBrush}"/>
+                    <TextBlock Style="{StaticResource ViewTitle}" Text="{Binding Title}" Margin="0,0,16,0"/>
+                    <ItemsControl ItemsSource="{Binding DeviceChoices}" VerticalAlignment="Center" Margin="0,0,8,0" Visibility="{Binding IsJoint, Converter={StaticResource Vis}}">
+                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <CheckBox IsChecked="{Binding IsChecked}" Margin="0,0,10,0" VerticalAlignment="Center" ToolTip="Use this device's events in the timeline">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Border Width="10" Height="10" CornerRadius="2" Margin="0,0,4,0" VerticalAlignment="Center" Background="{Binding Device.Color}"/>
+                                        <TextBlock Text="{Binding Device.Label}"/>
+                                    </StackPanel>
+                                </CheckBox>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <!-- artifacts: a checklist in a drop-down, searchable, all checked to start -->
+                    <Grid VerticalAlignment="Center">
+                        <ToggleButton x:Name="ArtPick" MinWidth="200" Padding="8,3" HorizontalContentAlignment="Left" ToolTip="Choose which artifacts' events to show">
+                            <ToggleButton.Style>
+                                <Style TargetType="ToggleButton">
+                                    <Style.Triggers>
+                                        <!-- while open, a click on the button only closes it (the popup's own outside-click) -->
+                                        <DataTrigger Binding="{Binding IsOpen, ElementName=ArtPop}" Value="True"><Setter Property="IsHitTestVisible" Value="False"/></DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ToggleButton.Style>
+                            <TextBlock><Run Text="{Binding ActivitiesText, Mode=OneWay}"/> <Run Text="▾" Foreground="{StaticResource MutedBrush}"/></TextBlock>
+                        </ToggleButton>
+                        <Popup x:Name="ArtPop" IsOpen="{Binding IsChecked, ElementName=ArtPick}" PlacementTarget="{Binding ElementName=ArtPick}" StaysOpen="False" AllowsTransparency="True">
+                            <Border Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" Padding="6" Width="340">
+                                <DockPanel>
+                                    <TextBox DockPanel.Dock="Top" Style="{StaticResource SearchBox}" Width="Auto" Margin="0,0,0,4"
+                                             Text="{Binding ActivityFilter, UpdateSourceTrigger=PropertyChanged}" ToolTip="Find an artifact in the list"/>
+                                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,4">
+                                        <Button Style="{StaticResource FlatButton}" Content="Check all" Command="{Binding CheckActivitiesCommand}" CommandParameter="True"
+                                                ToolTip="Check every artifact listed (those matching the search, if any)"/>
+                                        <Button Style="{StaticResource FlatButton}" Content="Clear all" Command="{Binding CheckActivitiesCommand}" CommandParameter="False"
+                                                ToolTip="Clear every artifact listed (those matching the search, if any)"/>
+                                    </StackPanel>
+                                    <ListBox ItemsSource="{Binding ActivitiesView}" MaxHeight="420" BorderThickness="0">
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate><CheckBox Content="{Binding Label}" IsChecked="{Binding IsChecked}"/></DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                </DockPanel>
+                            </Border>
+                        </Popup>
+                    </Grid>
+                    <TextBlock Text="From" VerticalAlignment="Center" Margin="12,0,4,0"/>
+                    <DatePicker SelectedDate="{Binding From}" Width="120" VerticalAlignment="Center" SelectedDateFormat="Short"
+                                ToolTip="First day shown (display time zone); empty: from the first event"/>
+                    <TextBlock Text="to" VerticalAlignment="Center" Margin="6,0,4,0"/>
+                    <DatePicker SelectedDate="{Binding To}" Width="120" VerticalAlignment="Center" SelectedDateFormat="Short"
+                                ToolTip="Last day shown, included (display time zone); empty: to the last event"/>
+                    <Button Style="{StaticResource FlatButton}" Content="Whole period" Command="{Binding ClearPeriodCommand}" VerticalAlignment="Center" Margin="4,0,0,0"
+                            ToolTip="Clear both dates"/>
+                    <CheckBox Content="Newest first" IsChecked="{Binding Descending}" VerticalAlignment="Center" Margin="10,0"/>
+                    <TextBox Style="{StaticResource SearchBox}" MinWidth="180" Text="{Binding Filter, UpdateSourceTrigger=PropertyChanged}" ToolTip="Filter (Enter): a b (both), a | b (either), -a (not), &quot;exact phrase&quot;, /regex/" VerticalAlignment="Center">
+                        <TextBox.InputBindings><KeyBinding Key="Enter" Command="{Binding ApplyFilterCommand}"/></TextBox.InputBindings>
+                    </TextBox>
+                </local:HeaderPanel>
+            </ScrollViewer></Border>
+            <ScrollViewer DockPanel.Dock="Top" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" Height="58"
+                          ToolTip="Events per day (display time zone). Click a bar to jump to its first event.">
+                <ItemsControl ItemsSource="{Binding Days}" Margin="8,4" VerticalAlignment="Bottom">
+                    <ItemsControl.ItemsPanel><ItemsPanelTemplate><VirtualizingStackPanel Orientation="Horizontal"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Button Command="{Binding DataContext.GoToDayCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding}"
+                                    ToolTip="{Binding Tip}" VerticalAlignment="Bottom" Cursor="Hand" Focusable="False">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="Transparent" Padding="1,0" Height="40" VerticalAlignment="Bottom">
+                                            <Rectangle x:Name="bar" Width="5" Height="{Binding Height}" VerticalAlignment="Bottom" Fill="{StaticResource AccentBrush}"/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="bar" Property="Opacity" Value="0.6"/></Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Button.Template>
+                            </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+            <Grid>
+            <DataGrid ItemsSource="{Binding Events}" SelectedItem="{Binding Selected}" BorderThickness="0" local:RecordGrid.Enabled="True"
+                      ToolTip="One row per dated field of each record. Right-click: tags, open in its artifact. Double-click: every detail.">
+                <DataGrid.Columns>
+                    <DataGridTemplateColumn Header="Time" Width="Auto">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <!-- in the joint timeline the device comes first, in its colour -->
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Border Background="{Binding DeviceColor}" CornerRadius="2" Padding="5,0" Margin="0,0,6,0"
+                                            Visibility="{Binding DeviceLabel, Converter={StaticResource Vis}}">
+                                        <TextBlock Text="{Binding DeviceLabel}" Foreground="White" FontSize="11"/>
+                                    </Border>
+                                    <Ellipse Width="9" Height="9" Margin="0,0,5,0" VerticalAlignment="Center" Fill="{Binding Tag, Converter={StaticResource TagColor}}"
+                                             ToolTip="{Binding Tag}" Visibility="{Binding Tag, Converter={StaticResource Vis}}"/>
+                                    <TextBlock Text="{Binding Timestamp}"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTextColumn Header="Artifact" Binding="{Binding Activity}" Width="SizeToCells" MinWidth="120" MaxWidth="360"/>
+                    <DataGridTextColumn Header="Event (time field)" Binding="{Binding EventType}" Width="SizeToCells" MinWidth="110" MaxWidth="260"/>
+                    <DataGridTemplateColumn Header="Details" Width="SizeToCells" MinWidth="320">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <ItemsControl ItemsSource="{Binding Highlights}" VerticalAlignment="Center" Focusable="False">
+                                    <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Orientation="Horizontal" Margin="0,0,14,0">
+                                                <TextBlock Text="{Binding Name}" Foreground="{StaticResource MutedBrush}" FontSize="11" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                                <TextBlock Text="{Binding Value}" VerticalAlignment="Center"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+            <TextBlock Text="{Binding EmptyText}" Style="{StaticResource EmptyText}" Visibility="{Binding EmptyText, Converter={StaticResource Vis}}"/>
+            </Grid>
+        </DockPanel>
+    </DataTemplate>
+
+    <!-- Device label in its colour, for the cross-device views -->
+    <DataTemplate x:Key="DeviceChip">
+        <Border Background="{Binding Color}" CornerRadius="2" Padding="5,0" HorizontalAlignment="Left" VerticalAlignment="Center">
+            <TextBlock Text="{Binding Label}" Foreground="White" FontSize="11"/>
+        </Border>
+    </DataTemplate>
+
+    <!-- Co-presence across devices -->
+    <DataTemplate DataType="{x:Type vm:CoPresenceViewModel}">
+        <DockPanel>
+            <Border Style="{StaticResource ViewHeader}"><ScrollViewer Style="{StaticResource HeaderScroll}">
+                <StackPanel>
+                    <WrapPanel>
+                        <TextBlock Style="{StaticResource ViewTitle}" Text="Co-presence" Margin="0,0,16,0"/>
+                        <TextBlock Text="Radius (m)" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                        <TextBox Text="{Binding Radius, UpdateSourceTrigger=PropertyChanged}" Width="60" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                        <TextBlock Text="Time window (min)" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                        <TextBox Text="{Binding Minutes, UpdateSourceTrigger=PropertyChanged}" Width="50" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                        <TextBlock Text="Devices at least" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                        <ComboBox ItemsSource="{Binding MinChoices}" SelectedItem="{Binding MinDevices}" Width="50" VerticalAlignment="Center" Margin="0,0,12,0"
+                                  ToolTip="Keep the co-presences of at least this many devices"/>
+                        <!-- sources: the artifacts with dated positions, a searchable checklist, all checked to start -->
+                        <Grid VerticalAlignment="Center" Margin="0,0,12,0">
+                            <ToggleButton x:Name="CpSrcPick" MinWidth="170" Padding="8,3" HorizontalContentAlignment="Left" ToolTip="Choose which artifacts the positions compared may come from">
+                                <ToggleButton.Style>
+                                    <Style TargetType="ToggleButton">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsOpen, ElementName=CpSrcPop}" Value="True"><Setter Property="IsHitTestVisible" Value="False"/></DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </ToggleButton.Style>
+                                <TextBlock><Run Text="{Binding SourcesText, Mode=OneWay}"/> <Run Text="▾" Foreground="{StaticResource MutedBrush}"/></TextBlock>
+                            </ToggleButton>
+                            <Popup x:Name="CpSrcPop" IsOpen="{Binding IsChecked, ElementName=CpSrcPick}" PlacementTarget="{Binding ElementName=CpSrcPick}" StaysOpen="False" AllowsTransparency="True">
+                                <Border Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" Padding="6" Width="340">
+                                    <DockPanel>
+                                        <TextBox DockPanel.Dock="Top" Style="{StaticResource SearchBox}" Width="Auto" Margin="0,0,0,4"
+                                                 Text="{Binding SourceFilter, UpdateSourceTrigger=PropertyChanged}" ToolTip="Find an artifact in the list"/>
+                                        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,4">
+                                            <Button Style="{StaticResource FlatButton}" Content="Check all" Command="{Binding CheckSourcesCommand}" CommandParameter="True"/>
+                                            <Button Style="{StaticResource FlatButton}" Content="Clear all" Command="{Binding CheckSourcesCommand}" CommandParameter="False"/>
+                                        </StackPanel>
+                                        <TextBlock DockPanel.Dock="Top" Text="Reading the positions, or none has a time." TextWrapping="Wrap"
+                                                   Foreground="{StaticResource MutedBrush}" Visibility="{Binding Sources.Count, Converter={StaticResource Vis}, ConverterParameter=invert}"/>
+                                        <ListBox ItemsSource="{Binding SourcesView}" MaxHeight="420" BorderThickness="0">
+                                            <ListBox.ItemTemplate>
+                                                <DataTemplate><CheckBox Content="{Binding Label}" IsChecked="{Binding IsChecked}"/></DataTemplate>
+                                            </ListBox.ItemTemplate>
+                                        </ListBox>
+                                    </DockPanel>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                        <Button Style="{StaticResource FlatButton}" Content="Run" Command="{Binding RunCommand}"/>
+                        <Button Style="{StaticResource FlatButton}" Content="Cancel" Command="{Binding CancelCommand}" Visibility="{Binding Running, Converter={StaticResource Vis}}"/>
+                        <Button Style="{StaticResource FlatButton}" Content="Show on map" Command="{Binding ShowOnMapCommand}" Margin="12,0,0,0"
+                                ToolTip="Every co-presence on a map, each a numbered circle, listed in a window of its own; the map opens on the one selected"/>
+                    </WrapPanel>
+                    <DockPanel Margin="0,6,0,0">
+                        <TextBlock Text="Devices" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <ItemsControl ItemsSource="{Binding DeviceChoices}">
+                            <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <CheckBox IsChecked="{Binding IsChecked}" Margin="0,2,14,2" VerticalAlignment="Center" ToolTip="Compare this device; clear it to leave its positions out">
+                                        <StackPanel Orientation="Horizontal">
+                                            <Border Width="10" Height="10" CornerRadius="2" Margin="0,0,4,0" VerticalAlignment="Center" Background="{Binding Device.Color}"/>
+                                            <TextBlock Text="{Binding Device.Label}"/>
+                                        </StackPanel>
+                                    </CheckBox>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </DockPanel>
+                    <TextBlock Text="{Binding Info}" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                </StackPanel>
+            </ScrollViewer></Border>
+            <!-- the co-presences above, the positions of the one selected below -->
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="3*" MinHeight="80"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="2*" MinHeight="60"/>
+                </Grid.RowDefinitions>
+                <DataGrid ItemsSource="{Binding Rows}" SelectedItem="{Binding Selected}" BorderThickness="0" SelectionMode="Single"
+                          ToolTip="Devices whose positions are within the radius and the window of each other, directly or through others. Near records, not a proof that the devices or their users met.">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="#" Binding="{Binding Number}"/>
+                        <DataGridTextColumn Header="Devices" Binding="{Binding Devices}" MaxWidth="320"/>
+                        <DataGridTextColumn Header="From" Binding="{Binding From}" SortMemberPath="FromEpoch"/>
+                        <DataGridTextColumn Header="To" Binding="{Binding To}"/>
+                        <DataGridTextColumn Header="Span" Binding="{Binding Span}"/>
+                        <DataGridTextColumn Header="Positions" Binding="{Binding Positions}"/>
+                        <DataGridTextColumn Header="Largest distance" Binding="{Binding Distance}"/>
+                        <DataGridTextColumn Header="Centre" Binding="{Binding Centre}" Width="*"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+                <GridSplitter Grid.Row="1" Height="5" HorizontalAlignment="Stretch" ResizeDirection="Rows" ResizeBehavior="PreviousAndNext" Background="{StaticResource BorderBrush}"/>
+                <DockPanel Grid.Row="2">
+                    <WrapPanel DockPanel.Dock="Top" Margin="8,4">
+                        <TextBlock Text="Positions of the co-presence selected" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                        <Button Style="{StaticResource FlatButton}" Content="Open record" Command="{Binding OpenCommand}" ToolTip="Opens the record of the position selected in its artifact (or double-click it)"/>
+                    </WrapPanel>
+                    <DataGrid ItemsSource="{Binding Selected.Points}" SelectedItem="{Binding SelectedPoint}" BorderThickness="0" SelectionMode="Single">
+                        <DataGrid.InputBindings>
+                            <MouseBinding Gesture="LeftDoubleClick" Command="{Binding OpenCommand}"/>
+                        </DataGrid.InputBindings>
+                        <DataGrid.Columns>
+                            <DataGridTemplateColumn Header="Device" SortMemberPath="Label"><DataGridTemplateColumn.CellTemplate><DataTemplate>
+                                <ContentControl Content="{Binding}" ContentTemplate="{StaticResource DeviceChip}" Focusable="False"/>
+                            </DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
+                            <DataGridTextColumn Header="Time" Binding="{Binding Time}"/>
+                            <DataGridTextColumn Header="Source" Binding="{Binding Source}" MaxWidth="260"/>
+                            <DataGridTextColumn Header="Position" Binding="{Binding Position}"/>
+                            <DataGridTextColumn Header="Record" Binding="{Binding Point.Label}" Width="*"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+            </Grid>
+        </DockPanel>
+    </DataTemplate>
+
+    <!-- A category of the tree: its artifacts, one click opens a table -->
+    <DataTemplate DataType="{x:Type vm:CategoryViewModel}">
+        <DockPanel>
+            <Border Style="{StaticResource ViewHeader}">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource ViewTitle}" Text="{Binding Title}"/>
+                    <TextBlock Text="{Binding Info}" Foreground="{StaticResource MutedBrush}"/>
+                </StackPanel>
+            </Border>
+            <DataGrid ItemsSource="{Binding Artifacts}" SelectionMode="Single" HeadersVisibility="Column" IsReadOnly="True">
+                <DataGrid.Columns>
+                    <DataGridTemplateColumn Header="Artifact" Width="2*" SortMemberPath="Name">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock Margin="2,1"><Hyperlink Command="{Binding DataContext.OpenCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" CommandParameter="{Binding}"><Run Text="{Binding Name, Mode=OneWay}"/></Hyperlink></TextBlock>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTextColumn Header="App or source" Binding="{Binding Category}" Width="*"/>
+                    <DataGridTextColumn Header="Records" Binding="{Binding RecordCount, StringFormat=N0}" Width="90"/>
+                </DataGrid.Columns>
+            </DataGrid>
+        </DockPanel>
+    </DataTemplate>
+
+    <!-- Contacts common to several devices -->
+    <DataTemplate DataType="{x:Type vm:CommonContactsViewModel}">
+        <DockPanel>
+            <Border Style="{StaticResource ViewHeader}"><ScrollViewer Style="{StaticResource HeaderScroll}">
+                <StackPanel>
+                    <WrapPanel>
+                        <TextBlock Style="{StaticResource ViewTitle}" Text="Common Contacts" Margin="0,0,16,0"/>
+                        <Button Style="{StaticResource FlatButton}" Content="Run" Command="{Binding RunCommand}" Margin="0,0,12,0" VerticalAlignment="Center"/>
+                        <TextBox Style="{StaticResource SearchBox}" Text="{Binding Filter, UpdateSourceTrigger=PropertyChanged}" Width="200" VerticalAlignment="Center" Margin="0,0,8,0"
+                                 ToolTip="Keep the identifiers whose number, address, name, value or source holds this text"/>
+                        <ComboBox ItemsSource="{Binding Kinds}" SelectedItem="{Binding Kind}" MinWidth="130" VerticalAlignment="Center" Margin="0,0,8,0" ToolTip="Keep one type of identifier"/>
+                        <!-- sources: a checklist in a drop-down, searchable, all checked to start -->
+                        <Grid VerticalAlignment="Center">
+                            <ToggleButton x:Name="CcSrcPick" MinWidth="170" Padding="8,3" HorizontalContentAlignment="Left" ToolTip="Choose which artifacts the identifiers may come from">
+                                <ToggleButton.Style>
+                                    <Style TargetType="ToggleButton">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsOpen, ElementName=CcSrcPop}" Value="True"><Setter Property="IsHitTestVisible" Value="False"/></DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </ToggleButton.Style>
+                                <TextBlock><Run Text="{Binding SourcesText, Mode=OneWay}"/> <Run Text="▾" Foreground="{StaticResource MutedBrush}"/></TextBlock>
+                            </ToggleButton>
+                            <Popup x:Name="CcSrcPop" IsOpen="{Binding IsChecked, ElementName=CcSrcPick}" PlacementTarget="{Binding ElementName=CcSrcPick}" StaysOpen="False" AllowsTransparency="True">
+                                <Border Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" Padding="6" Width="340">
+                                    <DockPanel>
+                                        <TextBox DockPanel.Dock="Top" Style="{StaticResource SearchBox}" Width="Auto" Margin="0,0,0,4"
+                                                 Text="{Binding SourceFilter, UpdateSourceTrigger=PropertyChanged}" ToolTip="Find an artifact in the list"/>
+                                        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,4">
+                                            <Button Style="{StaticResource FlatButton}" Content="Check all" Command="{Binding CheckSourcesCommand}" CommandParameter="True"/>
+                                            <Button Style="{StaticResource FlatButton}" Content="Clear all" Command="{Binding CheckSourcesCommand}" CommandParameter="False"/>
+                                        </StackPanel>
+                                        <TextBlock DockPanel.Dock="Top" Text="Run first: the list holds the artifacts the identifiers were found in." TextWrapping="Wrap"
+                                                   Foreground="{StaticResource MutedBrush}" Visibility="{Binding Sources.Count, Converter={StaticResource Vis}, ConverterParameter=invert}"/>
+                                        <ListBox ItemsSource="{Binding SourcesView}" MaxHeight="420" BorderThickness="0">
+                                            <ListBox.ItemTemplate>
+                                                <DataTemplate><CheckBox Content="{Binding Label}" IsChecked="{Binding IsChecked}"/></DataTemplate>
+                                            </ListBox.ItemTemplate>
+                                        </ListBox>
+                                    </DockPanel>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                    </WrapPanel>
+                    <DockPanel Margin="0,6,0,0">
+                        <TextBlock Text="Devices" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <ItemsControl ItemsSource="{Binding DeviceChoices}">
+                            <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <CheckBox IsChecked="{Binding IsChecked}" Margin="0,2,14,2" VerticalAlignment="Center" ToolTip="Compare this device; clear it to leave its records out">
+                                        <StackPanel Orientation="Horizontal">
+                                            <Border Width="10" Height="10" CornerRadius="2" Margin="0,0,4,0" VerticalAlignment="Center" Background="{Binding Device.Color}"/>
+                                            <TextBlock Text="{Binding Device.Label}"/>
+                                        </StackPanel>
+                                    </CheckBox>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </DockPanel>
+                    <TextBlock Text="{Binding Info}" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                </StackPanel>
+            </ScrollViewer></Border>
+            <DataGrid DockPanel.Dock="Bottom" Height="200" ItemsSource="{Binding Selected.Sources}" SelectedItem="{Binding SelectedSource}" SelectionMode="Single"
+                      BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" ToolTip="The records the selected number or address was found in">
+                <DataGrid.Columns>
+                    <DataGridTemplateColumn Header="Device"><DataGridTemplateColumn.CellTemplate><DataTemplate>
+                        <Border Background="{Binding Color}" CornerRadius="2" Padding="5,0" HorizontalAlignment="Left"><TextBlock Text="{Binding Device}" Foreground="White" FontSize="11"/></Border>
+                    </DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
+                    <DataGridTextColumn Header="Artifact" Binding="{Binding Artifact}"/>
+                    <DataGridTextColumn Header="Record" Binding="{Binding Source.RowId}"/>
+                    <DataGridTextColumn Header="Field" Binding="{Binding Source.Field}"/>
+                    <DataGridTextColumn Header="Value as stored" Binding="{Binding Source.Value}"/>
+                    <DataGridTextColumn Header="Name" Binding="{Binding Source.Name}" Width="*"/>
+                    <DataGridTemplateColumn><DataGridTemplateColumn.CellTemplate><DataTemplate>
+                        <Button Style="{StaticResource FlatButton}" Content="Open" Command="{Binding DataContext.OpenCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" CommandParameter="{Binding}"/>
+                    </DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+            <DataGrid ItemsSource="{Binding Rows}" SelectedItem="{Binding Selected}" BorderThickness="0" SelectionMode="Single">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Number or address" Binding="{Binding Key}"/>
+                    <DataGridTextColumn Header="Type" Binding="{Binding Kind}"/>
+                    <DataGridTextColumn Header="Devices" Binding="{Binding Devices}"/>
+                    <DataGridTextColumn Header="On" Binding="{Binding On}"/>
+                    <DataGridTextColumn Header="Names recorded" Binding="{Binding Names}" Width="*"/>
+                </DataGrid.Columns>
+            </DataGrid>
+        </DockPanel>
+    </DataTemplate>
+
+    <!-- One media file as a tile: the gallery, and an artifact's thumbnail view -->
+    <DataTemplate x:Key="MediaTile">
+        <StackPanel Width="170" Margin="4" ToolTip="{Binding Tip}">
+            <Grid Height="140" Background="#EEF1F5">
+                <TextBlock Style="{StaticResource Icon}" Text="{Binding Glyph}" FontSize="40" Foreground="#AEB8C5" HorizontalAlignment="Center"/>
+                <Image Source="{Binding Thumbnail}" Stretch="Uniform"/>
+                <Border Width="40" Height="40" CornerRadius="20" Background="#99000000" HorizontalAlignment="Center" VerticalAlignment="Center"
+                        Visibility="{Binding IsVideo, Converter={StaticResource Vis}}" IsHitTestVisible="False">
+                    <TextBlock Style="{StaticResource Icon}" Text="&#xE768;" Foreground="White" FontSize="18" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+                <CheckBox IsChecked="{Binding IsChecked}" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="4" Focusable="False"
+                          ToolTip="Check: the AI buttons and exports act on the checked items"/>
+                <Ellipse Width="14" Height="14" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="5" Stroke="White" StrokeThickness="1.5"
+                         Fill="{Binding Tag, Converter={StaticResource TagColor}}" ToolTip="{Binding Tag}" Visibility="{Binding Tag, Converter={StaticResource Vis}}"/>
+            </Grid>
+            <TextBlock Text="{Binding Media.Name}" TextTrimming="CharacterEllipsis" Margin="0,3,0,0"/>
+            <TextBlock Text="{Binding Caption}" TextTrimming="CharacterEllipsis" FontSize="11" Foreground="{StaticResource MutedBrush}"/>
+        </StackPanel>
+    </DataTemplate>
+
+    <!-- Media gallery -->
+    <DataTemplate DataType="{x:Type vm:GalleryViewModel}">
+        <DockPanel>
+            <Border Style="{StaticResource ViewHeader}"><ScrollViewer Style="{StaticResource HeaderScroll}">
+                <local:HeaderPanel>
+                    <WrapPanel Orientation="Horizontal" DockPanel.Dock="Right">
+                        <TextBlock Text="{Binding CheckedText}" VerticalAlignment="Center" Margin="0,0,6,0" FontWeight="SemiBold"
+                                   ToolTip="The AI buttons act on the checked files the filters keep. Space checks or unchecks the selected tiles."/>
+                        <Button Style="{StaticResource FlatButton}" Command="{Binding CheckAllCommand}" ToolTip="Check every file">
+                            <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE73A;"/><TextBlock Text=" Check all"/></StackPanel>
+                        </Button>
+                        <Button Style="{StaticResource FlatButton}" Command="{Binding ClearChecksCommand}" ToolTip="Uncheck every file" Margin="0,0,8,0">
+                            <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE739;"/><TextBlock Text=" Uncheck all"/></StackPanel>
+                        </Button>
+                        <Button Style="{StaticResource FlatButton}" Command="{Binding DescribeCommand}" IsEnabled="{Binding Enabled, Source={x:Static local:AiState.Instance}}" ToolTipService.ShowOnDisabled="True"
+                                ToolTip="AI on the checked images: what each shows, and its text read (OCR) and translated">
+                            <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE8B9;"/><TextBlock Text=" Describe + OCR"/></StackPanel>
+                        </Button>
+                        <Button Style="{StaticResource FlatButton}" Command="{Binding TranscribeCommand}" IsEnabled="{Binding Enabled, Source={x:Static local:AiState.Instance}}" ToolTipService.ShowOnDisabled="True"
+                                ToolTip="AI on the checked audio files (else every audio file the filters keep): speech to text">
+                            <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE720;"/><TextBlock Text=" Transcribe"/></StackPanel>
+                        </Button>
+                        <Button Style="{StaticResource FlatButton}" Command="{Binding AiCommand}" IsEnabled="{Binding Enabled, Source={x:Static local:AiState.Instance}}" ToolTipService.ShowOnDisabled="True" Margin="0,0,10,0"
+                                ToolTip="AI on the checked files, else every file the filters keep: image classification, description and OCR, audio transcription">
+                            <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE945;"/><TextBlock Text=" AI"/></StackPanel>
+                        </Button>
+                        <Button Style="{StaticResource FlatButton}" Command="{Binding PrevPageCommand}"><TextBlock Style="{StaticResource Icon}" Text="&#xE76B;" FontSize="11"/></Button>
+                        <TextBlock Text="{Binding PageText}" VerticalAlignment="Center" Margin="6,0" MinWidth="120" TextAlignment="Center"/>
+                        <Button Style="{StaticResource FlatButton}" Command="{Binding NextPageCommand}"><TextBlock Style="{StaticResource Icon}" Text="&#xE76C;" FontSize="11"/></Button>
+                    </WrapPanel>
+                    <TextBlock Style="{StaticResource ViewTitle}" Text="Media Gallery" Margin="0,0,16,0"/>
+                    <StackPanel Margin="0,0,10,0">
+                        <TextBlock Style="{StaticResource FilterCaption}" Text="Files shown"/>
+                        <ComboBox ItemsSource="{Binding SourceChoices}" SelectedItem="{Binding Source}" Width="170"
+                                  ToolTip="Linked to records: only the files ALEAPP/iLEAPP tied to a record (chat attachments, photos, avatars). Whole extraction: every picture, video and audio file in the phone image, linked or not (read-only)."/>
+                    </StackPanel>
+                    <StackPanel Margin="0,0,10,0">
+                        <TextBlock Style="{StaticResource FilterCaption}" Text="Type"/>
+                        <ComboBox ItemsSource="{Binding Kinds}" SelectedItem="{Binding Kind}" Width="90"/>
+                    </StackPanel>
+                    <StackPanel Margin="0,0,10,0">
+                        <TextBlock Style="{StaticResource FilterCaption}" Text="App"/>
+                        <ComboBox ItemsSource="{Binding Apps}" SelectedValuePath="Name" SelectedValue="{Binding App}" DisplayMemberPath="Name" Width="190"
+                                  VirtualizingPanel.IsVirtualizingWhenGrouping="True"
+                                  ToolTip="The app the file belongs to, named when its package or artifact is a known app. Others (folded): packages, artifacts and folders not identified">
+                            <ComboBox.GroupStyle>
+                                <GroupStyle>
+                                    <GroupStyle.ContainerStyle>
+                                        <Style TargetType="GroupItem">
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="GroupItem">
+                                                        <Expander Header="{Binding Name}" IsExpanded="{Binding Name, Mode=OneTime, Converter={StaticResource IsApps}}" Padding="8,0,0,0">
+                                                            <ItemsPresenter/>
+                                                        </Expander>
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                        </Style>
+                                    </GroupStyle.ContainerStyle>
+                                </GroupStyle>
+                            </ComboBox.GroupStyle>
+                        </ComboBox>
+                    </StackPanel>
+                    <StackPanel Margin="0,0,10,0">
+                        <TextBlock Style="{StaticResource FilterCaption}" Text="Origin"/>
+                        <ComboBox ItemsSource="{Binding Directions}" SelectedItem="{Binding Direction}" Width="130"
+                                  ToolTip="Device gallery: shared storage the phone's gallery shows (DCIM, Pictures, app folders outside Android/ and hidden folders), iOS camera roll. Sent or received: attached to a chat message. Cache: cache, thumbnail and temporary folders. System files: system partitions and installed app packages. Read from the file's path."/>
+                    </StackPanel>
+                    <StackPanel Margin="0,0,10,0">
+                        <TextBlock Style="{StaticResource FilterCaption}" Text="Date (message, else file modified)"/>
+                        <StackPanel Orientation="Horizontal">
+                            <DatePicker SelectedDate="{Binding From}" Width="115" ToolTip="From this day (the message time, else the file's modification time), in the display time zone"/>
+                            <TextBlock Text="–" VerticalAlignment="Center" Margin="4,0"/>
+                            <DatePicker SelectedDate="{Binding To}" Width="115" ToolTip="To this day, included"/>
+                        </StackPanel>
+                    </StackPanel>
+                    <TextBox Style="{StaticResource SearchBox}" MinWidth="180" Text="{Binding Filter, UpdateSourceTrigger=PropertyChanged}" ToolTip="Filter by name, artifact, path, chat or sender (Enter)" VerticalAlignment="Bottom">
+                        <TextBox.InputBindings><KeyBinding Key="Enter" Command="{Binding ApplyFilterCommand}"/></TextBox.InputBindings>
+                    </TextBox>
+                </local:HeaderPanel>
+            </ScrollViewer></Border>
+            <TextBlock DockPanel.Dock="Top" Text="{Binding About}" Margin="10,6,10,0" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"/>
+            <TextBlock DockPanel.Dock="Top" Text="{Binding Status}" Margin="10,6" Foreground="{StaticResource MutedBrush}"
+                       Visibility="{Binding Status, Converter={StaticResource Vis}}"/>
+            <ListBox ItemsSource="{Binding Items}" SelectedItem="{Binding Selected}" BorderThickness="0" SelectionMode="Extended" local:RecordGrid.Enabled="True"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled" VirtualizingPanel.IsVirtualizing="True" ItemTemplate="{StaticResource MediaTile}">
+                <ListBox.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ListBox.ItemsPanel>
+            </ListBox>
+        </DockPanel>
+    </DataTemplate>
+
+    <!-- Tagged items -->
+    <DataTemplate DataType="{x:Type vm:TaggedViewModel}">
+        <DockPanel>
+            <Border Style="{StaticResource ViewHeader}"><ScrollViewer Style="{StaticResource HeaderScroll}">
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Content="Export report (HTML/JSON)" Command="{Binding ExportHtmlCommand}"/>
+                    <TextBlock Style="{StaticResource ViewTitle}" Text="Tagged Items"/>
+                </DockPanel>
+            </ScrollViewer></Border>
+            <DataGrid ItemsSource="{Binding Items}" SelectedItem="{Binding Selected}" SelectionMode="Single" BorderThickness="0">
+                <DataGrid.InputBindings>
+                    <MouseBinding Gesture="LeftDoubleClick" Command="{Binding GoToCommand}"/>
+                </DataGrid.InputBindings>
+                <DataGrid.Columns>
+                    <DataGridTemplateColumn Header="Tag" Width="130" SortMemberPath="Entry.Tag" ClipboardContentBinding="{Binding Entry.Tag}">
+                        <DataGridTemplateColumn.CellTemplate><DataTemplate>
+                            <StackPanel Orientation="Horizontal">
+                                <Ellipse Width="10" Height="10" Margin="0,0,6,0" VerticalAlignment="Center" Fill="{Binding Entry.Tag, Converter={StaticResource TagColor}}"/>
+                                <TextBlock Text="{Binding Entry.Tag}" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </DataTemplate></DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTextColumn Header="Artifact / file" Binding="{Binding ArtifactName}" Width="300"/>
+                    <DataGridTextColumn Header="Record" Binding="{Binding Record}" Width="70"/>
+                    <DataGridTextColumn Header="Note" Binding="{Binding Entry.Note}" Width="*"/>
+                    <DataGridTextColumn Header="Tagged at" Binding="{Binding Created}" Width="170"/>
+                </DataGrid.Columns>
+            </DataGrid>
+        </DockPanel>
+    </DataTemplate>
+
+    <!-- Indicators of compromise -->
+    <DataTemplate DataType="{x:Type vm:IndicatorsViewModel}">
+        <DockPanel>
+            <Border Style="{StaticResource ViewHeader}"><ScrollViewer Style="{StaticResource HeaderScroll}">
+                <DockPanel>
+                    <WrapPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button Style="{StaticResource FlatButton}" Content="Cancel" Command="{Binding CancelCommand}"
+                                Visibility="{Binding Running, Converter={StaticResource Vis}}"/>
+                        <Button Style="{StaticResource FlatButton}" Content="Load indicators or hash set…" Command="{Binding LoadCommand}"/>
+                        <Button Style="{StaticResource FlatButton}" Content="{Binding RootButton}" Command="{Binding FindRootCommand}"/>
+                        <Button Style="{StaticResource FlatButton}" Content="{Binding SettingsButton}" Command="{Binding CheckSettingsCommand}"/>
+                        <Button Style="{StaticResource FlatButton}" Content="Find crypto addresses" Command="{Binding FindCryptoCommand}"/>
+                        <Button Style="{StaticResource FlatButton}" Content="Tag by rules…" Command="{Binding TagByRulesCommand}"
+                                ToolTip="A text file of rules, one per line: Tag: keyword  or  Tag: /regex/  (# starts a comment)"/>
+                        <Button Style="{StaticResource FlatButton}" Content="Tag all matches" Command="{Binding TagAllCommand}"
+                                ToolTip="Tags every matching record by kind: IOC match, Root/jailbreak trace, Security setting, Crypto address; with rules, the rule's own tag. Matches in the file list are not records and stay untagged"/>
+                    </WrapPanel>
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource ViewTitle}" Text="Indicators"/>
+                        <TextBlock Text="{Binding Info}" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"/>
+                        <ProgressBar Value="{Binding Progress}" Height="3" Margin="0,4,0,0" Visibility="{Binding Running, Converter={StaticResource Vis}}"/>
+                    </StackPanel>
+                </DockPanel>
+            </ScrollViewer></Border>
+            <DataGrid ItemsSource="{Binding Hits}" SelectedItem="{Binding Selected}" SelectionMode="Single" BorderThickness="0">
+                <DataGrid.InputBindings>
+                    <MouseBinding Gesture="LeftDoubleClick" Command="{Binding GoToCommand}"/>
+                </DataGrid.InputBindings>
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Collection" Binding="{Binding Indicator.Collection}" Width="130"/>
+                    <DataGridTextColumn Header="Indicator type" Binding="{Binding Indicator.Type}" Width="140"/>
+                    <DataGridTextColumn Header="Indicator" Binding="{Binding Indicator.Value}" Width="300" ElementStyle="{StaticResource WrapCell}"/>
+                    <DataGridTextColumn Header="Found in" Binding="{Binding Where}" Width="220"/>
+                    <DataGridTextColumn Header="Record" Binding="{Binding RowId}" Width="70"/>
+                    <DataGridTextColumn Header="Column" Binding="{Binding Column}" Width="120"/>
+                    <DataGridTextColumn Header="Value" Binding="{Binding Cell}" Width="*"/>
+                </DataGrid.Columns>
+            </DataGrid>
+        </DockPanel>
+    </DataTemplate>
+
+    <!-- Extraction files: raw browser -->
+    <!-- Extraction Files: the selected file in hex, as text (JSON, XML indented) and as a tree; what it was recognised as above -->
+    <DataTemplate x:Key="FileViewer">
+        <DockPanel Background="White">
+            <TextBlock DockPanel.Dock="Top" Text="{Binding Detected}" TextWrapping="Wrap" Margin="6,4" Foreground="{StaticResource MutedBrush}"
+                       Visibility="{Binding Detected, Converter={StaticResource Vis}}"/>
+        <TabControl BorderThickness="0" SelectedIndex="{Binding ViewerTab}">
+            <TabItem Header="Hex">
+                <TextBox Text="{Binding Hex, Mode=OneWay}" IsReadOnly="True" FontFamily="Consolas" FontSize="11.5" BorderThickness="0"
+                         HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"/>
+            </TabItem>
+            <TabItem Header="Text">
+                <TextBox Text="{Binding Text, Mode=OneWay}" IsReadOnly="True" FontFamily="Consolas" FontSize="11.5" BorderThickness="0" TextWrapping="Wrap"
+                         VerticalScrollBarVisibility="Auto"/>
+            </TabItem>
+            <TabItem Header="Tree" ToolTip="JSON or XML as a tree; XML or binary plist; NSKeyedArchiver resolved; plists inside data decoded; data that parses as protobuf decoded blind (field numbers, no schema). Right-click: copy key path or value">
+                <TreeView ItemsSource="{Binding Plist}" BorderThickness="0" FontFamily="Consolas" FontSize="11.5" AutomationProperties.Name="Tree">
+                    <TreeView.ItemTemplate>
+                        <HierarchicalDataTemplate ItemsSource="{Binding Children}">
+                            <TextBlock Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=TreeView}}" ToolTip="{Binding Path}">
+                                <Run Text="{Binding Key, Mode=OneWay}" FontWeight="SemiBold"/> <Run Text="{Binding Type, Mode=OneWay}" Foreground="{StaticResource MutedBrush}"/> <Run Text="{Binding Value, Mode=OneWay}"/>
+                                <TextBlock.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="Copy key path" Command="{Binding PlacementTarget.Tag.CopyPlistPathCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" CommandParameter="{Binding}"/>
+                                        <MenuItem Header="Copy value" Command="{Binding PlacementTarget.Tag.CopyPlistValueCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" CommandParameter="{Binding}"/>
+                                    </ContextMenu>
+                                </TextBlock.ContextMenu>
+                            </TextBlock>
+                        </HierarchicalDataTemplate>
+                    </TreeView.ItemTemplate>
+                </TreeView>
+            </TabItem>
+        </TabControl>
+        </DockPanel>
+    </DataTemplate>
+
+    <DataTemplate DataType="{x:Type vm:FilesViewModel}">
+        <DockPanel>
+            <Border Style="{StaticResource ViewHeader}"><ScrollViewer Style="{StaticResource HeaderScroll}">
+                <StackPanel>
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Top" Style="{StaticResource ViewTitle}" Text="Extraction Files"/>
+                        <WrapPanel VerticalAlignment="Center">
+                            <TextBox Style="{StaticResource SearchBox}" Text="{Binding Filter, UpdateSourceTrigger=PropertyChanged}" VerticalAlignment="Center"
+                                     ToolTip="Filter by path or type (Enter). /regex/ for a regular expression">
+                                <TextBox.InputBindings><KeyBinding Key="Enter" Command="{Binding ApplyFilterCommand}"/></TextBox.InputBindings>
+                            </TextBox>
+                            <CheckBox Content="Only files read by artifacts" IsChecked="{Binding UsedOnly}" VerticalAlignment="Center" Margin="8,0"
+                                      ToolTip="Show only the files the LEAPP modules recorded as their sources, with the -wal/-shm/-journal beside them"/>
+                            <CheckBox Content="Only tagged files" IsChecked="{Binding TaggedOnly}" VerticalAlignment="Center" Margin="0,0,8,0"
+                                      ToolTip="Show only the files tagged here (right-click › Tag) or in the gallery"/>
+                            <Button Style="{StaticResource FlatButton}" Content="Identify types" Command="{Binding IdentifyCommand}"
+                                    ToolTip="Type every shown file from its first bytes (magic), whatever its name says"/>
+                            <TextBox Style="{StaticResource SearchBox}" Text="{Binding Keyword, UpdateSourceTrigger=PropertyChanged}" VerticalAlignment="Center" Margin="10,0,0,0"
+                                     ToolTip="Keyword searched inside every shown file, as UTF-8 and UTF-16 text, ignoring case of A-Z (Enter). Empty: show all files again">
+                                <TextBox.InputBindings><KeyBinding Key="Enter" Command="{Binding SearchCommand}"/></TextBox.InputBindings>
+                            </TextBox>
+                            <Button Style="{StaticResource FlatButton}" Content="Search contents" Command="{Binding SearchCommand}"/>
+                            <Button Style="{StaticResource FlatButton}" Content="Cancel" Command="{Binding CancelCommand}" Visibility="{Binding Running, Converter={StaticResource Vis}}"/>
+                            <Button Style="{StaticResource FlatButton}" Content="Save a copy…" Command="{Binding SaveCopyCommand}"/>
+                            <Button Style="{StaticResource FlatButton}" Content="Open in SQLite reader" Command="{Binding OpenSqliteCommand}"
+                                    ToolTip="Read the selected SQLite database (and its -wal, -journal) from a copy: tables, schema, SQL, recovered records (or double-click it)"/>
+                            <Button Style="{StaticResource FlatButton}" Content="Locate zip…" Command="{Binding LocateCommand}" CommandParameter="zip" Margin="10,2,2,2"
+                                    ToolTip="The extraction zip is somewhere else on this machine: pick it. It is checked against ALEAPP's copies and opened read-only"/>
+                            <Button Style="{StaticResource FlatButton}" Content="Locate folder…" Command="{Binding LocateCommand}" CommandParameter="folder"
+                                    ToolTip="The extraction folder is somewhere else on this machine: pick it. It is checked against ALEAPP's copies and opened read-only"/>
+                        </WrapPanel>
+                    </DockPanel>
+                    <WrapPanel Margin="0,4,0,2">
+                        <TextBlock Text="Kind" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                        <ComboBox ItemsSource="{Binding Kinds}" SelectedItem="{Binding TypeFilter}" Width="150" VerticalAlignment="Center"
+                                  ToolTip="Show one kind of file only: by its first bytes once Identify types has read them, else by its name"/>
+                        <CheckBox Content="Thumbnails" IsChecked="{Binding Thumbnails}" VerticalAlignment="Center" Margin="12,0"
+                                  ToolTip="The files as tiles, pictures and video frames as thumbnails, 300 a page"/>
+                        <TextBlock Text="Viewer" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                        <ComboBox ItemsSource="{Binding ViewerPlaces}" SelectedItem="{Binding ViewerAt}" Width="140" VerticalAlignment="Center"
+                                  ToolTip="The hex, text and tree viewer: right of the list (drag its edge to resize it), under the details pane, in a window of its own, or hidden"/>
+                        <Button Style="{StaticResource FlatButton}" Content="Explore archive" Command="{Binding ExploreArchiveCommand}" Margin="12,0,0,0"
+                                ToolTip="Browse the files inside the selected zip (also APK, JAR, Office), tar, tar.gz or gz, in place: nothing is unpacked (or double-click it)"/>
+                    </WrapPanel>
+                    <TextBlock Text="{Binding Info}" TextWrapping="Wrap">
+                        <TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+                            <Style.Triggers><DataTrigger Binding="{Binding Unreachable}" Value="True"><Setter Property="Foreground" Value="{StaticResource TagTextBrush}"/><Setter Property="FontWeight" Value="SemiBold"/></DataTrigger></Style.Triggers>
+                        </Style></TextBlock.Style>
+                    </TextBlock>
+                    <StackPanel Orientation="Horizontal" Margin="0,4,0,0" Visibility="{Binding Locked, Converter={StaticResource Vis}}">
+                        <TextBlock Text="Backup password:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <PasswordBox x:Name="BackupPassword" Width="200" VerticalAlignment="Center"
+                                     AutomationProperties.Name="Backup password (used for this session only, never saved)">
+                            <PasswordBox.InputBindings>
+                                <KeyBinding Key="Enter" Command="{Binding UnlockCommand}" CommandParameter="{Binding ElementName=BackupPassword}"/>
+                            </PasswordBox.InputBindings>
+                        </PasswordBox>
+                        <Button Style="{StaticResource FlatButton}" Content="Unlock" Command="{Binding UnlockCommand}" CommandParameter="{Binding ElementName=BackupPassword}"
+                                ToolTip="Decrypt the backup in memory for this session; the password is not kept or written anywhere"/>
+                    </StackPanel>
+                    <ProgressBar Value="{Binding Progress}" Height="3" Margin="0,4,0,0" Visibility="{Binding Running, Converter={StaticResource Vis}}"/>
+                </StackPanel>
+            </ScrollViewer></Border>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="240"/><ColumnDefinition Width="4"/><ColumnDefinition Width="3*" MinWidth="200"/><ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="2*"/>
+                </Grid.ColumnDefinitions>
+                <Grid.Resources>
+                    <!-- a file's right-click menu: its actions, "-" a separator -->
+                    <Style x:Key="FileActionItem" TargetType="MenuItem">
+                        <Setter Property="Header" Value="{Binding Header}"/>
+                        <Setter Property="Command" Value="{Binding Command}"/>
+                        <Setter Property="CommandParameter" Value="{Binding Parameter}"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding Header}" Value="-">
+                                <Setter Property="IsEnabled" Value="False"/>
+                                <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="MenuItem"><Separator/></ControlTemplate></Setter.Value></Setter>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Grid.Resources>
+                <TreeView ItemsSource="{Binding Folders}" BorderThickness="0" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">
+                    <TreeView.ItemContainerStyle>
+                        <Style TargetType="TreeViewItem">
+                            <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
+                            <Setter Property="IsSelected" Value="{Binding IsSelected, Mode=TwoWay}"/>
+                            <Setter Property="AutomationProperties.Name" Value="{Binding Name}"/>
+                        </Style>
+                    </TreeView.ItemContainerStyle>
+                    <TreeView.ItemTemplate>
+                        <HierarchicalDataTemplate DataType="{x:Type vm:FolderNode}" ItemsSource="{Binding Children}">
+                            <StackPanel Orientation="Horizontal" ToolTip="{Binding Path}">
+                                <TextBlock Style="{StaticResource Icon}" Text="&#xE8B7;" Foreground="{StaticResource AccentBrush}" Margin="0,0,5,0"/>
+                                <TextBlock Text="{Binding Name}"/>
+                                <TextBlock Text="{Binding Files, StringFormat=' ({0:N0})'}" Foreground="{StaticResource MutedBrush}"/>
+                            </StackPanel>
+                        </HierarchicalDataTemplate>
+                    </TreeView.ItemTemplate>
+                </TreeView>
+                <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Stretch" Background="{StaticResource BorderBrush}"/>
+                <DockPanel Grid.Column="2">
+                    <DockPanel.Style>
+                        <Style TargetType="DockPanel">
+                            <Style.Triggers><!-- no viewer on the right: the list takes its place -->
+                                <DataTrigger Binding="{Binding ViewerRight}" Value="False"><Setter Property="Grid.ColumnSpan" Value="3"/></DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </DockPanel.Style>
+                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="6,3" Visibility="{Binding Thumbnails, Converter={StaticResource Vis}}">
+                        <Button Style="{StaticResource FlatButton}" Content="‹ Previous" Command="{Binding PrevPageCommand}"/>
+                        <TextBlock Text="{Binding PageInfo}" VerticalAlignment="Center" Margin="8,0"/>
+                        <Button Style="{StaticResource FlatButton}" Content="Next ›" Command="{Binding NextPageCommand}"/>
+                    </StackPanel>
+                    <Grid>
+                    <DataGrid ItemsSource="{Binding Rows}" Visibility="{Binding Thumbnails, Converter={StaticResource Vis}, ConverterParameter=invert}" SelectedItem="{Binding Selected}" SelectionMode="Single" BorderThickness="0"
+                              EnableRowVirtualization="True" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">
+                        <DataGrid.InputBindings><MouseBinding Gesture="LeftDoubleClick" Command="{Binding OpenCommand}"/></DataGrid.InputBindings>
+                        <DataGrid.ContextMenu><ContextMenu ItemsSource="{Binding FileActions}" ItemContainerStyle="{StaticResource FileActionItem}"/></DataGrid.ContextMenu>
+                        <DataGrid.Columns>
+                            <DataGridTemplateColumn Header="Tag" Width="100" MinWidth="90" SortMemberPath="Tag">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal" Visibility="{Binding Tag, Converter={StaticResource Vis}}">
+                                            <Ellipse Width="9" Height="9" Margin="2,0,5,0" VerticalAlignment="Center" Fill="{Binding Tag, Converter={StaticResource TagColor}}"/>
+                                            <TextBlock Text="{Binding Tag}" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTextColumn Header="Path on the device" Binding="{Binding Device}" Width="*" MinWidth="220"/>
+                            <DataGridTextColumn Header="Read by" Binding="{Binding UsedBy}" Width="160"/>
+                            <DataGridTextColumn Header="Size" Binding="{Binding Size, StringFormat=N0}" Width="90"/>
+                            <DataGridTextColumn Header="Kind" Binding="{Binding Category}" Width="110"/>
+                            <DataGridTextColumn Header="Type (content)" Binding="{Binding Type}" Width="150"/>
+                            <DataGridTextColumn Header="Hits" Binding="{Binding Hits}" Width="50"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                    <ListBox ItemsSource="{Binding Tiles}" SelectedValuePath="Row" SelectedValue="{Binding Selected}" BorderThickness="0"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled" Visibility="{Binding Thumbnails, Converter={StaticResource Vis}}"
+                             AutomationProperties.Name="Thumbnails">
+                        <ListBox.InputBindings><MouseBinding Gesture="LeftDoubleClick" Command="{Binding OpenCommand}"/></ListBox.InputBindings>
+                        <ListBox.ContextMenu><ContextMenu ItemsSource="{Binding FileActions}" ItemContainerStyle="{StaticResource FileActionItem}"/></ListBox.ContextMenu>
+                        <ListBox.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ListBox.ItemsPanel>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Width="150" Margin="4" ToolTip="{Binding Row.Device}">
+                                    <Grid Height="120">
+                                        <TextBlock Text="{Binding Row.Category}" HorizontalAlignment="Center" VerticalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center"
+                                                   Foreground="{StaticResource MutedBrush}" Visibility="{Binding Thumbnail, Converter={StaticResource Vis}, ConverterParameter=invert}"/>
+                                        <Image Source="{Binding Thumbnail}" Stretch="Uniform"/>
+                                        <Ellipse Width="14" Height="14" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="5" Stroke="White" StrokeThickness="1.5"
+                                                 Fill="{Binding Row.Tag, Converter={StaticResource TagColor}}" ToolTip="{Binding Row.Tag}" Visibility="{Binding Row.Tag, Converter={StaticResource Vis}}"/>
+                                    </Grid>
+                                    <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="{Binding Row.Size, StringFormat={}{0:N0} bytes}" FontSize="11" HorizontalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                    </Grid>
+                </DockPanel>
+                <GridSplitter Grid.Column="3" Width="4" HorizontalAlignment="Stretch" Background="{StaticResource BorderBrush}"
+                              Visibility="{Binding ViewerRight, Converter={StaticResource Vis}}"/>
+                <ContentControl Grid.Column="4" ContentTemplate="{StaticResource FileViewer}" Focusable="False" Visibility="{Binding ViewerRight, Converter={StaticResource Vis}}">
+                    <ContentControl.Style>
+                        <Style TargetType="ContentControl">
+                            <Style.Triggers><DataTrigger Binding="{Binding ViewerRight}" Value="True"><Setter Property="Content" Value="{Binding}"/></DataTrigger></Style.Triggers>
+                        </Style>
+                    </ContentControl.Style>
+                </ContentControl>
+            </Grid>
+        </DockPanel>
+    </DataTemplate>
+
+    <!-- Global search -->
+    <DataTemplate DataType="{x:Type vm:SearchViewModel}">
+        <DockPanel>
+            <Border Style="{StaticResource ViewHeader}"><ScrollViewer Style="{StaticResource HeaderScroll}">
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Content="Cancel" Command="{Binding CancelCommand}"
+                            Visibility="{Binding Running, Converter={StaticResource Vis}}"/>
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource ViewTitle}" Text="Search Results"/>
+                        <TextBlock Text="{Binding Info}" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"/>
+                        <ProgressBar Value="{Binding Progress}" Height="3" Margin="0,4,0,0" Visibility="{Binding Running, Converter={StaticResource Vis}}"/>
+                        <WrapPanel Margin="0,6,0,0">
+                            <CheckBox Content="Exclude technical fields" IsChecked="{Binding SkipTechnical}" Margin="0,2,18,2" VerticalAlignment="Center"
+                                      ToolTip="Leave out hashes, UUIDs, encoded data, and paths, file names and ids in columns named for them, in every search and filter of this case"/>
+                            <TextBlock Text="Tag" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <ComboBox x:Name="SearchTagChoice" ItemsSource="{Binding TagChoices}" SelectedIndex="0" MinWidth="110" VerticalAlignment="Center"/>
+                            <Button Style="{StaticResource FlatButton}" Content="Tag results" Command="{Binding TagCommand}"
+                                    ToolTip="Tags every record behind the selected results; with none selected, every record the search found">
+                                <Button.CommandParameter>
+                                    <MultiBinding Converter="{StaticResource ToArray}">
+                                        <Binding ElementName="SearchTagChoice" Path="SelectedItem"/>
+                                        <Binding ElementName="SearchHitList" Path="SelectedItems"/>
+                                    </MultiBinding>
+                                </Button.CommandParameter>
+                            </Button>
+                        </WrapPanel>
+                        <DockPanel Margin="0,6,0,0" Visibility="{Binding IsMulti, Converter={StaticResource Vis}}">
+                            <TextBlock Text="Devices" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <ItemsControl ItemsSource="{Binding DeviceChoices}">
+                                <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <CheckBox Content="{Binding Device.Label}" IsChecked="{Binding IsChecked}" Margin="0,2,14,2" VerticalAlignment="Center"
+                                                  ToolTip="Search this device; clear it to leave its results out"/>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </DockPanel>
+                        <Expander Header="Advanced search" Margin="0,6,0,0" IsExpanded="{Binding AdvOpen, Mode=OneTime}">
+                            <WrapPanel Margin="0,4,0,0">
+                                <WrapPanel.InputBindings><KeyBinding Key="Enter" Command="{Binding SearchAdvancedCommand}"/></WrapPanel.InputBindings>
+                                <TextBlock Text="Find" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <TextBox Text="{Binding AdvWords, UpdateSourceTrigger=PropertyChanged}" Width="220" VerticalAlignment="Center"/>
+                                <ComboBox ItemsSource="{Binding Modes}" SelectedIndex="{Binding AdvMode}" MinWidth="150" Margin="6,0" VerticalAlignment="Center"/>
+                                <CheckBox Content="Whole words" IsChecked="{Binding AdvWhole}" VerticalAlignment="Center" Margin="0,0,12,0"
+                                          ToolTip="Match the words (or the phrase) only as whole words: &quot;anna&quot; does not find &quot;annalisa&quot;"/>
+                                <TextBlock Text="but not" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <TextBox Text="{Binding AdvExclude, UpdateSourceTrigger=PropertyChanged}" Width="140" VerticalAlignment="Center"
+                                         ToolTip="Records holding any of these words are left out"/>
+                                <Button Style="{StaticResource FlatButton}" Content="Search" Command="{Binding SearchAdvancedCommand}" Margin="6,0,0,0"
+                                        ToolTip="Runs the search written in the search syntax, shown above and in the recent searches"/>
+                            </WrapPanel>
+                        </Expander>
+                    </StackPanel>
+                </DockPanel>
+            </ScrollViewer></Border>
+            <Border DockPanel.Dock="Right" Width="220" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1,0,0,0" Padding="8,6">
+                <DockPanel>
+                    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
+                        <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Content="Clear" Command="{Binding ClearHistoryCommand}"
+                                ToolTip="Forget the searches of this case (kept on this machine only, never in the case)"/>
+                        <TextBlock Text="Recent searches" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    </DockPanel>
+                    <ItemsControl ItemsSource="{Binding History}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <DockPanel>
+                                    <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Content="&#xE711;" FontFamily="Segoe MDL2 Assets" FontSize="9" Padding="3,1"
+                                            Command="{Binding DataContext.RemoveHistoryCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding}"
+                                            ToolTip="Forget this search"/>
+                                    <TextBlock Text="{Binding}" Cursor="Hand" Foreground="{StaticResource AccentBrush}" TextTrimming="CharacterEllipsis" Margin="0,2" ToolTip="{Binding}">
+                                        <TextBlock.InputBindings>
+                                            <MouseBinding Gesture="LeftClick" Command="{Binding DataContext.RerunCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding}"/>
+                                        </TextBlock.InputBindings>
+                                    </TextBlock>
+                                </DockPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </DockPanel>
+            </Border>
+            <ListBox x:Name="SearchHitList" ItemsSource="{Binding HitsView}" BorderThickness="0" HorizontalContentAlignment="Stretch" SelectionMode="Extended">
+                <ListBox.InputBindings>
+                    <KeyBinding Key="Delete" Command="{Binding RemoveHitsCommand}" CommandParameter="{Binding SelectedItems, ElementName=SearchHitList}"/>
+                </ListBox.InputBindings>
+                <ListBox.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="Remove the selected results from the list (Del)"
+                                  Command="{Binding PlacementTarget.DataContext.RemoveHitsCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                  CommandParameter="{Binding PlacementTarget.SelectedItems, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                    </ContextMenu>
+                </ListBox.ContextMenu>
+                <ListBox.GroupStyle>
+                    <GroupStyle>
+                        <GroupStyle.HeaderTemplate>
+                            <DataTemplate><TextBlock Text="{Binding Name}" FontWeight="SemiBold" Foreground="{StaticResource AccentBrush}" Margin="4,10,0,2"/></DataTemplate>
+                        </GroupStyle.HeaderTemplate>
+                    </GroupStyle>
+                </ListBox.GroupStyle>
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <Border Padding="6,5" Background="Transparent" Cursor="Hand">
+                            <Border.InputBindings>
+                                <MouseBinding Gesture="LeftClick" Command="{Binding DataContext.OpenCommand, RelativeSource={RelativeSource AncestorType=ListBox}}" CommandParameter="{Binding}"/>
+                            </Border.InputBindings>
+                            <StackPanel>
+                                <TextBlock><Run Text="{Binding Title, Mode=OneWay}" FontWeight="SemiBold"/>  <Run Text="{Binding Category, Mode=OneWay}" Foreground="{StaticResource MutedBrush}"/>
+                                    <Run Text="{Binding Count, Mode=OneWay, StringFormat=· {0:N0} hits}" Foreground="{StaticResource AccentBrush}"/></TextBlock>
+                                <TextBlock Text="{Binding Preview}" Foreground="{StaticResource MutedBrush}" TextTrimming="CharacterEllipsis"/>
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </DockPanel>
+    </DataTemplate>
+
+    <!-- Conversations (chat bubbles) -->
+    <!-- Chat list of a conversation artifact (optionally one account): double-click opens the chat in a tab. -->
+    <DataTemplate DataType="{x:Type vm:ConversationViewModel}">
+        <DockPanel>
+            <Border Style="{StaticResource ViewHeader}"><ScrollViewer Style="{StaticResource HeaderScroll}">
+                <DockPanel>
+                    <WrapPanel Orientation="Horizontal" DockPanel.Dock="Right" VerticalAlignment="Center">
+                        <Button Style="{StaticResource FlatButton}" Command="{Binding OpenChatCommand}" ToolTip="Open the selected chat in its own tab (or double-click it)">
+                            <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE8BD;"/><TextBlock Text=" Open chat"/></StackPanel>
+                        </Button>
+                        <Button Style="{StaticResource FlatButton}" Command="{Binding ExportChatCommand}" ToolTip="Export the selected chat as an HTML chat report with its media">
+                            <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xEDE1;"/><TextBlock Text=" Export chat"/></StackPanel>
+                        </Button>
+                        <Button Style="{StaticResource FlatButton}" Command="{Binding ExportShownCommand}" Content="Export all shown"
+                                ToolTip="Export every chat matching the filter into a folder, one HTML chat report per chat"/>
+                    </WrapPanel>
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource ViewTitle}" Text="{Binding Title}"/>
+                        <TextBlock Foreground="{StaticResource MutedBrush}"><Run Text="{Binding Subtitle, Mode=OneWay}"/> · <Run Text="{Binding Info, Mode=OneWay}"/></TextBlock>
+                        <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                            <TextBox Style="{StaticResource SearchBox}" Text="{Binding Filter, UpdateSourceTrigger=PropertyChanged, Delay=300}"
+                                     Width="320" ToolTip="Filter chats by name, ID or message text. Each column header's ▾ filters on that column."/>
+                            <Button Style="{StaticResource FlatButton}" Content="Clear column filters" Command="{Binding ClearColumnFiltersCommand}" Margin="8,0,0,0"
+                                    Visibility="{Binding HasColumnFilters, Converter={StaticResource Vis}}"/>
+                            <TextBlock Text="{Binding CountText}" VerticalAlignment="Center" Margin="8,0" Foreground="{StaticResource MutedBrush}"/>
+                        </StackPanel>
+                    </StackPanel>
+                </DockPanel>
+            </ScrollViewer></Border>
+            <DataGrid ItemsSource="{Binding Conversations}" SelectedItem="{Binding Selected}" SelectionMode="Extended" BorderThickness="0" local:RecordGrid.Enabled="True"
+                      ToolTip="Double-click: open the chat. Right-click: tags (every message of the selected chats), AI, export"
+                      VirtualizingPanel.IsVirtualizing="True" local:DynamicColumns.HeaderMenus="{Binding ListColumns}">
+                <DataGrid.InputBindings>
+                    <MouseBinding Gesture="LeftDoubleClick" Command="{Binding OpenChatCommand}"/>
+                    <KeyBinding Key="Enter" Command="{Binding OpenChatCommand}"/>
+                </DataGrid.InputBindings>
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Chat" Binding="{Binding Label}" Width="230"/>
+                    <DataGridTextColumn Header="Chat ID" Binding="{Binding Key}" Width="170"/>
+                    <DataGridTextColumn Header="Participants" Binding="{Binding ParticipantCount}" Width="85"/>
+                    <DataGridTextColumn Header="Messages" Binding="{Binding Messages.Count, StringFormat=N0}" Width="80"/>
+                    <DataGridTextColumn Header="First message" Binding="{Binding FirstTime}" Width="170"/>
+                    <DataGridTextColumn Header="Last message" Binding="{Binding LastTime}" Width="170"/>
+                    <DataGridTextColumn Header="Last text" Binding="{Binding Preview}" Width="*"/>
+                </DataGrid.Columns>
+            </DataGrid>
+        </DockPanel>
+    </DataTemplate>
+
+    <!-- One chat (its own tab): participants on the left, bubbles or table in the centre, the message in the details pane. -->
+    <DataTemplate DataType="{x:Type vm:ChatViewModel}">
+        <DockPanel>
+            <Border Style="{StaticResource ViewHeader}"><ScrollViewer Style="{StaticResource HeaderScroll}">
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Command="{Binding ExportCommand}" VerticalAlignment="Center"
+                            ToolTip="Export this chat as an HTML chat report with its media and evidence sources">
+                        <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xEDE1;"/><TextBlock Text=" Export chat"/></StackPanel>
+                    </Button>
+                    <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Command="{Binding AiCommand}" IsEnabled="{Binding Enabled, Source={x:Static local:AiState.Instance}}" ToolTipService.ShowOnDisabled="True" VerticalAlignment="Center"
+                            ToolTip="AI on the messages shown and their attachments: summary, questions, translation, thematic review, images, audio">
+                        <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE945;"/><TextBlock Text=" AI"/></StackPanel>
+                    </Button>
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource ViewTitle}" Text="{Binding Chat.Label}"/>
+                        <TextBlock Foreground="{StaticResource MutedBrush}" Text="{Binding Subtitle}"/>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" Margin="0,6,0,0">
+                        <TextBox Style="{StaticResource SearchBox}" Width="200" Text="{Binding Search, UpdateSourceTrigger=PropertyChanged}"
+                                 ToolTip="Search this chat (Ctrl+F). Enter: next match, Shift+Enter: previous. a b (both), a | b (either), -a (not), &quot;exact phrase&quot;, /regex/">
+                            <TextBox.InputBindings>
+                                <KeyBinding Key="Enter" Command="{Binding NextMatchCommand}"/>
+                                <KeyBinding Key="Enter" Modifiers="Shift" Command="{Binding PrevMatchCommand}"/>
+                            </TextBox.InputBindings>
+                        </TextBox>
+                        <Button Style="{StaticResource FlatButton}" Command="{Binding PrevMatchCommand}" ToolTip="Previous match (Shift+Enter)">
+                            <TextBlock Style="{StaticResource Icon}" Text="&#xE70E;"/></Button>
+                        <Button Style="{StaticResource FlatButton}" Command="{Binding NextMatchCommand}" ToolTip="Next match (Enter)">
+                            <TextBlock Style="{StaticResource Icon}" Text="&#xE70D;"/></Button>
+                        <CheckBox Content="Only matches" IsChecked="{Binding OnlyMatches}" VerticalAlignment="Center" Margin="6,0"
+                                  ToolTip="Show only the matching messages, in the bubbles and in the table"/>
+                        <TextBlock Text="{Binding MatchText}" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" MinWidth="70"/>
+                        <ContentControl Content="{Binding Translation}" ContentTemplate="{StaticResource TranslationPicker}" Focusable="False" Margin="10,0,0,0"/>
+                        <Button Style="{StaticResource FlatButton}" Command="{Binding TranslateCommand}" IsEnabled="{Binding Enabled, Source={x:Static local:AiState.Instance}}" ToolTipService.ShowOnDisabled="True"
+                                ToolTip="Translate the checked messages shown with the AI, each step with the messages before it as context, and show the translation in the bubbles">
+                            <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xF2B7;"/><TextBlock Text=" Translate"/></StackPanel>
+                        </Button>
+                        <Button Style="{StaticResource FlatButton}" Command="{Binding SummarizeCommand}" IsEnabled="{Binding Enabled, Source={x:Static local:AiState.Instance}}" ToolTipService.ShowOnDisabled="True" ToolTip="Summarize the checked messages shown with the AI, as a narrative">
+                            <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE8FD;"/><TextBlock Text=" Summarize"/></StackPanel>
+                        </Button>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" Margin="0,6,0,0">
+                        <TextBlock Style="{StaticResource Icon}" Text="&#xE71C;" Foreground="{StaticResource MutedBrush}" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                        <ComboBox ItemsSource="{x:Static vm:ChatViewModel.Directions}" SelectedItem="{Binding Direction}" Width="90" ToolTip="Sent or received"/>
+                        <ComboBox ItemsSource="{Binding Senders}" SelectedItem="{Binding Sender}" Width="170" Margin="6,0,0,0" ToolTip="Who wrote the message"/>
+                        <ComboBox ItemsSource="{x:Static vm:ChatViewModel.Kinds}" SelectedItem="{Binding Kind}" Width="110" Margin="6,0,0,0" ToolTip="What the message holds"/>
+                        <DatePicker SelectedDate="{Binding From}" Width="115" Margin="6,0,0,0" ToolTip="From this day"/>
+                        <TextBlock Text="–" VerticalAlignment="Center" Margin="4,0"/>
+                        <DatePicker SelectedDate="{Binding To}" Width="115" ToolTip="To this day, included"/>
+                        <Button Style="{StaticResource FlatButton}" Content="Clear filters" Command="{Binding ClearFiltersCommand}"/>
+                        <TextBlock Text="{Binding FilterText}" VerticalAlignment="Center" Margin="6,0" Foreground="{StaticResource MutedBrush}"/>
+                        <TextBlock Text="{Binding CheckedText}" VerticalAlignment="Center" Margin="12,0,4,0" FontWeight="SemiBold"
+                                   ToolTip="Translate, Summarize and AI act on the checked messages shown. Space checks or unchecks the selected messages."/>
+                        <Button Style="{StaticResource FlatButton}" Command="{Binding CheckAllCommand}" ToolTip="Check every message">
+                            <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE73A;"/><TextBlock Text=" Check all"/></StackPanel>
+                        </Button>
+                        <Button Style="{StaticResource FlatButton}" Command="{Binding ClearChecksCommand}" ToolTip="Uncheck every message">
+                            <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE739;"/><TextBlock Text=" Uncheck all"/></StackPanel>
+                        </Button>
+                    </StackPanel>
+                    </StackPanel>
+                </DockPanel>
+            </ScrollViewer></Border>
+            <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="250" MinWidth="160"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <DockPanel Background="White">
+                    <TextBlock DockPanel.Dock="Top" Text="CHAT PARTICIPANTS &amp; ACTIVITY" Style="{StaticResource SectionHeader}" Margin="10,10,10,4"/>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <ListBox ItemsSource="{Binding People}" SelectedItem="{Binding SelectedPerson}" Margin="4,0" BorderThickness="0"
+                                 HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 ToolTip="Select a participant to see their details and contact record">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate DataType="{x:Type vm:PersonView}">
+                                    <DockPanel Margin="2,4">
+                                        <Grid DockPanel.Dock="Left" Width="40" Height="40" Margin="0,0,8,0" VerticalAlignment="Top">
+                                            <Border CornerRadius="20" Background="{StaticResource AccentSoftBrush}">
+                                                <TextBlock Style="{StaticResource Icon}" Text="&#xE77B;" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{StaticResource AccentBrush}"/>
+                                            </Border>
+                                            <Ellipse><Ellipse.Fill><ImageBrush ImageSource="{Binding Picture}" Stretch="UniformToFill"/></Ellipse.Fill></Ellipse>
+                                        </Grid>
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding P.Name}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                            <TextBlock Text="(Device owner — local account)" Foreground="{StaticResource AccentBrush}" FontSize="11"
+                                                       Visibility="{Binding P.IsOwner, Converter={StaticResource Vis}}"
+                                                       ToolTip="The account signed in to this app on the device: the sender of the sent messages"/>
+                                            <TextBlock Text="{Binding P.Id}" Foreground="{StaticResource MutedBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                            <TextBlock Foreground="{StaticResource MutedBrush}" FontSize="11"><Run Text="{Binding P.Messages, Mode=OneWay, StringFormat=N0}"/> messages</TextBlock>
+                                            <TextBlock Text="{Binding ContactNote}" Foreground="{StaticResource AccentBrush}" FontSize="11" TextWrapping="Wrap"
+                                                       Visibility="{Binding ContactNote, Converter={StaticResource Vis}}" ToolTip="{Binding Contact.MatchedOn}"/>
+                                        </StackPanel>
+                                    </DockPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </ScrollViewer>
+                </DockPanel>
+                <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Stretch" Background="{StaticResource BorderBrush}"/>
+                <TabControl Grid.Column="2" BorderThickness="0" Padding="0">
+                    <TabItem Header="Chat">
+                        <ListBox ItemsSource="{Binding Messages}" SelectedItem="{Binding SelectedMessage}" Background="#F7F8FA" local:ScrollToSelected.Enabled="True"
+                                 SelectionMode="Extended" local:RecordGrid.Enabled="True" ToolTip="Right-click: tags, check, AI (translate, summarize, images, audio), copy"
+                                 BorderThickness="0" HorizontalContentAlignment="Stretch"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.ScrollUnit="Pixel">
+                            <ListBox.ItemContainerStyle>
+                                <Style TargetType="ListBoxItem">
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="ListBoxItem">
+                                                <Border x:Name="sel" Padding="10,3" Background="Transparent"><ContentPresenter/></Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsSelected" Value="True"><Setter TargetName="sel" Property="Background" Value="#C9DFF8"/></Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </ListBox.ItemContainerStyle>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate DataType="{x:Type core:MessageItem}">
+                                    <DockPanel>
+                                    <CheckBox DockPanel.Dock="Left" VerticalAlignment="Center" Focusable="False" Margin="0,0,6,0" ToolTip="Check: Translate, Summarize and AI act on the checked messages"
+                                              Command="{Binding DataContext.ToggleCheckCommand, RelativeSource={RelativeSource AncestorType=ListBox}}" CommandParameter="{Binding RowId}">
+                                        <CheckBox.IsChecked>
+                                            <MultiBinding Converter="{StaticResource InSet}" Mode="OneWay">
+                                                <Binding Path="RowId"/>
+                                                <Binding Path="DataContext.CheckedIds" RelativeSource="{RelativeSource AncestorType=ListBox}"/>
+                                            </MultiBinding>
+                                        </CheckBox.IsChecked>
+                                    </CheckBox>
+                                    <TextBlock DockPanel.Dock="Left" Style="{StaticResource Icon}" Text="&#xE8EC;" FontSize="13" VerticalAlignment="Center" Margin="0,0,6,0">
+                                        <TextBlock.Foreground>
+                                            <MultiBinding Converter="{StaticResource TagOf}"><Binding Path="RowId"/><Binding Path="DataContext.TagsByRow" RelativeSource="{RelativeSource AncestorType=ListBox}"/></MultiBinding>
+                                        </TextBlock.Foreground>
+                                        <TextBlock.Visibility>
+                                            <MultiBinding Converter="{StaticResource TagOf}" ConverterParameter="visibility"><Binding Path="RowId"/><Binding Path="DataContext.TagsByRow" RelativeSource="{RelativeSource AncestorType=ListBox}"/></MultiBinding>
+                                        </TextBlock.Visibility>
+                                        <TextBlock.ToolTip>
+                                            <MultiBinding Converter="{StaticResource TagOf}" ConverterParameter="text"><Binding Path="RowId"/><Binding Path="DataContext.TagsByRow" RelativeSource="{RelativeSource AncestorType=ListBox}"/></MultiBinding>
+                                        </TextBlock.ToolTip>
+                                    </TextBlock>
+                                    <StackPanel x:Name="bubbleRow" HorizontalAlignment="Left" MaxWidth="560">
+                                        <TextBlock x:Name="meta" FontSize="10.5" Foreground="{StaticResource MutedBrush}" Margin="4,0">
+                                            <Run Text="{Binding Sender, Mode=OneWay}" FontWeight="SemiBold"/>  <Run Text="{Binding Time, Mode=OneWay}"/></TextBlock>
+                                        <Border x:Name="bubble" Background="{StaticResource ReceivedBrush}" CornerRadius="10" Padding="10,6" BorderThickness="2" BorderBrush="#8E9AA8">
+                                            <StackPanel>
+                                                <Border BorderThickness="3,0,0,0" BorderBrush="#06CF9C" Background="#14000000" CornerRadius="3" Padding="6,2" Margin="0,0,0,4"
+                                                        Visibility="{Binding QuoteText, Converter={StaticResource Vis}}">
+                                                    <TextBlock Text="{Binding QuoteText}" FontSize="11.5" TextWrapping="Wrap" MaxHeight="48" TextTrimming="CharacterEllipsis"/>
+                                                </Border>
+                                                <ItemsControl ItemsSource="{Binding Media}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate DataType="{x:Type core:MediaRef}">
+                                                            <StackPanel Margin="0,2" Background="Transparent" ToolTip="Double-click: the file enlarged or played, with its details">
+                                                                <StackPanel.InputBindings>
+                                                                    <MouseBinding Gesture="LeftDoubleClick" CommandParameter="{Binding}"
+                                                                                  Command="{Binding DataContext.OpenMediaWindowCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"/>
+                                                                </StackPanel.InputBindings>
+                                                                <Image Source="{Binding Converter={StaticResource MediaImage}}" MaxHeight="220" MaxWidth="300" Stretch="Uniform" HorizontalAlignment="Left"/>
+                                                                <TextBlock Visibility="{Binding IsImage, Converter={StaticResource Vis}, ConverterParameter=invert}">
+                                                                    <Run Text="&#xE723;" FontFamily="{StaticResource IconFont}"/> <Run Text="{Binding Name, Mode=OneWay}"/></TextBlock>
+                                                                <views:PlayerView Media="{Binding}" AudioOnly="True" MinWidth="260"/>
+                                                                <TextBlock TextWrapping="Wrap" FontStyle="Italic" Foreground="{StaticResource AiBrush}" Background="#F4EFFA" Padding="4,2" Margin="0,3,0,0"
+                                                                           ToolTip="AI · review aid, not a finding: check it against the file">
+                                                                    <TextBlock.Visibility>
+                                                                        <MultiBinding Converter="{StaticResource MediaNote}" ConverterParameter="visibility">
+                                                                            <Binding/>
+                                                                            <Binding Path="DataContext.Translation.ByMedia" RelativeSource="{RelativeSource AncestorType=ListBox}"/>
+                                                                            <Binding Path="DataContext.Translation.Mode" RelativeSource="{RelativeSource AncestorType=ListBox}"/>
+                                                                        </MultiBinding>
+                                                                    </TextBlock.Visibility>
+                                                                    <TextBlock.Text>
+                                                                        <MultiBinding Converter="{StaticResource MediaNote}" Mode="OneWay">
+                                                                            <Binding/>
+                                                                            <Binding Path="DataContext.Translation.ByMedia" RelativeSource="{RelativeSource AncestorType=ListBox}"/>
+                                                                        </MultiBinding>
+                                                                    </TextBlock.Text>
+                                                                </TextBlock>
+                                                            </StackPanel>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                                <TextBlock x:Name="text" Text="{Binding Text}" TextWrapping="Wrap">
+                                                    <TextBlock.Visibility>
+                                                        <MultiBinding Converter="{StaticResource Tr}" ConverterParameter="original">
+                                                            <Binding Path="RowId"/>
+                                                            <Binding Path="DataContext.Translation.ByRow" RelativeSource="{RelativeSource AncestorType=ListBox}"/>
+                                                            <Binding Path="DataContext.Translation.Mode" RelativeSource="{RelativeSource AncestorType=ListBox}"/>
+                                                        </MultiBinding>
+                                                    </TextBlock.Visibility>
+                                                </TextBlock>
+                                                <TextBlock Text="{Binding Placeholder}" FontStyle="Italic" Opacity="0.75" TextWrapping="Wrap"
+                                                           Visibility="{Binding Placeholder, Converter={StaticResource Vis}}"
+                                                           ToolTip="The record stores no text: its fields are in the details pane and the Table tab"/>
+                                                <Border BorderThickness="0,1,0,0" BorderBrush="#33000000" Margin="0,4,0,0" Padding="4,3,4,2" Background="#F4EFFA" CornerRadius="0,0,4,4"
+                                                        ToolTip="AI translation · review aid, check it against the original">
+                                                    <Border.Visibility>
+                                                        <MultiBinding Converter="{StaticResource Tr}" ConverterParameter="translation">
+                                                            <Binding Path="RowId"/>
+                                                            <Binding Path="DataContext.Translation.ByRow" RelativeSource="{RelativeSource AncestorType=ListBox}"/>
+                                                            <Binding Path="DataContext.Translation.Mode" RelativeSource="{RelativeSource AncestorType=ListBox}"/>
+                                                        </MultiBinding>
+                                                    </Border.Visibility>
+                                                    <TextBlock TextWrapping="Wrap" FontStyle="Italic" Foreground="{StaticResource AiBrush}">
+                                                        <Run Text="&#xF2B7;" FontFamily="{StaticResource IconFont}" FontStyle="Normal" FontSize="11"/>
+                                                        <Run>
+                                                            <Run.Text>
+                                                                <MultiBinding Converter="{StaticResource Tr}" Mode="OneWay">
+                                                                    <Binding Path="RowId"/>
+                                                                    <Binding Path="DataContext.Translation.ByRow" RelativeSource="{RelativeSource AncestorType=ListBox}"/>
+                                                                </MultiBinding>
+                                                            </Run.Text>
+                                                        </Run>
+                                                    </TextBlock>
+                                                </Border>
+                                                <TextBlock Text="{Binding Extra}" FontSize="10.5" Opacity="0.75" TextWrapping="Wrap"
+                                                           Visibility="{Binding Extra, Converter={StaticResource Vis}}"/>
+                                                <TextBlock FontSize="11" Margin="0,2,0,0" Visibility="{Binding LocationText, Converter={StaticResource Vis}}">
+                                                    <Run Text="&#xE707;" FontFamily="{StaticResource IconFont}"/> <Run Text="{Binding LocationText, Mode=OneWay}"/>
+                                                    <Hyperlink Command="{Binding DataContext.OpenOnMapCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                                               CommandParameter="{Binding}" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TextBlock}}">Open on map</Hyperlink></TextBlock>
+                                            </StackPanel>
+                                        </Border>
+                                    </StackPanel>
+                                    </DockPanel>
+                                    <DataTemplate.Triggers>
+                                        <DataTrigger Binding="{Binding IsSent}" Value="True">
+                                            <Setter TargetName="bubbleRow" Property="HorizontalAlignment" Value="Right"/>
+                                            <Setter TargetName="bubble" Property="Background" Value="{StaticResource SentBrush}"/>
+                                            <Setter TargetName="bubble" Property="BorderBrush" Value="#0D4F9E"/>
+                                            <Setter TargetName="bubble" Property="TextElement.Foreground" Value="White"/>
+                                            <Setter TargetName="meta" Property="HorizontalAlignment" Value="Right"/>
+                                        </DataTrigger>
+                                        <!-- After IsSent, so a system message is centred and neutral whichever direction the row records. -->
+                                        <DataTrigger Binding="{Binding IsSystem}" Value="True">
+                                            <Setter TargetName="bubbleRow" Property="HorizontalAlignment" Value="Center"/>
+                                            <Setter TargetName="bubble" Property="Background" Value="#EEF1F4"/>
+                                            <Setter TargetName="bubble" Property="BorderBrush" Value="#AEB8C2"/>
+                                            <Setter TargetName="bubble" Property="TextElement.Foreground" Value="#3B4A54"/>
+                                            <Setter TargetName="bubble" Property="TextElement.FontStyle" Value="Italic"/>
+                                            <Setter TargetName="meta" Property="HorizontalAlignment" Value="Center"/>
+                                            <Setter TargetName="bubble" Property="ToolTip" Value="System message: an app event recorded by the artifact, not text written by the sender shown"/>
+                                        </DataTrigger>
+                                        <DataTrigger Value="True">
+                                            <DataTrigger.Binding>
+                                                <MultiBinding Converter="{StaticResource InSet}">
+                                                    <Binding Path="RowId"/>
+                                                    <Binding Path="DataContext.MatchIds" RelativeSource="{RelativeSource AncestorType=ListBox}"/>
+                                                </MultiBinding>
+                                            </DataTrigger.Binding>
+                                            <Setter TargetName="bubble" Property="BorderBrush" Value="#F5A623"/>
+                                            <Setter TargetName="bubble" Property="BorderThickness" Value="3"/>
+                                        </DataTrigger>
+                                    </DataTemplate.Triggers>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </TabItem>
+                    <TabItem Header="Table">
+                        <DataGrid ItemsSource="{Binding ShownRows}" SelectedItem="{Binding SelectedRow}" local:DynamicColumns.Columns="{Binding Columns}" BorderThickness="0"
+                                  local:RecordGrid.Enabled="True">
+                            <DataGrid.Resources><local:BindingProxy x:Key="Ctx" Data="{Binding}"/></DataGrid.Resources>
+                            <DataGrid.Columns>
+                                <DataGridTemplateColumn Width="28" CanUserSort="False" CanUserResize="False">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <CheckBox HorizontalAlignment="Center" VerticalAlignment="Center" Focusable="False"
+                                                      Command="{Binding DataContext.ToggleCheckCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" CommandParameter="{Binding RowId}">
+                                                <CheckBox.IsChecked>
+                                                    <MultiBinding Converter="{StaticResource InSet}" Mode="OneWay">
+                                                        <Binding Path="RowId"/>
+                                                        <Binding Path="DataContext.CheckedIds" RelativeSource="{RelativeSource AncestorType=DataGrid}"/>
+                                                    </MultiBinding>
+                                                </CheckBox.IsChecked>
+                                            </CheckBox>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTemplateColumn Header="&#xE8EC;" Width="26" CanUserSort="False">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Style="{StaticResource Icon}" Text="&#xE8EC;" Foreground="{Binding Tag, Converter={StaticResource TagColor}}" FontSize="13"
+                                                       ToolTip="{Binding Tag}" Visibility="{Binding Tag, Converter={StaticResource Vis}}"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTemplateColumn Header="Translation (AI)" Width="320" CanUserSort="False"
+                                                        Visibility="{Binding Data.Translation.Shown, Source={StaticResource Ctx}, Converter={StaticResource Vis}}">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Style="{StaticResource WrapCell}" FontStyle="Italic" Foreground="{StaticResource AiBrush}">
+                                                <TextBlock.Text>
+                                                    <MultiBinding Converter="{StaticResource Tr}">
+                                                        <Binding Path="RowId"/>
+                                                        <Binding Path="DataContext.Translation.ByRow" RelativeSource="{RelativeSource AncestorType=DataGrid}"/>
+                                                    </MultiBinding>
+                                                </TextBlock.Text>
+                                                <TextBlock.ToolTip><Binding Path="Text" RelativeSource="{RelativeSource Self}"/></TextBlock.ToolTip>
+                                            </TextBlock>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </TabItem>
+                </TabControl>
+            </Grid>
+        </DockPanel>
+    </DataTemplate>
+</ResourceDictionary>

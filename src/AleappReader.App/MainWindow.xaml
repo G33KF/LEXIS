@@ -1,0 +1,367 @@
+<Window x:Class="AleappReader.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:AleappReader.App.ViewModels"
+        xmlns:local="clr-namespace:AleappReader.App"
+        xmlns:views="clr-namespace:AleappReader.App.Views"
+        xmlns:core="clr-namespace:AleappReader.Core;assembly=AleappReader.Core"
+        xmlns:wv="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        Title="{Binding WindowTitle}" Height="860" Width="1480" MinWidth="1040" MinHeight="560" WindowStartupLocation="CenterScreen"
+        Background="{StaticResource PanelBrush}" PreviewKeyDown="Window_PreviewKeyDown">
+    <Window.InputBindings>
+        <KeyBinding Key="O" Modifiers="Ctrl" Command="{Binding OpenCaseCommand}"/>
+        <KeyBinding Key="W" Modifiers="Ctrl" Command="{Binding CloseTabCommand}" CommandParameter="{Binding SelectedTab}"/>
+    </Window.InputBindings>
+
+    <DockPanel>
+        <!-- Toolbar -->
+        <Border DockPanel.Dock="Top" Background="{StaticResource ChromeBrush}" Padding="6,5"><ScrollViewer Style="{StaticResource HeaderScroll}">
+            <local:HeaderPanel>
+                <WrapPanel Orientation="Horizontal">
+                    <TextBlock Text="&#xE7C3;" Style="{StaticResource Icon}" Foreground="#7FB8FF" FontSize="20" Margin="4,0,6,0"/>
+                    <StackPanel VerticalAlignment="Center" Margin="0,0,14,0">
+                        <TextBlock Text="LEXIS" Foreground="White" FontSize="15" FontWeight="SemiBold" LineHeight="16" LineStackingStrategy="BlockLineHeight"/>
+                        <TextBlock Text="LEAPP READER" Foreground="#7FB8FF" FontSize="8.5" FontWeight="SemiBold"/>
+                    </StackPanel>
+                    <Button Style="{StaticResource ToolButton}" Command="{Binding OpenCaseCommand}" ToolTip="Open a report folder (Ctrl+O)">
+                        <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE838;"/><TextBlock Text=" Open folder"/></StackPanel>
+                    </Button>
+                    <Button Style="{StaticResource ToolButton}" Command="{Binding OpenCaseFileCommand}" ToolTip="Open a _lava_data.lava file or a portable case zip">
+                        <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE8E5;"/><TextBlock Text=" Open file"/></StackPanel>
+                    </Button>
+                    <Menu Background="Transparent" VerticalAlignment="Center">
+                        <MenuItem Header="Recent" Foreground="White" ItemsSource="{Binding RecentCases}">
+                            <MenuItem.ItemContainerStyle>
+                                <Style TargetType="MenuItem">
+                                    <Setter Property="Foreground" Value="Black"/>
+                                    <Setter Property="Header" Value="{Binding}"/>
+                                    <Setter Property="Command" Value="{Binding DataContext.OpenRecentCommand, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                                    <Setter Property="CommandParameter" Value="{Binding}"/>
+                                </Style>
+                            </MenuItem.ItemContainerStyle>
+                        </MenuItem>
+                    </Menu>
+                    <Button Style="{StaticResource ToolButton}" Command="{Binding CloseCaseCommand}" ToolTip="Close the open case">
+                        <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE711;"/><TextBlock Text=" Close case"/></StackPanel>
+                    </Button>
+                    <Rectangle Width="1" Fill="{StaticResource ChromeLightBrush}" Margin="8,2"/>
+                    <Button Style="{StaticResource ToolButton}" Command="{Binding NewExtractionCommand}" ToolTip="Run ALEAPP (Android) or iLEAPP (iPhone) on an extraction">
+                        <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE768;"/><TextBlock Text=" Analyze new extraction"/></StackPanel>
+                    </Button>
+                    <Button Style="{StaticResource ToolButton}" Command="{Binding PortableCaseCommand}" ToolTip="Create a single zip with the case and this reader">
+                        <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE7B8;"/><TextBlock Text=" Portable case"/></StackPanel>
+                    </Button>
+                    <Button Style="{StaticResource ToolButton}" Command="{Binding VerifyPackageCommand}" ToolTip="Check a portable case zip against its SHA256SUMS.txt and signature, without opening it">
+                        <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE9D5;"/><TextBlock Text=" Verify package"/></StackPanel>
+                    </Button>
+                    <Button Style="{StaticResource ToolButton}" Command="{Binding ShowExportsCommand}" ToolTip="Where this session exported data to: every export, when, from which device, to which file or folder">
+                        <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE81C;"/><TextBlock Text=" Exports"/></StackPanel>
+                    </Button>
+                    <Button Style="{StaticResource ToolButton}" Command="{Binding InvestigationCaseCommand}" ToolTip="Create an investigation case from the report open, or edit the selected one (its devices, their names and order)">
+                        <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE8EA;"/><TextBlock Text=" Investigation case"/></StackPanel>
+                    </Button>
+                    <Button Style="{StaticResource ToolButton}" Command="{Binding NewInvestigationCaseCommand}" ToolTip="A new investigation case, beside the ones open (Open file opens one more)">
+                        <TextBlock Style="{StaticResource Icon}" Text="&#xE710;"/>
+                    </Button>
+                    <Border IsEnabled="{Binding Enabled, Source={x:Static local:AiState.Instance}}">
+                    <Button Style="{StaticResource ToolButton}" Command="{Binding AnalyzeWithAiCommand}" ToolTipService.ShowOnDisabled="True"
+                            ToolTip="AI on the current device: thematic review of every chat, image classification, transcription, Claude CLI. Off until set up in AI settings">
+                        <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE945;"/><TextBlock Text=" AI analysis"/></StackPanel>
+                    </Button>
+                    </Border>
+                </WrapPanel>
+                <WrapPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="8,0">
+                    <ComboBox Width="170" ToolTip="Display time zone for every date. Stored values are not changed" ItemsSource="{Binding Zones}" SelectedItem="{Binding Zone}" DisplayMemberPath="DisplayName" VerticalAlignment="Center"/>
+                    <TextBox x:Name="SearchInput" Width="190" Margin="10,0,0,0" Style="{StaticResource SearchBox}" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                             ToolTip="Search every artifact (Enter): a b (both), a | b (either), -a (not), &quot;exact phrase&quot;, /regex/. Ctrl+F: the open view's filter, or this box" IsEnabled="{Binding HasCase}">
+                        <TextBox.InputBindings><KeyBinding Key="Enter" Command="{Binding SearchCommand}"/></TextBox.InputBindings>
+                    </TextBox>
+                    <Button Style="{StaticResource ToolButton}" Command="{Binding SearchCommand}" ToolTip="Search every artifact"><TextBlock Style="{StaticResource Icon}" Text="&#xE721;"/></Button>
+                    <Button Style="{StaticResource ToolButton}" Click="Settings_Click" ToolTip="Settings: tags and their shortcuts"><TextBlock Style="{StaticResource Icon}" Text="&#xE713;"/></Button>
+                    <Button Style="{StaticResource ToolButton}" Command="{Binding OpenAiSettingsCommand}" ToolTip="AI settings: model servers, models, Claude CLI, review themes"><TextBlock Style="{StaticResource Icon}" Text="&#xE945;"/></Button>
+                    <Button Style="{StaticResource ToolButton}" Command="{Binding AboutCommand}" ToolTip="About LEXIS"><TextBlock Style="{StaticResource Icon}" Text="&#xE946;"/></Button>
+                </WrapPanel>
+            </local:HeaderPanel>
+        </ScrollViewer></Border>
+
+        <!-- An altered portable case stays flagged for as long as it is open -->
+        <Border DockPanel.Dock="Top" Background="#B3261E" Padding="10,5" Visibility="{Binding PackageWarning, Converter={StaticResource Vis}}">
+            <TextBlock Foreground="White" TextWrapping="Wrap" Text="{Binding PackageWarning}" ToolTip="{Binding PackageWarning}" MaxHeight="60"/>
+        </Border>
+
+        <!-- Status bar -->
+        <Border DockPanel.Dock="Bottom" Background="{StaticResource ChromeBrush}" Padding="8,3">
+            <DockPanel>
+                <ProgressBar DockPanel.Dock="Right" Width="120" Height="10" IsIndeterminate="{Binding Busy}"
+                             Visibility="{Binding Busy, Converter={StaticResource Vis}}"/>
+                <TextBlock Text="{Binding Status}" Foreground="#C9D3E0" TextTrimming="CharacterEllipsis" ToolTip="{Binding Status}"/>
+            </DockPanel>
+        </Border>
+
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition x:Name="TreeColumn" Width="300" MinWidth="240"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*" MinWidth="320"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition x:Name="DetailsColumn" Width="360" MinWidth="220"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Collapse / reopen the navigation tree -->
+            <Border Grid.Column="0" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0">
+                <Button x:Name="TreeToggle" VerticalAlignment="Top" Margin="0,4" Padding="4,6" Background="Transparent" BorderThickness="0"
+                        Cursor="Hand" Click="TreeToggle_Click" ToolTip="Hide the navigation panel" AutomationProperties.Name="Toggle navigation panel">
+                    <TextBlock x:Name="TreeToggleGlyph" Style="{StaticResource Icon}" Text="&#xE76B;" FontSize="11"/>
+                </Button>
+            </Border>
+
+            <!-- Navigation tree -->
+            <!-- No sideways scrolling: the panel keeps the width it is given and a long title trims instead of
+                 widening the rows, which the default item template (header in an Auto column) would let it do. -->
+            <TreeView x:Name="Tree" Grid.Column="1" ItemsSource="{Binding Nodes}" BorderThickness="0" Background="White"
+                      SelectedItemChanged="Tree_SelectedItemChanged" Padding="2,4" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                      AllowDrop="True" ContextMenuOpening="Tree_ContextMenuOpening" PreviewMouseLeftButtonDown="Tree_PreviewMouseLeftButtonDown"
+                      PreviewMouseMove="Tree_PreviewMouseMove" DragOver="Tree_DragOver" Drop="Tree_Drop">
+                <TreeView.ContextMenu><ContextMenu/></TreeView.ContextMenu>
+                <TreeView.ItemContainerStyle>
+                    <Style TargetType="TreeViewItem">
+                        <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
+                        <Setter Property="IsSelected" Value="{Binding IsSelected, Mode=TwoWay}"/>
+                        <Setter Property="Padding" Value="1,2"/>
+                        <Setter Property="AutomationProperties.Name" Value="{Binding Title}"/>
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="TreeViewItem">
+                                    <StackPanel>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="16"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <ToggleButton x:Name="Expander" Focusable="False" ClickMode="Press"
+                                                          IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}}">
+                                                <ToggleButton.Template>
+                                                    <ControlTemplate TargetType="ToggleButton">
+                                                        <Border Background="Transparent">
+                                                            <TextBlock x:Name="Glyph" Style="{StaticResource Icon}" Text="&#xE76C;" FontSize="8" Foreground="{StaticResource MutedBrush}"
+                                                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                        </Border>
+                                                        <ControlTemplate.Triggers>
+                                                            <Trigger Property="IsChecked" Value="True"><Setter TargetName="Glyph" Property="Text" Value="&#xE70D;"/></Trigger>
+                                                        </ControlTemplate.Triggers>
+                                                    </ControlTemplate>
+                                                </ToggleButton.Template>
+                                            </ToggleButton>
+                                            <Border x:Name="Bd" Grid.Column="1" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
+                                                <ContentPresenter ContentSource="Header"/>
+                                            </Border>
+                                        </Grid>
+                                        <ItemsPresenter x:Name="ItemsHost" Margin="16,0,0,0"/>
+                                    </StackPanel>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsExpanded" Value="False"><Setter TargetName="ItemsHost" Property="Visibility" Value="Collapsed"/></Trigger>
+                                        <Trigger Property="HasItems" Value="False"><Setter TargetName="Expander" Property="Visibility" Value="Hidden"/></Trigger>
+                                        <Trigger Property="IsSelected" Value="True">
+                                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
+                                            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"/>
+                                        </Trigger>
+                                        <MultiTrigger>
+                                            <MultiTrigger.Conditions>
+                                                <Condition Property="IsSelected" Value="True"/>
+                                                <Condition Property="IsSelectionActive" Value="False"/>
+                                            </MultiTrigger.Conditions>
+                                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource {x:Static SystemColors.InactiveSelectionHighlightBrushKey}}"/>
+                                            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.InactiveSelectionHighlightTextBrushKey}}"/>
+                                        </MultiTrigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </TreeView.ItemContainerStyle>
+                <TreeView.ItemTemplate>
+                    <HierarchicalDataTemplate DataType="{x:Type vm:NodeViewModel}" ItemsSource="{Binding Children}">
+                        <DockPanel x:Name="row" LastChildFill="True">
+                            <TextBlock Style="{StaticResource Icon}" Text="{Binding Glyph}" Foreground="{StaticResource AccentBrush}" Width="20" FontSize="13"/>
+                            <Border DockPanel.Dock="Right" Background="#EEF2F7" CornerRadius="8" Padding="6,0" Margin="6,0,0,0"
+                                    Visibility="{Binding CountText, Converter={StaticResource Vis}}">
+                                <TextBlock Text="{Binding CountText}" FontSize="11" Foreground="{StaticResource MutedBrush}"/>
+                            </Border>
+                            <Border Width="10" Height="10" CornerRadius="5" Margin="0,0,5,0" Background="{Binding Color}" VerticalAlignment="Center"
+                                    Visibility="{Binding Color, Converter={StaticResource Vis}}"/>
+                            <Image DataContext="{Binding Device}" Style="{StaticResource PlatformIcon}" Margin="0,0,5,0"
+                                   Visibility="{Binding Converter={StaticResource Vis}}"/>
+                            <TextBlock x:Name="title" Text="{Binding Title}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Title}"/>
+                        </DockPanel>
+                        <HierarchicalDataTemplate.Triggers>
+                            <DataTrigger Binding="{Binding IsEmpty}" Value="True">
+                                <Setter TargetName="row" Property="Opacity" Value="0.45"/>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding Kind}" Value="Case">
+                                <Setter TargetName="title" Property="FontWeight" Value="Bold"/>
+                            </DataTrigger>
+                        </HierarchicalDataTemplate.Triggers>
+                    </HierarchicalDataTemplate>
+                </TreeView.ItemTemplate>
+            </TreeView>
+            <GridSplitter x:Name="TreeSplitter" Grid.Column="2" Width="4" HorizontalAlignment="Stretch" Background="{StaticResource BorderBrush}"/>
+
+            <!-- Current view -->
+            <Grid Grid.Column="3">
+                <TabControl x:Name="ViewTabs" ItemsSource="{Binding Tabs}" SelectedItem="{Binding SelectedTab}" BorderThickness="0" Padding="0"
+                            Visibility="{Binding HasCase, Converter={StaticResource Vis}}" PreviewMouseUp="ViewTabs_PreviewMouseUp">
+                    <TabControl.ItemContainerStyle>
+                        <Style TargetType="TabItem" BasedOn="{StaticResource {x:Type TabItem}}">
+                            <!-- the menu is outside the visual tree: the window's view model reaches it through Tag -->
+                            <Setter Property="Tag" Value="{Binding DataContext, RelativeSource={RelativeSource AncestorType=TabControl}}"/>
+                            <Setter Property="ContextMenu">
+                                <Setter.Value>
+                                    <ContextMenu>
+                                        <MenuItem Header="Close" InputGestureText="Ctrl+W" IsEnabled="{Binding PlacementTarget.DataContext.CanClose, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                  Command="{Binding PlacementTarget.Tag.CloseTabCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                  CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                                        <MenuItem Header="Close others"
+                                                  Command="{Binding PlacementTarget.Tag.CloseOtherTabsCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                  CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                                        <MenuItem Header="Close all"
+                                                  Command="{Binding PlacementTarget.Tag.CloseOtherTabsCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                                    </ContextMenu>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </TabControl.ItemContainerStyle>
+                    <TabControl.ItemTemplate>
+                        <DataTemplate DataType="{x:Type vm:TabViewModel}">
+                            <StackPanel Orientation="Horizontal">
+                                <!-- in an investigation case, whose device the tab shows -->
+                                <StackPanel Orientation="Horizontal" DataContext="{Binding Device}" Visibility="{Binding Converter={StaticResource Vis}}"
+                                            ToolTip="{Binding Label}" VerticalAlignment="Center">
+                                    <Border Width="9" Height="9" CornerRadius="4.5" Margin="0,0,4,0" Background="{Binding Color}" VerticalAlignment="Center"/>
+                                    <Image Style="{StaticResource PlatformIcon}" Width="12" Height="12" Margin="0,0,5,0"/>
+                                </StackPanel>
+                                <TextBlock Style="{StaticResource Icon}" Text="{Binding Glyph}" FontSize="12" Margin="0,0,5,0" Foreground="{StaticResource AccentBrush}"/>
+                                <TextBlock Text="{Binding Header}" MaxWidth="220" TextTrimming="CharacterEllipsis" ToolTip="{Binding Header}" VerticalAlignment="Center"/>
+                                <Button Background="Transparent" BorderThickness="0" Padding="3,1" Margin="6,0,0,0" Cursor="Hand" ToolTip="Close"
+                                        Visibility="{Binding CanClose, Converter={StaticResource Vis}}" CommandParameter="{Binding}"
+                                        Command="{Binding DataContext.CloseTabCommand, RelativeSource={RelativeSource AncestorType=TabControl}}">
+                                    <TextBlock Style="{StaticResource Icon}" Text="&#xE711;" FontSize="9"/>
+                                </Button>
+                            </StackPanel>
+                        </DataTemplate>
+                    </TabControl.ItemTemplate>
+                    <TabControl.ContentTemplate>
+                        <DataTemplate>
+                            <DockPanel>
+                                <!-- the device of the view, above its title -->
+                                <Border DockPanel.Dock="Top" DataContext="{Binding Device}" Visibility="{Binding Converter={StaticResource Vis}}"
+                                        Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Padding="16,4">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Border Width="10" Height="10" CornerRadius="5" Margin="0,0,6,0" Background="{Binding Color}" VerticalAlignment="Center"/>
+                                        <Image Style="{StaticResource PlatformIcon}" Margin="0,0,6,0"/>
+                                        <TextBlock Text="{Binding Label}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                        <TextBlock Text="{Binding Platform}" Foreground="{StaticResource MutedBrush}" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Border>
+                                <ContentControl Content="{Binding Content}" Focusable="False"/>
+                            </DockPanel>
+                        </DataTemplate>
+                    </TabControl.ContentTemplate>
+                </TabControl>
+                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center"
+                            Visibility="{Binding HasCase, Converter={StaticResource Vis}, ConverterParameter=invert}">
+                    <TextBlock Text="&#xE838;" Style="{StaticResource Icon}" FontSize="56" Foreground="{StaticResource BorderBrush}" HorizontalAlignment="Center"/>
+                    <TextBlock Text="No case open" FontSize="18" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" Margin="0,10"/>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                        <Button Style="{StaticResource AccentButton}" Content="Open ALEAPP / iLEAPP report…" Command="{Binding OpenCaseCommand}"/>
+                        <Button Style="{StaticResource FlatButton}" Content="Run new extraction…" Command="{Binding NewExtractionCommand}"/>
+                    </StackPanel>
+                </StackPanel>
+            </Grid>
+            <GridSplitter Grid.Column="4" Width="4" HorizontalAlignment="Stretch" Background="{StaticResource BorderBrush}"/>
+
+            <!-- Details pane -->
+            <DockPanel Grid.Column="5" Background="White" DataContext="{Binding Details}">
+                <Border DockPanel.Dock="Top" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Padding="10,8"
+                        Visibility="{Binding Title, Converter={StaticResource Vis}}">
+                <StackPanel>
+                    <TextBlock Text="{Binding Title}" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap" Foreground="{StaticResource ChromeBrush}"/>
+                    <TextBlock Text="{Binding Subtitle}" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"/>
+                    <Button Style="{StaticResource FlatButton}" HorizontalAlignment="Left" Margin="0,6,0,0" Command="{Binding OpenSourceCommand}"
+                            Visibility="{Binding Source, Converter={StaticResource Vis}}" ToolTip="Open the record in its artifact table">
+                        <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE8A7;"/><TextBlock Text=" Open record in its table"/></StackPanel>
+                    </Button>
+                    <WrapPanel Margin="0,4,0,0" Visibility="{Binding HasSources, Converter={StaticResource Vis}}">
+                        <Button Style="{StaticResource FlatButton}" Command="{Binding ExportSourcesCommand}"
+                                ToolTip="Save verified copies of the source file(s) from the extraction, with -wal/-shm, SHA256SUMS.txt and PROVENANCE.txt">
+                            <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xEDE1;"/><TextBlock Text=" Export data source…"/></StackPanel>
+                        </Button>
+                        <Button Style="{StaticResource FlatButton}" Command="{Binding OpenSourceCopyCommand}"
+                                ToolTip="Open a temporary verified copy of the source file with its default app; the evidence is never opened">
+                            <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE8C8;"/><TextBlock Text=" Open source copy"/></StackPanel>
+                        </Button>
+                        <Button Style="{StaticResource FlatButton}" Command="{Binding ShowInFilesCommand}"
+                                ToolTip="Show the source file in its folder of the Extraction Files view (read-only)">
+                            <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE8B7;"/><TextBlock Text=" Show in file system"/></StackPanel>
+                        </Button>
+                    </WrapPanel>
+                </StackPanel>
+                </Border>
+                <!-- Tag / note -->
+                <Border DockPanel.Dock="Bottom" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="10,8"
+                        Visibility="{Binding CanTag, Converter={StaticResource Vis}}" Background="{StaticResource PanelBrush}">
+                    <StackPanel>
+                        <DockPanel>
+                            <TextBlock Text="&#xE8EC;" Style="{StaticResource Icon}" Foreground="{StaticResource TagBrush}" Margin="0,0,6,0"/>
+                            <TextBlock Text="Tagged" FontWeight="SemiBold" Foreground="{StaticResource TagTextBrush}" DockPanel.Dock="Right"
+                                       Visibility="{Binding IsTagged, Converter={StaticResource Vis}}"/>
+                            <ComboBox IsEditable="True" ItemsSource="{Binding TagChoices}" Text="{Binding Tag, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0"/>
+                        </DockPanel>
+                        <TextBox Text="{Binding Note, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" Height="54" Margin="0,6"
+                                 VerticalScrollBarVisibility="Auto" ToolTip="Examiner note"/>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button Style="{StaticResource FlatButton}" Content="Remove tag" Command="{Binding RemoveTagCommand}"
+                                    Visibility="{Binding IsTagged, Converter={StaticResource Vis}}"/>
+                            <Button Style="{StaticResource AccentButton}" Content="Save tag" Command="{Binding SaveTagCommand}"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+                <TextBlock DockPanel.Dock="Top" Style="{StaticResource EmptyText}" Margin="10,40" TextWrapping="Wrap" Text="Select a record to see its details"
+                           Visibility="{Binding Title, Converter={StaticResource Vis}, ConverterParameter=invert}"/>
+                <!-- the details, and under them the Extraction Files viewer when it is placed there -->
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*" MinHeight="60"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*">
+                            <RowDefinition.Style>
+                                <Style TargetType="RowDefinition">
+                                    <Setter Property="MaxHeight" Value="0"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding DataContext.SelectedTab.Content.ViewerUnderDetails, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                            <Setter Property="MaxHeight" Value="Infinity"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </RowDefinition.Style>
+                        </RowDefinition>
+                    </Grid.RowDefinitions>
+                    <views:RecordDetailsView x:Name="DetailsView"/>
+                    <GridSplitter Grid.Row="1" Height="4" HorizontalAlignment="Stretch" ResizeDirection="Rows" Background="{StaticResource BorderBrush}"
+                                  Visibility="{Binding DataContext.SelectedTab.Content.ViewerUnderDetails, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource Vis}}"/>
+                    <ContentControl Grid.Row="2" ContentTemplate="{StaticResource FileViewer}" Focusable="False">
+                        <ContentControl.Style>
+                            <Style TargetType="ContentControl">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding DataContext.SelectedTab.Content.ViewerUnderDetails, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                        <Setter Property="Content" Value="{Binding DataContext.SelectedTab.Content, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ContentControl.Style>
+                    </ContentControl>
+                </Grid>
+            </DockPanel>
+        </Grid>
+    </DockPanel>
+</Window>

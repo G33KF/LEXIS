@@ -1,0 +1,152 @@
+<UserControl x:Class="AleappReader.App.Views.RecordDetailsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:AleappReader.App.ViewModels"
+             xmlns:views="clr-namespace:AleappReader.App.Views"
+             xmlns:core="clr-namespace:AleappReader.Core;assembly=AleappReader.Core"
+             xmlns:wv="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf">
+    <!-- The fields and media of one record (DataContext: DetailsViewModel), in the details pane and in record windows.
+         Preview (media, email HTML) above, fields below, split by a draggable bar; the preview row is closed when empty. -->
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition x:Name="PreviewRow" Height="0"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*" MinHeight="80"/>
+        </Grid.RowDefinitions>
+        <Grid Grid.Row="0">
+            <Grid.RowDefinitions>
+                <RowDefinition x:Name="MediaRow" Height="0"/>
+                <RowDefinition x:Name="HtmlRow" Height="0"/>
+            </Grid.RowDefinitions>
+            <ScrollViewer x:Name="MediaScroll" VerticalScrollBarVisibility="Auto">
+        <ItemsControl ItemsSource="{Binding Media}" Margin="10,0">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate DataType="{x:Type core:MediaRef}">
+                    <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" Margin="0,0,0,8" Padding="4" CornerRadius="3">
+                        <StackPanel>
+                            <Image Source="{Binding Converter={StaticResource MediaImage}}" Stretch="Uniform"
+                                   MaxHeight="{Binding ViewportHeight, ElementName=MediaScroll, Converter={StaticResource PreviewFit}}"
+                                   Visibility="{Binding IsImage, Converter={StaticResource Vis}}"/>
+                            <views:PlayerView Media="{Binding}"
+                                              VideoHeight="{Binding ViewportHeight, ElementName=MediaScroll, Converter={StaticResource PreviewFit}}"/>
+                            <TextBlock Text="Media file not present in the report" Foreground="{StaticResource MutedBrush}"
+                                       Visibility="{Binding Exists, Converter={StaticResource Vis}, ConverterParameter=invert}"/>
+                            <DockPanel Margin="0,4,0,0">
+                                <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Content="Show in folder"
+                                        Command="{Binding DataContext.ShowInFolderCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding}"/>
+                                <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Content="Open"
+                                        Command="{Binding DataContext.OpenMediaCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding}"/>
+                                <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" ToolTip="{Binding SourcePath}"/>
+                            </DockPanel>
+                        </StackPanel>
+                    </Border>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+            </ScrollViewer>
+            <!-- Original HTML of an email: sandboxed (no scripts, no network), outside any ScrollViewer for WebView2 airspace -->
+            <Border x:Name="HtmlBox" Grid.Row="1" Margin="10,0,10,8" Visibility="Collapsed"
+                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+                <wv:WebView2 x:Name="HtmlView"/>
+            </Border>
+        </Grid>
+        <GridSplitter x:Name="PreviewSplitter" Grid.Row="1" Height="5" HorizontalAlignment="Stretch" Visibility="Collapsed"
+                      Background="{StaticResource BorderBrush}" ResizeBehavior="PreviousAndNext" ToolTip="Drag to resize the preview"/>
+        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+        <ItemsControl ItemsSource="{Binding Fields}" Margin="10,6,10,10">
+            <ItemsControl.Resources>
+                <!-- the kind of a structured value as a chip: a click shows it decoded right here -->
+                <Style x:Key="KindChip" TargetType="ToggleButton">
+                    <Setter Property="Cursor" Value="Hand"/>
+                    <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="ToggleButton">
+                                <Border x:Name="b" Background="{StaticResource AccentSoftBrush}" CornerRadius="8" Padding="7,0,7,1">
+                                    <StackPanel Orientation="Horizontal">
+                                        <ContentPresenter TextElement.FontSize="10" TextElement.FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                        <TextBlock x:Name="arrow" Text="&#xE70D;" FontFamily="{StaticResource IconFont}" FontSize="8" Margin="4,1,0,0" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsChecked" Value="True">
+                                        <Setter TargetName="b" Property="Background" Value="{StaticResource AccentBrush}"/>
+                                        <Setter Property="Foreground" Value="White"/>
+                                        <Setter TargetName="arrow" Property="Text" Value="&#xE70E;"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+                <HierarchicalDataTemplate DataType="{x:Type core:PlistNode}" ItemsSource="{Binding Children}">
+                    <TextBlock ToolTip="{Binding Path}">
+                        <Run Text="{Binding Key, Mode=OneWay}" FontWeight="SemiBold"/> <Run Text="{Binding Value, Mode=OneWay}"/> <Run Text="{Binding Reading, Mode=OneWay}" Foreground="{StaticResource MutedBrush}" FontStyle="Italic"/>
+                        <TextBlock.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Copy key path" Click="CopyPath"/>
+                                <MenuItem Header="Copy value" Click="CopyValue"/>
+                            </ContextMenu>
+                        </TextBlock.ContextMenu>
+                    </TextBlock>
+                </HierarchicalDataTemplate>
+            </ItemsControl.Resources>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate DataType="{x:Type vm:Field}">
+                    <Grid>
+                        <Border x:Name="value" BorderBrush="#EDF0F4" BorderThickness="0,0,0,1" Padding="0,5,0,6">
+                            <StackPanel>
+                                <DockPanel>
+                                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Visibility="{Binding Kind, Converter={StaticResource Vis}}" VerticalAlignment="Center">
+                                        <ToggleButton x:Name="chip" Style="{StaticResource KindChip}" Content="{Binding Kind}"
+                                                      ToolTip="Structured data: show it decoded here, as a tree (right-click a node to copy it)"/>
+                                        <Button Style="{StaticResource FlatButton}" Click="OpenParsed" Padding="4,0" Margin="2,0,0,0"
+                                                ToolTip="Open it decoded in its own window: tree, readable text, value as stored">
+                                            <TextBlock Text="&#xE8A7;" FontFamily="{StaticResource IconFont}" FontSize="11"/>
+                                        </Button>
+                                    </StackPanel>
+                                    <TextBlock x:Name="name" Text="{Binding Name}" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource MutedBrush}"
+                                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}"/>
+                                </DockPanel>
+                                <TextBox x:Name="text" Text="{Binding Value, Mode=OneWay}" ToolTip="{Binding Timestamps}" IsReadOnly="True" BorderThickness="0" TextWrapping="Wrap"
+                                         Background="Transparent" Padding="0" Margin="0,2,0,0"/>
+                                <TextBlock Text="{Binding Reading}" Visibility="{Binding Reading, Converter={StaticResource Vis}}" FontSize="11" FontStyle="Italic"
+                                           Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"/>
+                                <Border x:Name="decoded" Visibility="Collapsed" Margin="0,4,0,0" Padding="4" CornerRadius="3"
+                                        Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+                                    <TreeView x:Name="tree" BorderThickness="0" Background="Transparent" FontFamily="Consolas" FontSize="12" MaxHeight="420">
+                                        <TreeView.ItemContainerStyle>
+                                            <Style TargetType="TreeViewItem"><Setter Property="IsExpanded" Value="True"/></Style>
+                                        </TreeView.ItemContainerStyle>
+                                    </TreeView>
+                                </Border>
+                            </StackPanel>
+                        </Border>
+                        <Border x:Name="header" Visibility="Collapsed" Margin="0,10,0,2" Padding="0,0,0,3"
+                                BorderBrush="{StaticResource AccentBrush}" BorderThickness="0,0,0,2">
+                            <TextBlock Text="{Binding Name}" Style="{StaticResource SectionHeader}" Margin="0" Foreground="{StaticResource AccentBrush}"/>
+                        </Border>
+                    </Grid>
+                    <DataTemplate.Triggers>
+                        <DataTrigger Binding="{Binding Header}" Value="True">
+                            <Setter TargetName="value" Property="Visibility" Value="Collapsed"/>
+                            <Setter TargetName="header" Property="Visibility" Value="Visible"/>
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding IsAi}" Value="True">
+                            <Setter TargetName="name" Property="Foreground" Value="{StaticResource AiBrush}"/>
+                            <Setter TargetName="text" Property="Foreground" Value="{StaticResource AiBrush}"/>
+                            <Setter TargetName="text" Property="FontStyle" Value="Italic"/>
+                        </DataTrigger>
+                        <!-- decoded only once asked for: a big value costs nothing until then -->
+                        <DataTrigger Binding="{Binding IsChecked, ElementName=chip}" Value="True">
+                            <Setter TargetName="decoded" Property="Visibility" Value="Visible"/>
+                            <Setter TargetName="text" Property="Visibility" Value="Collapsed"/>
+                            <Setter TargetName="tree" Property="ItemsSource" Value="{Binding Decoded}"/>
+                        </DataTrigger>
+                    </DataTemplate.Triggers>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

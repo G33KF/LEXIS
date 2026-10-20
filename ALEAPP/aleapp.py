@@ -1,0 +1,633 @@
+import json
+import argparse
+import io
+import os.path
+import typing
+import scripts.report as report
+import scripts.artifact_report as artifact_report
+import traceback
+import atexit
+import getpass
+import sys
+
+import pathlib
+import scripts.plugin_loader as plugin_loader
+import leapp_functions.app.history as history
+
+from scripts.search_files import *  # pylint: disable=wildcard-import,unused-wildcard-import
+from scripts.raw_image import FileSeekerRaw, cli_image_keys, _secret_given
+from scripts import android_backup, android_keystore
+from scripts.ilapfuncs import *  # pylint: disable=wildcard-import,unused-wildcard-import
+from leapp_functions.app.output import validate_output_folder_available
+from scripts.version_info import leapp_name, leapp_version, check_runtime_dependencies
+from time import process_time, gmtime, strftime, perf_counter
+from scripts.lavafuncs import *  # pylint: disable=wildcard-import,unused-wildcard-import
+from scripts.context import Context
+
+# How many of the slowest artifacts to list at the end of a run. Enough to show a
+# pattern, short enough that nobody has to scroll past it.
+SLOWEST_ARTIFACTS_TO_REPORT = 10
+
+
+def validate_args(args):
+    if args.artifact_paths or args.create_profile_casedata:
+        return  # Skip further validation if --artifact_paths is used
+
+    # Ensure other arguments are provided
+    mandatory_args = ['input_path', 'output_path', 't']
+    for arg in mandatory_args:
+        value = getattr(args, arg)
+        if value is None:
+            raise argparse.ArgumentError(None, f'No {arg.upper()} provided. Run the program again.')
+
+    # Check existence of paths
+    if not os.path.exists(args.input_path):
+        raise argparse.ArgumentError(None, f'INPUT path \'{args.input_path}\' does not exist! Run the program again.')
+
+    if not os.path.exists(args.output_path):
+        raise argparse.ArgumentError(None, 'OUTPUT folder does not exist! Run the program again.')
+    if not os.path.isdir(os.path.abspath(args.output_path)):
+        raise argparse.ArgumentError(None, f'OUTPUT path \'{args.output_path}\' must be a directory! Run the program again.')
+
+    # Validate new folder name for output path
+    output_folder_valid, output_folder_error = validate_output_folder_available(
+        os.path.abspath(args.output_path), args.custom_output_folder)
+    if not output_folder_valid:
+        raise argparse.ArgumentError(None, output_folder_error)
+
+
+    if args.load_case_data and not os.path.exists(args.load_case_data):
+        raise argparse.ArgumentError(None, 'LEAPP Case Data file not found! Run the program again.')
+
+    if args.load_profile and not os.path.exists(args.load_profile):
+        raise argparse.ArgumentError(None, 'ALEAPP Profile file not found! Run the program again.')
+
+    if args.keystore and not os.path.isfile(args.keystore):
+        raise argparse.ArgumentError(None, 'Keystore file not found! Run the program again.')
+
+
+def create_profile(plugins, path):
+    available_modules = [(module_data.category, module_data.name) for module_data in plugins]
+    available_modules.sort()
+    modules_in_profile = {}
+
+    user_choice = ''
+    print('--- ALEAPP Profile file creation ---\n')
+    instructions = 'You can type:\n'
+    instructions += '   - \'a\' to add or remove modules in the profile file\n'
+    instructions += '   - \'l\' to display the list of all available modules with their number\n'
+    instructions += '   - \'p\' to display the modules added into the profile file\n'
+    instructions += '   - \'q\' to quit and save\n'
+    while not user_choice:
+        print(instructions)
+        user_choice = input('Please enter your choice: ').lower()
+        print()
+        if user_choice == "l":
+            print('Available modules:')
+            for number, available_module in enumerate(available_modules):
+                print(number + 1, available_module)
+            print()
+            user_choice = ''
+        elif user_choice == "p":
+            if modules_in_profile:
+                for number, module in modules_in_profile.items():
+                    print(number, module)
+                print()
+            else:
+                print('No module added to the profile file\n')
+            user_choice = ''
+        elif user_choice == 'a':
+            modules_numbers = input('Enter the numbers of modules, seperated by a comma, to add or remove in the profile file: ')
+            modules_numbers = modules_numbers.split(',')
+            modules_numbers = [module_number.strip() for module_number in modules_numbers]
+            for module_number in modules_numbers:
+                if module_number.isdigit():
+                    module_number = int(module_number)
+                    if module_number > 0 and module_number <= len(available_modules):
+                        if module_number not in modules_in_profile:
+                            module_to_add = available_modules[module_number - 1]
+                            modules_in_profile[module_number] = module_to_add
+                            print(f'module number {module_number} {module_to_add} was added')
+                        else:
+                            module_to_remove = modules_in_profile[module_number]
+                            print(f'module number {module_number} {module_to_remove} was removed')
+                            del modules_in_profile[module_number]
+                    else:
+                        print('Please enter the number of a module!!!\n')
+            print()
+            user_choice = ''
+        elif user_choice == "q":
+            if modules_in_profile:
+                modules = [module_info[1] for module_info in modules_in_profile.values()]
+                profile_filename = ''
+                while not profile_filename:
+                    profile_filename = input('Enter the name of the profile: ')
+                profile_filename += '.alprofile'
+                filename = os.path.join(path, profile_filename)
+                with open(filename, "wt", encoding="utf-8") as profile_file:
+                    json.dump({"leapp": "aleapp", "format_version": 1, "plugins": modules}, profile_file)
+                print('\nProfile saved:', filename)
+                print()
+            else:
+                print('No module added. The profile file was not created.\n')
+                print()
+            return
+        else:
+            print('Please enter a valid choice!!!\n')
+            user_choice = ''
+  
+def create_casedata(path):
+    case_data_values = {}
+    print('--- LEAPP Case Data file creation ---\n')
+    print('Enter the following information:')
+    case_data_values['Case Number'] = input("Case Number: ")
+    case_data_values['Agency'] = input("Agency: ")
+    case_data_values['Examiner'] = input("Examiner : ")
+    print()
+    case_data_filename = ''
+    while not case_data_filename:
+        case_data_filename = input('Enter the name of the Case Data file: ')
+    case_data_filename += '.lcasedata'
+    filename = os.path.join(path, case_data_filename)
+    with open(filename, "wt", encoding="utf-8") as case_data_file:
+        json.dump({"leapp": "case_data", "case_data_values": case_data_values}, case_data_file)
+    print('\nCase Data file saved:', filename)
+    print()
+    return
+
+def main():
+    check_runtime_dependencies()
+    parser = argparse.ArgumentParser(description='ALEAPP: Android Logs, Events, and Protobuf Parser.')
+    parser.add_argument('-t', choices=['fs', 'tar', 'zip', 'gz', 'raw', 'ab'], required=False, action="store",
+                        help=("Specify the input type. "
+                              "'fs' for a folder containing extracted files with normal paths and names, "
+                              "'tar', 'zip', or 'gz' for compressed packages containing files with normal names, "
+                              "'raw' for a disk image (.img, .dd, .bin, or any numbered .001 segment of a split "
+                              "set) or an acquisition (EnCase/EWF .E01, SMART .s01, EWF2 .Ex01, AFF .aff, AFM "
+                              ".afm, or any .aff in an AFD folder, AFF4 .aff4, an Apple .dmg, with any "
+                              ".dmgpart files beside it, .sparseimage, or .sparsebundle folder, or a virtual "
+                              "machine disk, .vhd, .vhdx, .vmdk or .qcow2), read in "
+                              "place without mounting (logical evidence, an EnCase .L01 or FTK Imager "
+                              ".ad1, is read as the files it holds): its "
+                              "NTFS, FAT32, exFAT, ext2/3/4, F2FS, HFS+, APFS, QNX6, QNX4, "
+                              "ETFS, EFS, SquashFS, JFFS2, UBI/UBIFS, YAFFS and QNX IFS volumes "
+                              "are searched directly. "
+                              "'ab' for an Android backup file written by adb backup, encrypted or not "
+                              "(its password as for an encrypted image)."
+                              ))
+    parser.add_argument('-o', '--output_path', required=False, action="store",
+                        help='Path to base output folder (this must exist)')
+    parser.add_argument('-i', '--input_path', required=False, action="store", help='Path to input file/folder')
+    parser.add_argument('--image_password_file', required=False, action="store",
+                        help='For an encrypted image (-t raw; an Apple disk image, an encrypted '
+                             'AFF or an FTK Imager AD-encrypted set), or a BitLocker or encrypted '
+                             'APFS volume in an image: read its password (for BitLocker, a '
+                             'password or recovery password; for APFS, a password or personal '
+                             'recovery key) from the first line of this file')
+    parser.add_argument('--image_password_env', required=False, action="store",
+                        help='For an encrypted image, or a BitLocker or encrypted APFS volume in '
+                             'one (-t raw), or an encrypted Android backup (-t ab): take its password from this '
+                             'environment variable. '
+                             'Without either, it is asked for at a terminal')
+    parser.add_argument('--image_private_key', required=False, action="store",
+                        help='For an image sealed to a certificate (-t raw; an Apple disk image, '
+                             'an AFF or an FTK Imager AD-encrypted set): the certificate\'s RSA '
+                             'private key file, unencrypted, as PEM or DER')
+    parser.add_argument('--bitlocker_key', required=False, action="append", default=[],
+                        help='For a BitLocker volume in an image (-t raw): its startup key '
+                             '(.BEK) file. Repeatable')
+    parser.add_argument('-w', '--wrap_text', required=False, action="store_false", default=True,
+                        help='Do not wrap text for output of data files')
+    parser.add_argument('-m', '--load_profile', required=False, action="store", help="Path to ALEAPP Profile file (.alprofile).")
+    parser.add_argument('-d', '--load_case_data', required=False, action="store", help="Path to LEAPP Case Data file (.lcasedata).")
+    parser.add_argument('-c', '--create_profile_casedata', required=False, action="store",
+                        help=("Generate an ALEAPP Profile file (.alprofile) or LEAPP Case Data file (.lcasedata) into the specified path. "
+                              "This argument is meant to be used alone, without any other arguments."))
+    parser.add_argument('-p', '--artifact_paths', required=False, action="store_true",
+                        help=("Generate a text file list of artifact paths. "
+                              "This argument is meant to be used alone, without any other arguments."))
+    parser.add_argument('--custom_output_folder', required=False, action="store", help="Custom name for the output folder")
+    parser.add_argument('--html_row_limit', required=False, action="store", type=int,
+                        default=artifact_report.HTML_TABLE_ROW_LIMIT,
+                        help="Rows above which an artifact's table is left off its HTML page, which then points at "
+                             "the LAVA database and the TSV export instead (default %(default)s). 0 writes every table.")
+    parser.add_argument('--custom_artifacts_path', required=False, action="store", help="Additional path to load artifacts from (e.g., scripts/alternate_artifacts)")
+    parser.add_argument('--keystore', required=False, action="store",
+                        help=("Path to an Android keystore export (JSON, or a zip holding it) captured "
+                              "from the device. Apps keep keys wrapped by the Keystore, which the file "
+                              "system extraction does not carry in usable form."))
+    parser.add_argument('--version', action='version', version=f'{leapp_name} {leapp_version}')
+
+    profile_filename = None
+    casedata = {}
+
+    # Check if no arguments were provided
+    if len(sys.argv) == 1:
+        parser.print_help(sys.stderr)
+        sys.exit()
+
+    args = parser.parse_args()
+    if args.html_row_limit < 0:
+        parser.error('--html_row_limit must be 0 or a positive number of rows')
+    artifact_report.set_html_row_limit(args.html_row_limit)
+
+    loader_paths = [plugin_loader.PLUGINPATH]
+    if args.custom_artifacts_path:
+        loader_paths.append(pathlib.Path(args.custom_artifacts_path))
+    loader = plugin_loader.PluginLoader(plugin_paths=loader_paths)
+    available_plugins = list(loader.plugins)
+
+    plugins = []
+    plugins_parsed_first = []
+
+    for plugin in available_plugins:
+        if plugin.module_name == 'usagestatsVersion':
+            plugins_parsed_first.append(plugin)
+        else:
+            plugins.append(plugin)
+
+    selected_plugins = plugins.copy()
+
+    try:
+        validate_args(args)
+    except argparse.ArgumentError as e:
+        parser.error(str(e))
+
+    if args.artifact_paths:
+        print('Artifact path list generation started.')
+        print('')
+        with open('path_list.txt', 'a', encoding='utf-8') as paths:
+            for plugin in loader.plugins:
+                if isinstance(plugin.search, tuple):
+                    for x in plugin.search:
+                        paths.write(x + '\n')
+                        print(x)
+                else:  # search should be a string here
+                    paths.write(plugin.search + '\n')
+                    print(plugin.search)
+        print('')
+        print('Artifact path list generation completed')
+        return
+
+    if args.create_profile_casedata:
+        if os.path.isdir(args.create_profile_casedata):
+            create_choice = ''
+            print('-' * 55)
+            print('Welcome to ALEAPP Profile or Case Data file creation\n')
+            instructions = 'You can type:\n'
+            instructions += '   - \'1\' to create an ALEAPP Profile file (.alprofile)\n'
+            instructions += '   - \'2\' to create a LEAPP Case Data file (.lcasedata)\n'
+            instructions += '   - \'q\' to quit\n'
+            while not create_choice:
+                print(instructions)
+                create_choice = input('Please enter your choice: ').lower()
+                print()
+                if create_choice == '1':
+                    create_profile(plugins, args.create_profile_casedata)
+                    create_choice = ''
+                elif create_choice == '2':
+                    create_casedata(args.create_profile_casedata)
+                    create_choice = ''
+                elif create_choice == 'q':
+                    return
+                else:
+                    print('Please enter a valid choice!!!\n')
+                    create_choice = ''
+        else:
+            print('OUTPUT folder for storing ALEAPP Profile file does not exist!\nRun the program again.')
+            return
+
+    if args.load_case_data:
+        case_data_filename = args.load_case_data
+        case_data_load_error = None
+        with open(case_data_filename, "rt", encoding="utf-8") as case_data_file:
+            try:
+                case_data = json.load(case_data_file)
+            except:  # pylint: disable=bare-except
+                case_data_load_error = "File was not a valid case data file: invalid format"
+                print(case_data_load_error)
+                return
+
+        if not case_data_load_error:
+            if isinstance(case_data, dict):
+                if case_data.get("leapp") != "case_data":
+                    case_data_load_error = "File was not a valid case data file"
+                    print(case_data_load_error)
+                    return
+                else:
+                    print(f'Case Data loaded: {case_data_filename}')
+                    casedata = case_data.get('case_data_values', {})
+            else:
+                case_data_load_error = "File was not a valid case data file: invalid format"
+                print(case_data_load_error)
+                return
+    
+    if args.load_profile:
+        profile_filename = args.load_profile
+        profile_load_error = None
+        with open(profile_filename, "rt", encoding="utf-8") as profile_file:
+            try:
+                profile = json.load(profile_file)
+            except:  # pylint: disable=bare-except
+                profile_load_error = "File was not a valid case data file: invalid format"
+                print(profile_load_error)
+                return
+
+        if not profile_load_error:
+            if isinstance(profile, dict):
+                if profile.get("leapp") != "aleapp" or profile.get("format_version") != 1:
+                    profile_load_error = "File was not a valid profile file: incorrect LEAPP or version"
+                    print(profile_load_error)
+                    return
+                else:
+                    profile_plugins = set(profile.get("plugins", []))
+                    selected_plugins = [selected_plugin for selected_plugin in plugins 
+                                        if selected_plugin.name in profile_plugins]
+            else:
+                profile_load_error = "File was not a valid profile file: invalid format"
+                print(profile_load_error)
+                return
+    
+    input_path = args.input_path
+    extracttype = args.t
+    wrap_text = args.wrap_text
+    output_path = os.path.abspath(args.output_path)
+    custom_output_folder = args.custom_output_folder
+
+    # Android file system extractions contain paths > 260 char, which causes problems
+    # This fixes the problem by prefixing \\?\ on each windows path.
+    if is_platform_windows():
+        if input_path[1] == ':' and extracttype =='fs': input_path = '\\\\?\\' + input_path.replace('/', '\\')
+        if output_path[1] == ':': output_path = '\\\\?\\' + output_path.replace('/', '\\')
+
+    # An encrypted image opens only with what locked it, and a BitLocker or APFS volume
+    # in an image with its own key: from a file, an environment variable or the options
+    # naming key files, or asked for at a terminal, and checked before the run.
+    image_password = None
+    if extracttype == 'raw':
+        try:
+            image_password = cli_image_keys(input_path, args.image_password_file,
+                                            args.image_password_env, args.image_private_key,
+                                            args.bitlocker_key)
+        except ValueError as exc:
+            print(exc)
+            return
+    elif extracttype == 'ab':
+        try:
+            image_password = _secret_given(args.image_password_file, args.image_password_env)
+            with open(input_path, 'rb') as fp:
+                header = android_backup.read_header(fp)
+            if header['encryption'] != 'none':
+                if image_password is None and sys.stdin is not None and sys.stdin.isatty():
+                    image_password = getpass.getpass(f'Password for {os.path.basename(input_path)}: ')
+                if not image_password:
+                    raise android_backup.BackupError(
+                        'this Android backup is encrypted; give its password with --image_password_file '
+                        'or --image_password_env, or run at a terminal to be asked for it')
+                android_backup.unlock(header, image_password)
+        except (ValueError, OSError) as exc:
+            print(exc)
+            return
+
+    out_params = OutputParameters(output_path, custom_output_folder)
+    Context.set_output_params(out_params)
+    android_keystore.set_path(args.keystore)
+
+    selected_plugins = plugins_parsed_first + selected_plugins
+    
+    initialize_lava(input_path, out_params.output_folder_base, extracttype, profile_filename)
+
+    # Record history if enabled
+    history.record_input_path(input_path)
+    history.record_output_path(output_path)
+
+    crunch_successful = crunch_artifacts(selected_plugins, extracttype, input_path, out_params, wrap_text, loader, casedata, profile_filename,
+        image_password=image_password)
+
+    lava_finalize_output(out_params.output_folder_base)
+    if crunch_successful:
+        # _lava_data.lava exists only after finalize; recording earlier is a no-op.
+        lava_project_path = os.path.join(out_params.output_folder_base, lava_json_name)
+        history.record_recent_run(leapp_name.lower(), leapp_version, lava_project_path)
+
+def _android_backup_seeker(input_path, out_params, password):
+    """Decode an adb backup into a plain tar beside the report and search that.
+
+    The tar is deleted when the run ends; the renaming of every member is kept in
+    _HTML/_Script_Logs/Android Backup Members.tsv.
+    """
+    spool = os.path.join(out_params.output_folder_base, '_android_backup.tar')
+    try:
+        header, renamed, truncated = android_backup.decode(input_path, spool, password)
+    except android_backup.BackupError as ex:
+        logfunc(f'Android backup: {ex}')
+        if os.path.exists(spool):
+            os.remove(spool)
+        return None
+    logfunc(f'Android backup: format version {header["version"]}, '
+            f'{"compressed" if header["compressed"] else "not compressed"}, encryption {header["encryption"]}'
+            + (f' ({header["rounds"]} PBKDF2 rounds)' if 'rounds' in header else '')
+            + f'; {len(renamed)} members, {len({n.split("/")[1] for n, _ in renamed if n.startswith("apps/")})} apps')
+    if truncated:
+        logfunc('Android backup: the payload ends early (an interrupted backup); members up to there are read')
+    skipped = sum(1 for _, new in renamed if not new)
+    if skipped:
+        logfunc(f'Android backup: {skipped} members with an absolute path or ".." were not read')
+    with open(os.path.join(out_params.output_folder_base, '_HTML', '_Script_Logs', 'Android Backup Members.tsv'),
+              'w', encoding='utf-8', newline='') as members:
+        members.write('Name in backup\tRead as\n')
+        members.writelines(f'{old}\t{new}\n' for old, new in renamed)
+    seeker = FileSeekerTar(spool, out_params.data_folder)
+    seeker._spool_path = spool  # pylint: disable=protected-access  # cleanup() deletes it
+    atexit.register(seeker._discard_spool)  # pylint: disable=protected-access
+    return seeker
+
+
+@screen_log_session
+def crunch_artifacts(
+        plugins: typing.Sequence[plugin_loader.PluginSpec], extracttype, input_path, out_params, wrap_text,
+        loader: plugin_loader.PluginLoader, casedata, profile_filename, image_password=None):
+    start = process_time()
+    start_wall = perf_counter()
+ 
+    logfunc('Processing started. Please wait. This may take a few minutes...')
+
+    logfunc('\n--------------------------------------------------------------------------------------')
+    logfunc(f'ALEAPP v{leapp_version}: ALEAPP Logs, Events, and Protobuf Parser')
+    logfunc('Objective: Triage Android Full System Extractions.')
+    logfunc('By: Alexis Brignoni | @AlexisBrignoni | abrignoni.com')
+    logfunc('By: Yogesh Khatri   | @SwiftForensics | swiftforensics.com\n')
+    android_keystore.report_supplied_keystore()
+    logdevinfo()
+    
+    seeker = None
+    try:
+        if extracttype == 'fs':
+            seeker = FileSeekerDir(input_path, out_params.data_folder)
+
+        elif extracttype in ('tar', 'gz'):
+            seeker = FileSeekerTar(input_path, out_params.data_folder)
+
+        elif extracttype == 'zip':
+            seeker = FileSeekerZip(input_path, out_params.data_folder)
+
+        elif extracttype == 'raw':
+            seeker = FileSeekerRaw(input_path, out_params.data_folder, password=image_password)
+
+        elif extracttype == 'ab':
+            seeker = _android_backup_seeker(input_path, out_params, image_password)
+            if seeker is None:
+                return False
+
+        else:
+            logfunc('Error on argument -o (input type)')
+            return False
+    except Exception:  # pylint: disable=broad-exception-caught
+        logfunc('Had an exception in Seeker - see details below. Terminating Program!')
+        temp_file = io.StringIO()
+        traceback.print_exc(file=temp_file)
+        logfunc(temp_file.getvalue())
+        temp_file.close()
+        return False
+
+    try:
+        # Now ready to run
+        logfunc(f'Info: {len(loader) - 1} modules loaded.') # excluding usagestatsVersion
+        if profile_filename:
+            logfunc(f'Loaded profile: {profile_filename}')
+        logfunc(f'Artifact categories to parse: {len(plugins) - 1}') # excluding usagestatsVersion always executed first
+        logfunc(f'File/Directory selected: {input_path}')
+        logfunc('\n--------------------------------------------------------------------------------------')
+
+        log = open(os.path.join(out_params.output_folder_base, '_HTML', '_Script_Logs', 'ProcessedFilesLog.html'), 'w+', encoding='utf8')
+        log.write(f'Extraction/Path selected: {input_path}<br><br>')
+        
+        parsed_modules = 0
+        plugin_run_times = []
+        artifact_search_pattern_id = 0
+        file_path_ids = set()
+
+
+        # Search for the files per the arguments
+        for plugin_number, plugin in enumerate(plugins, start=1):
+            # Timed from here, before the file search, because the search runs after the
+            # "artifact started" line is printed and is itself a place a run can sit.
+            plugin_start = perf_counter()
+            logfunc()
+            logfunc('[{}/{}] {} [{}] artifact started at {} UTC'.format(plugin_number, len(plugins),
+                                                                  plugin.name, plugin.module_name,
+                                                                  strftime('%H:%M:%S', gmtime())))
+            if isinstance(plugin.search, list) or isinstance(plugin.search, tuple):
+                search_regexes = plugin.search
+            else:
+                search_regexes = [plugin.search]
+            files_found = []
+            log.write(f'<b>For {plugin.name} module</b>')
+            for artifact_search_regex in search_regexes:
+                artifact_search_pattern_id += 1
+                lava_insert_sqlite_artifact_search_pattern(
+                    artifact_search_pattern_id, plugin.module_name, plugin.name, artifact_search_regex)
+                pattern_already_searched = artifact_search_regex in seeker.searched
+                found = seeker.search(artifact_search_regex)
+                if not found:
+                    log.write(f'<ul><li>No file found for regex <i>{artifact_search_regex}</i></li></ul>')
+                else:
+                    log.write(f'<ul><li>{len(found)} {"files" if len(found) > 1 else "file"} for regex <i>{artifact_search_regex}</i> located at:')
+                    for pathh in found:
+                        # Strip \\?\ only for log display; file_infos is keyed with the
+                        # original long-path form on Windows.
+                        display_path = pathh[4:] if pathh.startswith('\\\\?\\') else pathh
+                        log.write(f'<ul><li>{Context.get_relative_path(display_path)}</li></ul>')
+                        if seeker.file_infos.get(pathh):
+                            file_path_id = id(seeker.file_infos.get(pathh))
+                            if not pattern_already_searched and file_path_id not in file_path_ids:
+                                lava_insert_sqlite_file_path(file_path_id,seeker.file_infos.get(pathh).source_path)
+                                file_path_ids.add(file_path_id)
+                            lava_insert_sqlite_artifact_link_pattern_to_file(artifact_search_pattern_id, file_path_id)
+                    log.write('</li></ul>')
+                    files_found.extend(found)
+            if files_found:
+                category_folder = os.path.join(out_params.output_folder_base, '_HTML',
+                                               sanitize_report_name(plugin.category, 'category'))
+                if not os.path.exists(category_folder):
+                    try:
+                        os.makedirs(category_folder)
+                    except (FileExistsError, FileNotFoundError) as ex:
+                        logfunc('Error creating {} report directory at path {}'.format(plugin.name, category_folder))
+                        logfunc('Error was {}'.format(str(ex)))
+                        lava_add_module(plugin.module_name, "Error", len(files_found), plugin.name)
+                        continue  # cannot do work
+                try:
+                    plugin.method(files_found, category_folder, seeker, wrap_text)
+                    lava_commit()
+                except Exception as ex:  # pylint: disable=broad-exception-caught
+                    logfunc('Reading {} artifact had errors!'.format(plugin.name))
+                    logfunc('Error was {}'.format(str(ex)))
+                    logfunc('Exception Traceback: {}'.format(traceback.format_exc()))
+                    plugin_elapsed = perf_counter() - plugin_start
+                    plugin_run_times.append((plugin.name, plugin_elapsed))
+                    logfunc('{} [{}] artifact failed after {:.1f}s'.format(
+                        plugin.name, plugin.module_name, plugin_elapsed))
+                    lava_add_module(plugin.module_name, "Error", len(files_found), plugin.name)
+                    lava_commit()
+                    continue  # nope
+                lava_add_module(plugin.module_name, "Complete", len(files_found), plugin.name)
+            else:
+                lava_add_module(plugin.module_name, "No files found", 0, plugin.name)
+                logfunc("No file found")
+            plugin_elapsed = perf_counter() - plugin_start
+            plugin_run_times.append((plugin.name, plugin_elapsed))
+            logfunc('{} [{}] artifact completed in {:.1f}s'.format(
+                plugin.name, plugin.module_name, plugin_elapsed))
+            parsed_modules += 1
+            GuiWindow.SetProgressBar(parsed_modules, len(plugins))
+            log.flush()
+        log.close()
+
+        write_device_info()
+        logfunc('')
+        logfunc('Processes completed.')
+        end = process_time()
+        end_wall = perf_counter()
+        run_time_secs =  end - start
+        run_time_HMS = strftime('%H:%M:%S', gmtime(run_time_secs))
+        logfunc("Processing time (CPU) = {}".format(run_time_HMS))
+        run_time_secs =  end_wall - start_wall
+        run_time_HMS = strftime('%H:%M:%S', gmtime(run_time_secs))
+        logfunc("Run time (wall clock) = {}".format(run_time_HMS))
+
+        # Filtered on the rounded value so the list holds exactly what the per-artifact
+        # lines showed as 1.0s or more, with no artifact visible above the cut but missing here.
+        slowest = sorted((entry for entry in plugin_run_times if round(entry[1], 1) >= 1.0),
+                         key=lambda item: item[1], reverse=True)[:SLOWEST_ARTIFACTS_TO_REPORT]
+        if slowest:
+            logfunc('')
+            logfunc('Slowest artifacts:')
+            for artifact_name, elapsed in slowest:
+                logfunc('  {:>8.1f}s  {}'.format(elapsed, artifact_name))
+
+        logfunc('')
+        logfunc('Report generation started.')
+        # remove the \\?\ prefix we added to input and output paths, so it does not reflect in report
+        if is_platform_windows(): 
+            if out_params.output_folder_base.startswith('\\\\?\\'):
+                out_params.output_folder_base = out_params.output_folder_base[4:]
+            if input_path.startswith('\\\\?\\'):
+                input_path = input_path[4:]
+        
+        report.generate_report(out_params.output_folder_base, run_time_secs, run_time_HMS, extracttype, input_path, casedata, profile_filename, icons)
+        logfunc('Report generation Completed.')
+
+        logfunc('')
+        logfunc(f'Report location: {out_params.output_folder_base}')
+
+        return True
+    finally:
+        # A raw image seeker holds the image open and the other seekers hold an
+        # archive handle; cleanup() releases whatever the seeker holds. Nothing
+        # else does, so run it on every exit path, not just the success return.
+        seeker.cleanup()
+
+if __name__ == '__main__':
+    main()
+    

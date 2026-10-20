@@ -1,0 +1,203 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Reader palette: dark navy chrome, light work area, one blue accent. -->
+    <SolidColorBrush x:Key="ChromeBrush" Color="#1E2B3C"/>
+    <SolidColorBrush x:Key="ChromeLightBrush" Color="#2C3E55"/>
+    <SolidColorBrush x:Key="AccentBrush" Color="#1A6BCB"/>
+    <SolidColorBrush x:Key="AccentSoftBrush" Color="#DCEBFB"/>
+    <SolidColorBrush x:Key="PanelBrush" Color="#F4F6F9"/>
+    <SolidColorBrush x:Key="BorderBrush" Color="#D5DCE5"/>
+    <SolidColorBrush x:Key="MutedBrush" Color="#566274"/>
+    <SolidColorBrush x:Key="TagBrush" Color="#E8A317"/>
+    <SolidColorBrush x:Key="TagTextBrush" Color="#8A5A00"/>
+    <SolidColorBrush x:Key="SentBrush" Color="#1F7AE0"/>
+    <SolidColorBrush x:Key="ReceivedBrush" Color="#E9EDF2"/>
+    <!-- AI output, never evidence: italic, in this colour, wherever it is shown -->
+    <SolidColorBrush x:Key="AiBrush" Color="#6B3FA0"/>
+    <FontFamily x:Key="IconFont">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
+
+    <Style TargetType="Window">
+        <Setter Property="FontFamily" Value="Segoe UI"/>
+        <Setter Property="FontSize" Value="12.5"/>
+    </Style>
+
+    <Style x:Key="ToolButton" TargetType="Button">
+        <Setter Property="Foreground" Value="White"/>
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Padding" Value="10,4"/>
+        <Setter Property="Margin" Value="2,0"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="b" Background="{TemplateBinding Background}" CornerRadius="3" Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="b" Property="Background" Value="{StaticResource ChromeLightBrush}"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.4"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="FlatButton" TargetType="Button">
+        <Setter Property="Background" Value="White"/>
+        <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+        <Setter Property="Padding" Value="10,3"/>
+        <Setter Property="Margin" Value="2"/>
+        <Setter Property="Cursor" Value="Hand"/>
+    </Style>
+
+    <Style x:Key="AccentButton" TargetType="Button" BasedOn="{StaticResource FlatButton}">
+        <Setter Property="Background" Value="{StaticResource AccentBrush}"/>
+        <Setter Property="Foreground" Value="White"/>
+        <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+    </Style>
+
+    <Style x:Key="Icon" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource IconFont}"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="FontSize" Value="14"/>
+    </Style>
+
+    <Style x:Key="SectionHeader" TargetType="TextBlock">
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+        <Setter Property="Margin" Value="8,8,8,4"/>
+        <Setter Property="FontSize" Value="11"/>
+    </Style>
+
+    <Style x:Key="ViewTitle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="17"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+
+    <Style TargetType="DataGrid">
+        <Setter Property="AutoGenerateColumns" Value="False"/>
+        <Setter Property="IsReadOnly" Value="True"/>
+        <Setter Property="CanUserAddRows" Value="False"/>
+        <Setter Property="SelectionMode" Value="Extended"/>
+        <Setter Property="HeadersVisibility" Value="Column"/>
+        <Setter Property="GridLinesVisibility" Value="All"/>
+        <Setter Property="HorizontalGridLinesBrush" Value="#E6EAF0"/>
+        <Setter Property="VerticalGridLinesBrush" Value="#E6EAF0"/>
+        <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+        <Setter Property="AlternatingRowBackground" Value="#F8FAFC"/>
+        <!-- rows grow with their text, wrapped (WrapCell) -->
+        <Setter Property="MinRowHeight" Value="24"/>
+        <Setter Property="EnableRowVirtualization" Value="True"/>
+        <Setter Property="EnableColumnVirtualization" Value="True"/>
+        <Setter Property="VirtualizingPanel.VirtualizationMode" Value="Recycling"/>
+    </Style>
+
+    <Style TargetType="DataGridColumnHeader">
+        <Setter Property="Background" Value="#E8EEF5"/>
+        <Setter Property="Padding" Value="6,4"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+        <Setter Property="BorderThickness" Value="0,0,1,1"/>
+    </Style>
+
+    <!-- the default cell template ignores Padding: this one keeps 5px between a column's text and the next -->
+    <Style TargetType="DataGridCell">
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Padding" Value="5,2"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="DataGridCell">
+                    <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
+                            Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
+                        <ContentPresenter VerticalAlignment="Center" SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"/>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+        <Style.Triggers>
+            <Trigger Property="IsSelected" Value="True">
+                <Setter Property="Background" Value="#C9DFF8"/>
+                <Setter Property="Foreground" Value="Black"/>
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- a table cell's text: wrapped, the row as tall as it needs up to about eight lines -->
+    <!-- the whole text, on as many lines as it takes: the row grows to show it -->
+    <Style x:Key="WrapCell" TargetType="TextBlock">
+        <Setter Property="TextWrapping" Value="Wrap"/>
+    </Style>
+
+    <Style x:Key="SearchBox" TargetType="TextBox">
+        <Setter Property="Padding" Value="4,3"/>
+        <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+    </Style>
+
+    <!-- Shown over an empty list so a blank grid never looks like a failed load. -->
+    <!-- A run that has started but reports no progress yet (reading the input, preparing the content) is not stuck at 0% -->
+    <Style x:Key="RunBar" TargetType="ProgressBar">
+        <Style.Triggers>
+            <MultiDataTrigger>
+                <MultiDataTrigger.Conditions>
+                    <Condition Binding="{Binding Running}" Value="True"/>
+                    <Condition Binding="{Binding Progress}" Value="0"/>
+                </MultiDataTrigger.Conditions>
+                <Setter Property="IsIndeterminate" Value="True"/>
+            </MultiDataTrigger>
+        </Style.Triggers>
+    </Style>
+    <Style x:Key="EmptyText" TargetType="TextBlock">
+        <Setter Property="HorizontalAlignment" Value="Center"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="FontSize" Value="14"/>
+        <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+        <Setter Property="IsHitTestVisible" Value="False"/>
+    </Style>
+
+    <!-- A header row that scrolls sideways instead of clipping when the window is narrow. -->
+    <Style x:Key="HeaderScroll" TargetType="ScrollViewer">
+        <Setter Property="HorizontalScrollBarVisibility" Value="Disabled"/>
+        <Setter Property="VerticalScrollBarVisibility" Value="Disabled"/>
+        <Setter Property="Focusable" Value="False"/>
+    </Style>
+
+    <!-- the platform of a device, drawn here (a robot for Android, an apple for iOS) -->
+    <DrawingImage x:Key="AndroidIcon">
+        <DrawingImage.Drawing>
+            <DrawingGroup>
+                <GeometryDrawing Brush="#3DDC84" Geometry="M2,19 A10,9 0 0 1 22,19 Z"/>
+                <GeometryDrawing Geometry="M6,4.5 L8.7,9.5 M18,4.5 L15.3,9.5">
+                    <GeometryDrawing.Pen><Pen Brush="#3DDC84" Thickness="1.6" StartLineCap="Round" EndLineCap="Round"/></GeometryDrawing.Pen>
+                </GeometryDrawing>
+                <GeometryDrawing Brush="White" Geometry="M6.6,15 a1.4,1.4 0 1 0 2.8,0 a1.4,1.4 0 1 0 -2.8,0 M14.6,15 a1.4,1.4 0 1 0 2.8,0 a1.4,1.4 0 1 0 -2.8,0"/>
+            </DrawingGroup>
+        </DrawingImage.Drawing>
+    </DrawingImage>
+    <DrawingImage x:Key="AppleIcon">
+        <DrawingImage.Drawing>
+            <DrawingGroup>
+                <GeometryDrawing Brush="#7D7D84" Geometry="M12,7.4 C9,5.6 4,6.4 4,12.2 C4,17 7,21.5 9.2,21.5 C10.6,21.5 11,20.8 12,20.8 C13,20.8 13.4,21.5 14.8,21.5 C17,21.5 20,17 20,12.2 C20,6.4 15,5.6 12,7.4 Z"/>
+                <GeometryDrawing Brush="#7D7D84" Geometry="M12.2,6.4 C12.2,4 13.7,2.4 16.2,2 C16.2,4.4 14.7,6 12.2,6.4 Z"/>
+            </DrawingGroup>
+        </DrawingImage.Drawing>
+    </DrawingImage>
+    <!-- DataContext: a Device -->
+    <Style x:Key="PlatformIcon" TargetType="Image">
+        <Setter Property="Width" Value="14"/>
+        <Setter Property="Height" Value="14"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="ToolTip" Value="{Binding Platform}"/>
+        <Setter Property="Source" Value="{StaticResource AndroidIcon}"/>
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding IsIos}" Value="True"><Setter Property="Source" Value="{StaticResource AppleIcon}"/></DataTrigger>
+        </Style.Triggers>
+    </Style>
+</ResourceDictionary>

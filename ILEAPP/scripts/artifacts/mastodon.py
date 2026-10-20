@@ -1,0 +1,550 @@
+__artifacts_v2__ = {
+    'mastodonDirectMessages': {
+        'name': 'Mastodon - Direct Messages',
+        'description': 'Statuses with direct visibility cached by the Mastodon application',
+        'author': '@AlexisBrignoni',
+        'creation_date': '2026-07-25',
+        'last_update_date': '2026-07-31',
+        'requirements': 'none',
+        'category': 'Mastodon',
+        'notes': "Rows are statuses whose stored ZVISIBILITYRAW value is \"direct\"."
+                 " Conversation and Conversation Key are built by this module from the author "
+                 "handle and the handles mentioned in the status; they are not a thread id the app "
+                 "stored. From Me compares the author with the account id taken from "
+                 "ZMASTODONAUTHENTICATION or, when that table is empty, from the first "
+                 "ZNOTIFICATION row.",
+        'paths': ('*/mobile/Containers/Shared/AppGroup/*/Databases/shared.sqlite*',),
+        'output_types': 'all',
+        'artifact_icon': 'message',
+        'sample_data': {
+            'iphone11_ios17': 'iOS 17.3 | 40 rows',
+            'magnet_ios16': 'iOS 16.1.1 | 0 rows',
+        },
+        'data_views': {
+            'conversation': {
+                'conversationDiscriminatorColumn': 'Conversation Key',
+                'conversationLabelColumn': 'Conversation',
+                'textColumn': 'Message',
+                'directionColumn': 'From Me',
+                'directionSentValue': 1,
+                'timeColumn': 'Timestamp',
+                'senderColumn': 'Author',
+            }
+        }
+    },
+    'mastodonStatuses': {
+        'name': 'Mastodon - Statuses',
+        'description': 'Statuses (posts) cached by the Mastodon application, with reply references '
+                       'and stored favourite, boost and reply counts',
+        'author': '@AlexisBrignoni',
+        'creation_date': '2026-07-25',
+        'last_update_date': '2026-07-25',
+        'requirements': 'none',
+        'category': 'Mastodon',
+        'notes': '',
+        'paths': ('*/mobile/Containers/Shared/AppGroup/*/Databases/shared.sqlite*',),
+        'output_types': 'standard',
+        'artifact_icon': 'news',
+        'sample_data': {
+            'iphone11_ios17': 'iOS 17.3 | 114 rows (74 public, 40 direct)',
+        },
+    },
+    'mastodonUsers': {
+        'name': 'Mastodon - Users',
+        'description': 'Mastodon accounts cached by the application, with the follow '
+                       'relationships the cache holds between each account and the account holder',
+        'author': '@AlexisBrignoni',
+        'creation_date': '2026-07-25',
+        'last_update_date': '2026-08-09',
+        'requirements': 'none',
+        'category': 'Mastodon',
+        'notes': 'Followed By Account Holder and Follows Account Holder are read from the '
+                 'Z_<n>FOLLOWING join table, where <n> is the MastodonUser entity number in '
+                 'Z_PRIMARYKEY. The Z_<n>FOLLOWINGBY column is read as the follower and the '
+                 'Z_<n>FOLLOWING column as the account followed. Measured on iphone11_ios17: the '
+                 'account holder is in Z_8FOLLOWINGBY on 3 rows and in Z_8FOLLOWING on 4 rows, '
+                 'equal to the ZFOLLOWINGCOUNT of 3 and the ZFOLLOWERSCOUNT of 4 stored on the '
+                 'account holder row, and each of the 3 accounts named by a follow notification '
+                 'is in Z_8FOLLOWINGBY on a row with the account holder in Z_8FOLLOWING. The '
+                 'opposite reading fits neither count. On magnet_ios16 the account holder is in '
+                 'Z_7FOLLOWINGBY on 5 rows and in Z_7FOLLOWING on none, while both stored counts '
+                 'on the account holder row are 0, so that image does not test the direction. '
+                 'The app source declares the two relationships as following and followingBy, and '
+                 'its predicate named followingBy matches accounts whose followingBy set holds a '
+                 'given user id. Reference: '
+                 'Mastodon, mastodon-ios MastodonUser.swift, https://github.com/mastodon/mastodon-ios/'
+                 'blob/e668b21da54059f6f15d75e6537a29f36f289d42/MastodonSDK/Sources/CoreDataStack/'
+                 'Entity/Mastodon/MastodonUser.swift#L76-L77 and #L189-L190. The app version that '
+                 'wrote the tested databases was not established. The join table holds only the '
+                 'relationships the app cached, so a blank is not evidence that no follow '
+                 'relationship exists. The account holder is the user id in '
+                 'ZMASTODONAUTHENTICATION or, when that table is empty, on the first '
+                 'ZNOTIFICATION row.',
+        'paths': ('*/mobile/Containers/Shared/AppGroup/*/Databases/shared.sqlite*',),
+        'output_types': 'standard',
+        'artifact_icon': 'users',
+        'sample_data': {
+            'iphone11_ios17': 'iOS 17.3 | 255 rows',
+        },
+    },
+    'mastodonNotifications': {
+        'name': 'Mastodon - Notifications',
+        'description': 'Mentions, follows and other notifications received by the Mastodon account',
+        'author': '@AlexisBrignoni',
+        'creation_date': '2026-07-25',
+        'last_update_date': '2026-07-25',
+        'requirements': 'none',
+        'category': 'Mastodon',
+        'notes': '',
+        'paths': ('*/mobile/Containers/Shared/AppGroup/*/Databases/shared.sqlite*',),
+        'output_types': 'standard',
+        'artifact_icon': 'bell',
+        'sample_data': {
+            'iphone11_ios17': 'iOS 17.3 | 18 rows (15 mention, 3 follow)',
+        },
+    },
+    'mastodonAccount': {
+        'name': 'Mastodon - Account Information',
+        'description': 'The Mastodon account named by the app\'s authentication table or, when '
+                       'that table is empty, by the user id on the first notification row, with '
+                       'the instance recorded for its domain. One account is reported',
+        'author': '@AlexisBrignoni',
+        'creation_date': '2026-07-25',
+        'last_update_date': '2026-07-25',
+        'requirements': 'none',
+        'category': 'Mastodon',
+        'notes': 'When the authentication table is empty the account holder is identified from the notification owner ID.',
+        'paths': ('*/mobile/Containers/Shared/AppGroup/*/Databases/shared.sqlite*',),
+        'output_types': 'standard',
+        'artifact_icon': 'user',
+        'sample_data': {
+            'iphone11_ios17': 'iOS 17.3 | 1 row; ZMASTODONAUTHENTICATION empty, holder resolved from notifications',
+        },
+    },
+}
+
+import html
+import json
+import re
+
+from scripts.ilapfuncs import artifact_processor, logfunc, \
+    get_file_path, get_sqlite_db_records, does_table_exist_in_db, null_absent_columns, \
+    convert_cocoa_core_data_ts_to_utc
+
+HTML_TAG_RE = re.compile(r'<[^>]+>')
+
+# Mastodon's Databases/shared.sqlite name is generic enough that another app
+# could share it, so every artifact confirms this table before querying.
+MASTODON_MARKER_TABLE = 'ZMASTODONUSER'
+
+# Common projection of an author row onto a readable handle.
+AUTHOR_LABEL_SQL = '''
+    COALESCE(
+        NULLIF(u.ZDISPLAYNAME, '') || ' (@' || u.ZACCT || ')',
+        '@' || u.ZACCT,
+        u.ZUSERNAME
+    )
+'''
+
+
+def _html_to_text(content):
+    """Flatten a Mastodon HTML status body to plain text."""
+    if not content:
+        return ''
+    text = content.replace('</p><p>', '\n').replace('<br>', '\n').replace('<br/>', '\n')
+    text = HTML_TAG_RE.sub('', text)
+    return html.unescape(text).replace('\xa0', ' ').strip()
+
+
+def _parse_attachments(blob):
+    """Return (urls, descriptions) from the JSON attachment blob on a status."""
+    if not blob:
+        return '', ''
+    try:
+        attachments = json.loads(blob)
+    except (ValueError, TypeError):
+        return '', ''
+    if not isinstance(attachments, list):
+        return '', ''
+    urls = [a.get('url') or a.get('previewURL') or ''
+            for a in attachments if isinstance(a, dict)]
+    descriptions = [a.get('altDescription') or ''
+                    for a in attachments if isinstance(a, dict)]
+    return ', '.join(u for u in urls if u), ', '.join(d for d in descriptions if d)
+
+
+def _parse_mentions(blob):
+    """Return the handles mentioned in a status."""
+    if not blob:
+        return ''
+    try:
+        mentions = json.loads(blob)
+    except (ValueError, TypeError):
+        return ''
+    if not isinstance(mentions, list):
+        return ''
+    return ', '.join('@' + m.get('acct', '') for m in mentions
+                     if isinstance(m, dict) and m.get('acct'))
+
+
+def _get_source(context):
+    """Return the shared.sqlite path only if it is really a Mastodon database."""
+    source_path = get_file_path(context.get_files_found(), 'shared.sqlite')
+    if not source_path:
+        return None
+    if not does_table_exist_in_db(source_path, MASTODON_MARKER_TABLE):
+        logfunc(f'{source_path} is not a Mastodon database; skipping.')
+        return None
+    return source_path
+
+
+def _get_local_user_id(source_path):
+    """Identify the signed-in account.
+
+    ZMASTODONAUTHENTICATION is the intended home for this but is empty in some
+    extractions, so fall back to the account ID that owns the notifications.
+    """
+    for query in (
+        'SELECT ZUSERID FROM ZMASTODONAUTHENTICATION WHERE ZUSERID IS NOT NULL LIMIT 1',
+        'SELECT ZUSERID FROM ZNOTIFICATION WHERE ZUSERID IS NOT NULL LIMIT 1',
+    ):
+        records = list(get_sqlite_db_records(source_path, null_absent_columns(source_path, query)))
+        if records and records[0]['ZUSERID']:
+            return records[0]['ZUSERID']
+    return None
+
+
+STATUS_QUERY = f'''
+SELECT
+    s.ZCREATEDAT,
+    s.ZEDITEDAT,
+    s.ZDELETEDAT,
+    s.ZID AS statusId,
+    s.ZDOMAIN AS domain,
+    s.ZCONTENT AS content,
+    s.ZSPOILERTEXT AS spoilerText,
+    s.ZVISIBILITYRAW AS visibility,
+    s.ZLANGUAGE AS language,
+    s.ZURL AS url,
+    s.ZURI AS uri,
+    s.ZSENSITIVE AS sensitive,
+    s.ZFAVOURITESCOUNT AS favouritesCount,
+    s.ZREBLOGSCOUNT AS reblogsCount,
+    s.ZREPLIESCOUNT AS repliesCount,
+    s.ZINREPLYTOID AS inReplyToId,
+    s.ZINREPLYTOACCOUNTID AS inReplyToAccountId,
+    s.ZATTACHMENTS AS attachments,
+    s.ZMENTIONS AS mentions,
+    u.ZID AS authorId,
+    u.ZACCT AS authorAcct,
+    {AUTHOR_LABEL_SQL} AS authorLabel,
+    app.ZNAME AS applicationName
+FROM ZSTATUS s
+LEFT JOIN ZMASTODONUSER u ON u.Z_PK = s.ZAUTHOR
+LEFT JOIN ZAPPLICATION app ON app.Z_PK = s.ZAPPLICATION
+{{where}}
+ORDER BY s.ZCREATEDAT
+'''
+
+
+@artifact_processor
+def mastodonDirectMessages(context):
+    source_path = _get_source(context)
+    data_list = []
+    data_headers = (
+        ('Timestamp', 'datetime'),
+        ('Edited', 'datetime'),
+        'From Me',
+        'Author',
+        'Conversation',
+        'Message',
+        'Conversation Key',
+        'Author Handle',
+        'Mentions',
+        'Attachment URLs',
+        'Attachment Descriptions',
+        'Content Warning',
+        'Language',
+        'In Reply To Status ID',
+        'Status ID',
+        'URL',
+    )
+    if not source_path:
+        return data_headers, data_list, ''
+
+    local_user_id = _get_local_user_id(source_path)
+    query = STATUS_QUERY.format(where="WHERE s.ZVISIBILITYRAW = 'direct'")
+
+    for record in get_sqlite_db_records(source_path, null_absent_columns(source_path, query)):
+        attachment_urls, attachment_descriptions = _parse_attachments(record['attachments'])
+        mentions = _parse_mentions(record['mentions'])
+        author_id = record['authorId']
+        from_me = 1 if local_user_id and author_id == local_user_id else 0
+
+        # A direct status has no thread ID of its own. The people mentioned in
+        # it are what makes it one conversation, so key on that set.
+        participants = sorted({p for p in mentions.split(', ') if p} |
+                              ({'@' + record['authorAcct']} if record['authorAcct'] else set()))
+        conversation_key = ', '.join(participants)
+
+        data_list.append((
+            convert_cocoa_core_data_ts_to_utc(record['ZCREATEDAT']),
+            convert_cocoa_core_data_ts_to_utc(record['ZEDITEDAT']) if record['ZEDITEDAT'] else '',
+            from_me,
+            record['authorLabel'],
+            conversation_key,
+            _html_to_text(record['content']),
+            conversation_key,
+            record['authorAcct'],
+            mentions,
+            attachment_urls,
+            attachment_descriptions,
+            record['spoilerText'],
+            record['language'],
+            record['inReplyToId'],
+            record['statusId'],
+            record['url'],
+        ))
+
+    return data_headers, data_list, source_path
+
+
+@artifact_processor
+def mastodonStatuses(context):
+    source_path = _get_source(context)
+    data_list = []
+    data_headers = (
+        ('Created', 'datetime'), ('Edited', 'datetime'), ('Deleted', 'datetime'),
+        'Author', 'Author Handle', 'Author ID', 'Visibility', 'Content',
+        'Content Warning', 'Mentions', 'Attachment URLs',
+        'Attachment Descriptions', 'Sensitive', 'Language', 'Favourites',
+        'Boosts', 'Replies', 'In Reply To Status ID', 'In Reply To Account ID',
+        'Posted With', 'Domain', 'Status ID', 'URL')
+    if not source_path:
+        return data_headers, data_list, ''
+
+    for record in get_sqlite_db_records(source_path, null_absent_columns(source_path, STATUS_QUERY.format(where=''))):
+        attachment_urls, attachment_descriptions = _parse_attachments(record['attachments'])
+
+        data_list.append((
+            convert_cocoa_core_data_ts_to_utc(record['ZCREATEDAT']) if record['ZCREATEDAT'] else '',
+            convert_cocoa_core_data_ts_to_utc(record['ZEDITEDAT']) if record['ZEDITEDAT'] else '',
+            convert_cocoa_core_data_ts_to_utc(record['ZDELETEDAT']) if record['ZDELETEDAT'] else '',
+            record['authorLabel'],
+            record['authorAcct'],
+            record['authorId'],
+            record['visibility'],
+            _html_to_text(record['content']),
+            record['spoilerText'],
+            _parse_mentions(record['mentions']),
+            attachment_urls,
+            attachment_descriptions,
+            'Yes' if record['sensitive'] else '',
+            record['language'],
+            record['favouritesCount'],
+            record['reblogsCount'],
+            record['repliesCount'],
+            record['inReplyToId'],
+            record['inReplyToAccountId'],
+            record['applicationName'],
+            record['domain'],
+            record['statusId'],
+            record['url'],
+        ))
+
+    return data_headers, data_list, source_path
+
+
+@artifact_processor
+def mastodonUsers(context):
+    source_path = _get_source(context)
+    data_list = []
+    data_headers = (
+        ('Created', 'datetime'), ('Updated', 'datetime'), 'Display Name',
+        'Handle', 'Username', 'Domain', 'User ID', 'Account Holder',
+        'Followed By Account Holder', 'Follows Account Holder', 'Bio',
+        'Followers Count', 'Following Count', 'Statuses Count', 'Bot', 'Locked',
+        'Suspended', 'Profile URL', 'Avatar URL')
+    if not source_path:
+        return data_headers, data_list, ''
+
+    local_user_id = _get_local_user_id(source_path)
+
+    # Core Data names the many-to-many following table and its columns after
+    # the MastodonUser entity number, and that number shifts between app
+    # versions as entities are added (7 on the magnet_ios16 image, 8 on the
+    # images this artifact was built against). Resolve it from the file's own
+    # Z_PRIMARYKEY table instead of hardcoding it.
+    following_table = ''
+    for row in get_sqlite_db_records(
+            source_path,
+            "SELECT Z_ENT FROM Z_PRIMARYKEY WHERE Z_NAME = 'MastodonUser'"):
+        candidate = f'Z_{row[0]}FOLLOWING'
+        if does_table_exist_in_db(source_path, candidate):
+            following_table = candidate
+        break
+
+    if following_table:
+        followed_by_holder = f'''
+        EXISTS(SELECT 1 FROM {following_table} f
+                JOIN ZMASTODONUSER me ON me.Z_PK = f.{following_table}BY
+               WHERE f.{following_table} = u.Z_PK AND me.ZID = :localUserId)'''
+        follows_holder = f'''
+        EXISTS(SELECT 1 FROM {following_table} f
+                JOIN ZMASTODONUSER me ON me.Z_PK = f.{following_table}
+               WHERE f.{following_table}BY = u.Z_PK AND me.ZID = :localUserId)'''
+    else:
+        # No following join table in this file; the relationship columns stay
+        # empty rather than guessed.
+        followed_by_holder = 'NULL'
+        follows_holder = 'NULL'
+
+    query = f'''
+    SELECT
+        u.ZCREATEDAT,
+        u.ZUPDATEDAT,
+        u.ZDISPLAYNAME AS displayName,
+        u.ZACCT AS acct,
+        u.ZUSERNAME AS username,
+        u.ZDOMAIN AS domain,
+        u.ZID AS userId,
+        u.ZNOTE AS note,
+        u.ZFOLLOWERSCOUNT AS followersCount,
+        u.ZFOLLOWINGCOUNT AS followingCount,
+        u.ZSTATUSESCOUNT AS statusesCount,
+        u.ZBOT AS bot,
+        u.ZLOCKED AS locked,
+        u.ZSUSPENDED AS suspended,
+        u.ZURL AS url,
+        u.ZAVATARSTATIC AS avatarUrl,
+        {followed_by_holder} AS followedByHolder,
+        {follows_holder} AS followsHolder
+    FROM ZMASTODONUSER u
+    ORDER BY u.ZACCT
+    '''
+
+    for record in get_sqlite_db_records(source_path, query.replace(':localUserId',
+                                                                  f"'{local_user_id}'" if local_user_id else 'NULL')):
+        data_list.append((
+            convert_cocoa_core_data_ts_to_utc(record['ZCREATEDAT']) if record['ZCREATEDAT'] else '',
+            convert_cocoa_core_data_ts_to_utc(record['ZUPDATEDAT']) if record['ZUPDATEDAT'] else '',
+            record['displayName'],
+            record['acct'],
+            record['username'],
+            record['domain'],
+            record['userId'],
+            'Yes' if local_user_id and record['userId'] == local_user_id else '',
+            'Yes' if record['followedByHolder'] else '',
+            'Yes' if record['followsHolder'] else '',
+            _html_to_text(record['note']),
+            record['followersCount'],
+            record['followingCount'],
+            record['statusesCount'],
+            'Yes' if record['bot'] else '',
+            'Yes' if record['locked'] else '',
+            'Yes' if record['suspended'] else '',
+            record['url'],
+            record['avatarUrl'],
+        ))
+
+    return data_headers, data_list, source_path
+
+
+@artifact_processor
+def mastodonNotifications(context):
+    source_path = _get_source(context)
+    data_list = []
+    data_headers = (
+        ('Timestamp', 'datetime'), 'Type', 'From User', 'From Handle',
+        'Related Status', 'Domain', 'Notification ID', 'Recipient User ID')
+    if not source_path:
+        return data_headers, data_list, ''
+
+    query = f'''
+    SELECT
+        n.ZCREATEAT,
+        n.ZTYPERAW AS notificationType,
+        n.ZID AS notificationId,
+        n.ZDOMAIN AS domain,
+        n.ZUSERID AS recipientUserId,
+        u.ZACCT AS fromAcct,
+        {AUTHOR_LABEL_SQL} AS fromLabel,
+        s.ZCONTENT AS statusContent
+    FROM ZNOTIFICATION n
+    LEFT JOIN ZMASTODONUSER u ON u.Z_PK = n.ZACCOUNT
+    LEFT JOIN ZSTATUS s ON s.Z_PK = n.ZSTATUS
+    ORDER BY n.ZCREATEAT
+    '''
+
+    for record in get_sqlite_db_records(source_path, null_absent_columns(source_path, query)):
+        data_list.append((
+            convert_cocoa_core_data_ts_to_utc(record['ZCREATEAT']) if record['ZCREATEAT'] else '',
+            record['notificationType'],
+            record['fromLabel'],
+            record['fromAcct'],
+            _html_to_text(record['statusContent']),
+            record['domain'],
+            record['notificationId'],
+            record['recipientUserId'],
+        ))
+
+    return data_headers, data_list, source_path
+
+
+@artifact_processor
+def mastodonAccount(context):
+    source_path = _get_source(context)
+    data_list = []
+    data_headers = (
+        'Display Name', 'Handle', 'Username', 'User ID', 'Instance Domain',
+        'Instance Version', 'Bio', 'Followers Count', 'Following Count',
+        'Statuses Count', 'Profile URL', 'Avatar URL', 'Identified From')
+    if not source_path:
+        return data_headers, data_list, ''
+
+    local_user_id = _get_local_user_id(source_path)
+    if not local_user_id:
+        return data_headers, data_list, source_path
+
+    auth_records = list(get_sqlite_db_records(
+        source_path,
+        'SELECT ZUSERID FROM ZMASTODONAUTHENTICATION WHERE ZUSERID IS NOT NULL LIMIT 1'))
+    identified_from = 'ZMASTODONAUTHENTICATION' if auth_records else 'ZNOTIFICATION owner ID'
+
+    query = f'''
+    SELECT
+        u.ZDISPLAYNAME AS displayName,
+        u.ZACCT AS acct,
+        u.ZUSERNAME AS username,
+        u.ZID AS userId,
+        u.ZNOTE AS note,
+        u.ZFOLLOWERSCOUNT AS followersCount,
+        u.ZFOLLOWINGCOUNT AS followingCount,
+        u.ZSTATUSESCOUNT AS statusesCount,
+        u.ZURL AS url,
+        u.ZAVATARSTATIC AS avatarUrl,
+        i.ZDOMAIN AS instanceDomain,
+        i.ZVERSION AS instanceVersion
+    FROM ZMASTODONUSER u
+    LEFT JOIN ZINSTANCE i ON i.ZDOMAIN = u.ZDOMAIN
+    WHERE u.ZID = '{local_user_id}'
+    '''
+
+    for record in get_sqlite_db_records(source_path, null_absent_columns(source_path, query)):
+        data_list.append((
+            record['displayName'],
+            record['acct'],
+            record['username'],
+            record['userId'],
+            record['instanceDomain'],
+            record['instanceVersion'],
+            _html_to_text(record['note']),
+            record['followersCount'],
+            record['followingCount'],
+            record['statusesCount'],
+            record['url'],
+            record['avatarUrl'],
+            identified_from,
+        ))
+
+    return data_headers, data_list, source_path

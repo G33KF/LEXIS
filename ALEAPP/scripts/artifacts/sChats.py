@@ -1,0 +1,83 @@
+# pylint: disable=W0631
+__artifacts_v2__ = {
+    "get_schats": {
+        "name": "Sideline Chats and Calls",
+        "description": "Parses Sideline's textfree database",
+        "author": "Matt Beers",
+        "creation_date": "2024-02-08",
+        "last_update_date": "2026-08-01",
+        "requirements": "none",
+        "category": "Chats",
+        "notes": (
+            "Timestamps are rendered in UTC. The Method names for the stored numeric "
+            "'method' field (1, 3 and 8) are the labels this parser assigns; the source for them "
+            "is not established, and a value with no "
+            "matching name is shown as 'Unknown'. Rows come from conversation_item, and "
+            "contact_address is joined on the stored address, so an item whose address has "
+            "no matching contact record is still listed, with empty name columns."
+        ),
+        "paths": ('*/data/com.sideline.phone.number/databases/textfree*'),
+        "output_types": "standard",
+        "artifact_icon": "message",
+    }
+}
+
+from scripts.ilapfuncs import artifact_processor, open_sqlite_db_readonly, convert_human_ts_to_utc
+
+
+@artifact_processor
+def get_schats(context):
+    files_found = context.get_files_found()
+
+    data_list = []
+    source_path = ''
+
+    for file_found in files_found:
+        file_found = str(file_found)
+
+        if file_found.endswith('textfree'):
+            source_path = file_found
+            db = open_sqlite_db_readonly(file_found)
+            cursor = db.cursor()
+            cursor.execute('''
+            SELECT
+            datetime(conversation_item.timestamp / 1000, 'unixepoch') AS TIMESTAMP,
+            contact_address.native_first_name,
+            contact_address.native_last_name,
+            CASE conversation_item.method
+            WHEN '1' THEN 'Text'
+            WHEN '3' THEN 'Call'
+            WHEN '8' THEN 'Voicemail'
+            ELSE 'Unknown'
+            END AS method,
+            conversation_item.message_text,
+            conversation_item.duration,
+            conversation_item.address
+            FROM
+            conversation_item
+            LEFT JOIN
+            contact_address ON contact_address.address_e164 = conversation_item.address
+            ORDER BY
+            conversation_item.timestamp DESC
+            ''')
+
+            all_rows = cursor.fetchall()
+            usageentries = len(all_rows)
+            if usageentries > 0:
+                for row in all_rows:
+                    data_list.append((convert_human_ts_to_utc(row[0]),row[1],row[2],row[3],row[4],row[5],row[6]))
+            db.close()
+
+        else:
+            continue
+
+    data_headers = (
+        ('Timestamp (UTC)', 'datetime'),
+        'First Name',
+        'Last Name',
+        'Method',
+        'Message Text',
+        'Duration',
+        ('Phone Number', 'phonenumber'),
+    )
+    return data_headers, data_list, source_path

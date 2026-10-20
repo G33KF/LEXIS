@@ -1,0 +1,68 @@
+__artifacts_v2__ = {
+    "get_torThumbs": {
+        "name": "TOR Thumbnails",
+        "description": "Thumbnail files from the Tor Browser cache folder "
+                       "mozac_browser_thumbnails/thumbnails. Extracted Copy Modification Time is the "
+                       "file system "
+                       "modification time of the extracted copy; files that do not open as images "
+                       "are not listed.",
+        "author": "@abrignoni, @AlexisBrignoni, Codex",
+        "creation_date": "2021-12-23",
+        "last_update_date": "2026-10-06",
+        "requirements": "none",
+        "category": "TOR",
+        "notes": "Extracted Copy Modification Time is read from the extracted file system copy, "
+                 "not from the thumbnail content. It depends on how the extraction and this "
+                 "tool preserved file times. No sample data is recorded for this artifact.",
+        "paths": ('*/org.torproject.torbrowser/cache/mozac_browser_thumbnails/thumbnails/*.0',),
+        "output_types": "standard",
+        "artifact_icon": "file",
+    }
+}
+
+import datetime
+import io
+import os
+
+from PIL import Image, UnidentifiedImageError
+
+from scripts.ilapfuncs import artifact_processor, logfunc, check_in_embedded_media
+from scripts.artifacts.storagePathViews import unique_files
+
+
+def _sec_to_utc(value):
+    if not value:
+        return ''
+    try:
+        return datetime.datetime.fromtimestamp(int(value), datetime.timezone.utc)
+    except (ValueError, OverflowError, OSError, TypeError):
+        return ''
+
+
+@artifact_processor
+def get_torThumbs(context):
+    files_found = unique_files(context)
+    data_list = []
+    source_path = ''
+    for file_found in files_found:
+        file_found = str(file_found)
+        filename = os.path.basename(file_found)
+        location = os.path.dirname(file_found)
+        source_path = location
+
+        # The .0 thumbnail files are image blobs without an extension; decode to
+        # PNG bytes and register them as embedded media for the LAVA media store.
+        try:
+            img = Image.open(file_found)
+            buf = io.BytesIO()
+            img.save(buf, format='PNG')
+        except (UnidentifiedImageError, OSError) as ex:
+            logfunc(f'Could not open TOR thumbnail as image: {file_found} ({ex})')
+            continue
+
+        media = check_in_embedded_media(file_found, buf.getvalue(), f'{filename}.png')
+        data_list.append((_sec_to_utc(os.path.getmtime(file_found)), media, filename,
+                          context.get_relative_path(location)))
+
+    data_headers = (('Extracted Copy Modification Time', 'datetime'), ('Thumbnail', 'media'), 'Filename', 'Location')
+    return data_headers, data_list, source_path

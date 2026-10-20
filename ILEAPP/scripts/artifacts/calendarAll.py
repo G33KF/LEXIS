@@ -1,0 +1,447 @@
+__artifacts_v2__ = {
+    "calendarEvents": {
+        "name": "Calendar Events",
+        "description": "Calendar items whose calendar_scale value is not 'gregorian'",
+        "author": "@JohannPLW, @JohnHyla",
+        "creation_date": "2023-11-11",
+        "last_update_date": "2026-08-21",
+        "requirements": "none",
+        "category": "Calendar",
+        "notes": "Items with calendar_scale 'gregorian' are left out here and reported by Calendar "
+                 "Birthdays. Start Time and End Time are the stored values read as seconds since "
+                 "2001 and shown as UTC. The Timezone column is blank when the store holds _float; "
+                 "what _float means for the stored time was not established, so the UTC reading of "
+                 "those rows is not established. Invitees are the Participant rows with entity_type "
+                 "7. In the HTML report the stored participant status number is shown in square "
+                 "brackets before each invitee; the LAVA and TSV outputs list the invitees without "
+                 "it. Apple's public EKParticipantStatus enum lists the cases unknown, pending, "
+                 "accepted, declined, tentative, delegated, completed and inProcess, in that order; "
+                 "the cited page gives no numeric values, and whether the Calendar database column "
+                 "follows that enum is not established. Reference: Apple EventKit, "
+                 "EKParticipantStatus, "
+                 "https://developer.apple.com/documentation/eventkit/ekparticipantstatus",
+        "paths": ('*/Calendar.sqlitedb*',),
+        "html_columns": ['Calendar Name', 'Location Coordinates', 'Invitees'],
+        "output_types": "standard",
+        "artifact_icon": "calendar",
+        "sample_data": {
+            "ctf2020_ios12": "iOS 12.4 | 118 rows",
+            "dexter_ios18": "iOS 18.3.2 | 456 rows",
+            "felix_ios17": "iOS 17.6.1 | 62 rows",
+            "fsfull002_ios17": "iOS 17.1 | 136 rows",
+            "hc_ios18_7": "iOS 18.7.8 | 120 rows",
+            "iphone11_ios17": "iOS 17.3 | 144 rows",
+            "iphone12_ios18": "iOS 18.7 | 134 rows",
+            "iphone14plus_ios18": "iOS 18.0 | 135 rows",
+            "otto_ios17": "iOS 17.5.1 | 137 rows",
+            "abe_ios16": "iOS 16.5 | 142 rows",
+            "felix23_ios16": "iOS 16.5 | 60 rows",
+            "hickman_ios13": "iOS 13.3.1 | 119 rows",
+            "hickman_ios14": "iOS 14.3 | 106 rows",
+            "jess_ios15": "iOS 15.0.2 | 149 rows",
+            "magnet_ios16": "iOS 16.1.1 | 129 rows",
+        }
+    },
+    "calendarBirthdays": {
+        "name": "Calendar Birthdays",
+        "description": "Calendar items whose calendar_scale value is 'gregorian', with the start date read as a date. That these items are birthdays is not established here; check the Calendar Name of each row",
+        "author": "@JohannPLW, @JohnHyla",
+        "creation_date": "2024-10-30",
+        "last_update_date": "2026-08-21",
+        "requirements": "none",
+        "category": "Calendar",
+        "notes": "",
+        "paths": ('*/Calendar.sqlitedb*',),
+        "html_columns": ['Calendar Name'],
+        "output_types": ["html","lava","tsv"],
+        "artifact_icon": "gift",
+        "sample_data": {
+            "ctf2020_ios12": "iOS 12.4 | 0 rows",
+            "dexter_ios18": "iOS 18.3.2 | 0 rows",
+            "felix_ios17": "iOS 17.6.1 | 0 rows",
+            "fsfull002_ios17": "iOS 17.1 | 0 rows",
+            "hc_ios18_7": "iOS 18.7.8 | 0 rows",
+            "iphone11_ios17": "iOS 17.3 | 0 rows",
+            "iphone12_ios18": "iOS 18.7 | 0 rows",
+            "iphone14plus_ios18": "iOS 18.0 | 0 rows",
+            "otto_ios17": "iOS 17.5.1 | 1 row",
+            "abe_ios16": "iOS 16.5 | 0 rows",
+            "felix23_ios16": "iOS 16.5 | 0 rows",
+            "hickman_ios13": "iOS 13.3.1 | 0 rows",
+            "hickman_ios14": "iOS 14.3 | 0 rows",
+            "jess_ios15": "iOS 15.0.2 | 0 rows",
+            "magnet_ios16": "iOS 16.1.1 | 0 rows",
+        }
+    },
+    "calendarList": {
+        "name": "Calendar List",
+        "description": "List of calendars",
+        "author": "@JohannPLW, @JohnHyla",
+        "creation_date": "2023-11-11",
+        "last_update_date": "2026-08-21",
+        "requirements": "none",
+        "category": "Calendar",
+        "notes": "Sharing Status shows 'Not shared', 'Shared by me' and 'Shared with me' for the "
+                 "stored values 0, 1 and 2, and the access level in Sharing Participants shows "
+                 "'View Only' and 'View & Edit' for 1 and 2. No source for these mappings is cited "
+                 "and the testing behind them is not recorded here, so treat the labels as "
+                 "unconfirmed; other values are reported as stored.",
+        "paths": ('*/Calendar.sqlitedb*',),
+        "html_columns": ['Calendar Name', 'Sharing Participants'],
+        "output_types": ["html","lava","tsv"],
+        "artifact_icon": "list",
+        "sample_data": {
+            "ctf2020_ios12": "iOS 12.4 | 15 rows",
+            "dexter_ios18": "iOS 18.3.2 | 14 rows",
+            "felix_ios17": "iOS 17.6.1 | 10 rows",
+            "fsfull002_ios17": "iOS 17.1 | 10 rows",
+            "hc_ios18_7": "iOS 18.7.8 | 11 rows",
+            "iphone11_ios17": "iOS 17.3 | 12 rows",
+            "iphone12_ios18": "iOS 18.7 | 11 rows",
+            "iphone14plus_ios18": "iOS 18.0 | 11 rows",
+            "otto_ios17": "iOS 17.5.1 | 12 rows",
+            "abe_ios16": "iOS 16.5 | 11 rows",
+            "felix23_ios16": "iOS 16.5 | 10 rows",
+            "hickman_ios13": "iOS 13.3.1 | 14 rows",
+            "hickman_ios14": "iOS 14.3 | 14 rows",
+            "jess_ios15": "iOS 15.0.2 | 10 rows",
+            "magnet_ios16": "iOS 16.1.1 | 10 rows",
+        }
+    }
+}
+
+from urllib.parse import unquote
+from scripts.ilapfuncs import open_sqlite_db_readonly, does_table_exist_in_db, does_column_exist_in_db,\
+    convert_ts_human_to_utc, artifact_processor, get_birthdate
+from scripts.html_safe import esc
+
+
+def get_sharees(cursor):
+    cursor.execute('''
+    SELECT Sharee.owner_id,
+    Identity.address, Identity.display_name,
+    CASE Sharee.access_level
+        WHEN 1 THEN 'View Only'
+        WHEN 2 THEN 'View & Edit'
+    ELSE Sharee.access_level
+    END AS 'Access Level'
+    FROM Sharee
+    LEFT JOIN Identity ON Sharee.identity_id = Identity.ROWID
+    ''')
+
+    all_rows = cursor.fetchall()
+    usageentries = len(all_rows)
+    data_dict = {}
+    data_dict_csv = {}
+    if usageentries > 0:
+        for row in all_rows:
+            key = row[0]
+            address = row[1].replace('mailto:', '') if row[1] else ''
+            name = f' ({row[2]})' if row[2] else ''
+            participant = f'{address}{name}'
+            sharing_participant = f'''{participant} -> {row[3]}'''
+            participant_html = f'{esc(address)}{esc(name)}'
+            sharing_participant_html = f'''{participant_html} -> {esc(row[3])}'''
+
+            sharing_participants = data_dict.get(key, '')
+            if sharing_participants:
+                sharing_participants += f',<br>{sharing_participant_html}'
+            else:
+                sharing_participants = sharing_participant_html
+            data_dict[key] = sharing_participants
+
+            sharing_participants_csv = data_dict_csv.get(key, '')
+            if sharing_participants_csv:
+                sharing_participants_csv += f', {sharing_participant}'
+            else:
+                sharing_participants_csv = sharing_participant
+            data_dict_csv[key] = sharing_participants_csv
+
+    return data_dict, data_dict_csv
+
+
+def get_invitees(cursor):
+    cursor.execute('''
+    SELECT Participant.owner_id,
+    Identity.display_name,
+    Participant.email,
+    Participant.status AS 'Status'
+    FROM Participant
+    LEFT JOIN Identity ON Participant.identity_id = Identity.ROWID
+    WHERE Participant.entity_type = 7
+    ''')
+
+    all_rows = cursor.fetchall()
+    usageentries = len(all_rows)
+    data_dict = {}
+    data_dict_csv = {}
+    if usageentries > 0:
+        for row in all_rows:
+            key = row[0]
+            participant = f'{row[1]} - {row[2]}' if row[1] else row[2]
+            participant_html = f'{esc(row[1])} - {esc(row[2])}' if row[1] else esc(row[2])
+            status = row[3]
+            # Participant status is reported as stored (see artifact notes).
+            if status is None or status == '':
+                html_status = ''
+            else:
+                html_status = f'<span title="Participant status (as stored)">[{esc(str(status))}]</span>'
+            sharing_participant = f'{html_status} {participant_html}'
+
+            sharing_participants = data_dict.get(key, '')
+            if sharing_participants:
+                sharing_participants += f',<br>{sharing_participant}'
+            else:
+                sharing_participants = sharing_participant
+            data_dict[key] = sharing_participants
+
+            participants = data_dict_csv.get(key, '')
+            if participants:
+                participants += f', {participant}'
+            else:
+                participants = participant
+            data_dict_csv[key] = participants
+
+    return data_dict, data_dict_csv
+
+
+def get_calendar_name(name, color):
+    if color:
+        calendar_name = f'<span style="color: {esc(color)};">&#9673; </span>{esc(name)}'
+    else:
+        calendar_name = f'&#9711; {esc(name)}'
+    return calendar_name
+
+@artifact_processor
+def calendarEvents(context):
+    data_list_html = []
+    data_list = []
+    data_headers = (('Start Time', 'datetime'), ('End Time', 'datetime'), 'Timezone', 'Calendar Name', 'Account Name', 'Event Title',
+                    'Location Name', 'Location Address', 'Location Coordinates', 'Invitation From', 'Invitees',
+                    'Conference URL', 'Attachments', 'Notes', ('Creation Time', 'datetime'), ('Last Modification Time', 'datetime'), 'Source File')
+    source_files = set()
+
+    for file_found in context.get_files_found():
+        file_found = str(file_found)
+
+        if file_found.endswith('.sqlitedb'):
+            source_files.add(file_found)
+            db = open_sqlite_db_readonly(file_found)
+            cursor = db.cursor()
+
+            # Calendar Events
+
+            attachment_file_exists = does_table_exist_in_db(file_found, 'AttachmentFile')
+
+            if attachment_file_exists:
+                attachments = '''
+                (SELECT group_concat(AttachmentFile.filename || ' (' || AttachmentFile.file_size || ' bytes)')
+                FROM Attachment
+                LEFT JOIN AttachmentFile ON Attachment.file_id = AttachmentFile.ROWID
+                WHERE CalendarItem.ROWID = Attachment.owner_id
+                GROUP BY Attachment.owner_id) AS 'Attachments',
+                '''
+            else:
+                attachments = '''
+                (SELECT group_concat(Attachment.filename || ' (' || Attachment.file_size || ' bytes)')
+                FROM Attachment
+                WHERE CalendarItem.ROWID = Attachment.owner_id
+                GROUP BY Attachment.owner_id) AS 'Attachments',
+                '''
+            
+            conference_url_detected_exists = does_column_exist_in_db(file_found, 'CalendarItem', 'conference_url_detected')
+            conference_url = f"CalendarItem.conference_url{'_detected' if conference_url_detected_exists else ''} AS 'Conference URL',"
+
+
+            cursor.execute(
+            f'''
+            SELECT CalendarItem.ROWID, 
+            datetime('2001-01-01', CalendarItem.start_date || ' seconds') AS 'Start Time',
+            datetime('2001-01-01', CalendarItem.end_date || ' seconds') AS 'End Time',
+            CalendarItem.start_tz AS 'Timezone',
+            Calendar.title AS 'Calendar Name',
+            Calendar.color AS 'Calendar Color',
+            Store.name AS 'Account Name',
+            CalendarItem.summary AS 'Event Title',
+            Location.title AS 'Location Name',
+            Location.address AS 'Location Address',
+            Location.latitude AS 'Location Latitude',
+            Location.longitude AS 'Location Longitude',
+            Identity.display_name AS 'Organizer Name',
+            Participant.email AS 'Organizer email',
+            CalendarItem.has_attendees AS 'Has Attendees',
+            {conference_url}
+            {attachments}
+            CalendarItem.description AS 'Notes',
+            datetime('2001-01-01', CalendarItem.creation_date || ' seconds') AS 'Creation Time',
+            datetime('2001-01-01', CalendarItem.last_modified || ' seconds') AS 'Last Modification Time'
+            FROM CalendarItem
+            LEFT JOIN Location ON CalendarItem.location_id = Location.ROWID
+            LEFT JOIN Calendar ON CalendarItem.calendar_id = Calendar.ROWID
+            LEFT JOIN Store ON Calendar.store_id = Store.ROWID
+            LEFT JOIN Participant  ON CalendarItem.organizer_id = Participant.ROWID
+            LEFT JOIN Identity ON Participant.identity_id = Identity.ROWID
+            WHERE CalendarItem.calendar_scale IS NOT 'gregorian'
+            ''')
+
+            all_rows = cursor.fetchall()
+            usageentries = len(all_rows)
+
+            if usageentries > 0:
+
+                invitees = get_invitees(cursor)
+                for row in all_rows:
+                    start_time = convert_ts_human_to_utc(row[1])
+                    end_time = convert_ts_human_to_utc(row[2])
+
+                    if row[-2]:
+                        creation_time = convert_ts_human_to_utc(row[-2])
+                    else:
+                        creation_time = ''
+
+                    if row[-1]:
+                        modification_time = convert_ts_human_to_utc(row[-1])
+                    else:
+                        modification_time = ''
+                    
+                    timezone = row[3] if row[3] != '_float' else ''
+                    
+                    calendar_name = row[4]
+                    calendar_name_tag = get_calendar_name(row[4], row[5])
+
+                    latitude = row[10]
+                    longitude = row [11]
+                    location_coordinates = f'{latitude}, {longitude}' if latitude and longitude else ''
+
+                    if latitude and longitude:
+                        # Coordinates only. This carried an openstreetmap.org anchor;
+                        # a report links to nothing outside its own folder.
+                        location_coordinates_tag = esc(location_coordinates)
+                    else:
+                        location_coordinates_tag = ''
+
+                    invitation_from = f'{row[12]} - {row[13]}' if row[12] else row[13]
+
+                    attendees_tag = invitees[0].get(row[0], '')
+                    attendees = invitees[1].get(row[0], '')
+
+                    data_list_html.append((start_time, end_time, timezone, calendar_name_tag, row[6], row[7], row[8], 
+                                      row[9], location_coordinates_tag, invitation_from, attendees_tag, row[15], 
+                                      row[16], row[17], creation_time, modification_time, context.get_relative_path(file_found)))
+            
+                    data_list.append((start_time, end_time, timezone, calendar_name, row[6], row[7], row[8], 
+                                      row[9], location_coordinates, invitation_from, attendees, row[15], row[16],
+                                      row[17], creation_time, modification_time, context.get_relative_path(file_found)))
+                    
+
+    return data_headers, (data_list, data_list_html), '\n'.join(sorted(source_files))
+
+
+@artifact_processor
+def calendarBirthdays(context):
+
+    data_list_html = []
+    data_list = []
+    data_headers = ('Start Date', 'Event Title', 'Calendar Name', 'Account Name', 'Source File')
+    source_files = set()
+
+    for file_found in context.get_files_found():
+        file_found = str(file_found)
+
+        if file_found.endswith('.sqlitedb'):
+            source_files.add(file_found)
+            db = open_sqlite_db_readonly(file_found)
+            cursor = db.cursor()
+
+            # Birthdays
+
+            cursor.execute(
+            '''
+            SELECT 
+            CalendarItem.summary AS 'Person Name',
+            CAST(CalendarItem.start_date AS INT) AS 'Date of Birth',
+            Calendar.title AS 'Calendar Name',
+            Calendar.color AS 'Calendar Color',
+            Store.name AS 'Account Name'
+            FROM CalendarItem
+            LEFT JOIN Calendar ON CalendarItem.calendar_id = Calendar.ROWID
+            LEFT JOIN Store ON Calendar.store_id = Store.ROWID
+            WHERE CalendarItem.calendar_scale IS 'gregorian'
+            ''')
+
+            all_rows = cursor.fetchall()
+
+            for row in all_rows:
+                birthdate = get_birthdate(row[1])
+                calendar_name = row[2]
+                calendar_name_tag = get_calendar_name(row[2], row[3])
+
+                data_list_html.append((birthdate, row[0], calendar_name_tag, row[4], context.get_relative_path(file_found)))
+                data_list.append((birthdate, row[0], calendar_name, row[4], context.get_relative_path(file_found)))
+
+    return data_headers, (data_list, data_list_html), '\n'.join(sorted(source_files))
+
+
+@artifact_processor
+def calendarList(context):
+    data_list_html = []
+    data_list = []
+    data_headers = ('Calendar Name', 'Account Name', 'Account Email', 'Owner Name',
+                    'Owner Email', 'Sharing Status', 'Sharing Participants', 'Notes', 'Source File')
+    source_files = set()
+
+    for file_found in context.get_files_found():
+        file_found = str(file_found)
+
+        if file_found.endswith('.sqlitedb'):
+            source_files.add(file_found)
+            db = open_sqlite_db_readonly(file_found)
+            cursor = db.cursor()
+
+            # Calendar List
+
+            cursor.execute('''
+            SELECT Calendar.ROWID,
+            Calendar.title AS 'Calendar Name',
+            Calendar.color AS 'Calendar Color',
+            Store.name AS 'Account Name',
+            CASE
+                WHEN Calendar.self_identity_email IS NULL THEN Calendar.owner_identity_email
+                ELSE Calendar.self_identity_email
+            END AS 'Account Email',
+			Identity.display_name AS 'Owner Name',
+			Identity.address AS 'Owner Email',
+            CASE Calendar.sharing_status
+                WHEN 0 THEN 'Not shared'
+                WHEN 1 THEN 'Shared by me'
+                WHEN 2 THEN 'Shared with me'
+                ELSE Calendar.sharing_status
+            END AS 'Sharing Status',
+            Calendar.notes AS 'Notes'
+            FROM Calendar
+            LEFT JOIN Store ON Calendar.store_id = Store.ROWID
+			LEFT JOIN Identity ON Calendar.owner_identity_id = Identity.ROWID
+            ''')
+
+            all_rows = cursor.fetchall()
+            usageentries = len(all_rows)
+            if usageentries > 0:
+
+                sharees_html, sharees_csv = get_sharees(cursor)
+                for row in all_rows:
+                    calendar_name = row[1]
+                    calendar_name_tag = get_calendar_name(row[1], row[2])
+                    owner_email = row[6].replace('mailto:', '') if row[6] else ''
+                    owner_email = unquote(owner_email)
+                    if sharees_html:
+                        sharing_participants_html = sharees_html.get(row[0], '')
+                        sharing_participants = sharees_csv.get(row[0], '')
+                        data_list_html.append((calendar_name_tag, row[3], row[4], row[5], owner_email, row[7],
+                                          sharing_participants_html, row[8], context.get_relative_path(file_found)))
+                        data_list.append((calendar_name, row[3], row[4], row[5], owner_email, row[7],
+                                              sharing_participants, row[8], context.get_relative_path(file_found)))
+                    else:
+                        data_list_html.append((calendar_name_tag, row[3], row[4], row[5], owner_email, row[7], None, row[8], context.get_relative_path(file_found)))
+                        data_list.append((calendar_name, row[3], row[4], row[5], owner_email, row[7], None, row[8], context.get_relative_path(file_found)))
+                
+    return data_headers, (data_list, data_list_html), '\n'.join(sorted(source_files))

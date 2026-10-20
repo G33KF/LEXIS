@@ -1,0 +1,47 @@
+__artifacts_v2__ = {
+    "get_hr_api": {
+        "name": "GarminHRAPI",
+        "description": "Parses the calendar date, maximum, minimum and resting heart rate and the lastSevenDaysAvgRestingHeartRate value from AllDayHR JSON files in a garmin.api folder. The seven-day column holds lastSevenDaysAvgRestingHeartRate as stored.",
+        "author": "Fabian Nunes {fabiannunes12@gmail.com}, @AlexisBrignoni, Codex",
+        "creation_date": "2023-02-24",
+        "last_update_date": "2026-10-05",
+        "requirements": "Python 3.7 or higher, json",
+        "category": "Garmin",
+        "notes": "Date is the payload calendarDate. Last Seven Days Average Resting Heart Rate (as stored) is lastSevenDaysAvgRestingHeartRate, not a general all-day average. Existing N/A rendering for JSON null values is retained.",
+        "paths": ('*/garmin.api/heart_rate*',),
+        "output_types": ['html', 'tsv', 'lava'],
+        "artifact_icon": "activity",
+    }
+}
+
+# Requires extracting Garmin API data using https://github.com/labcif/Garmin-Connect-API-Extractor
+
+import json
+
+from scripts.ilapfuncs import artifact_processor, logfunc
+
+
+@artifact_processor
+def get_hr_api(context):
+    files_found = context.get_files_found()
+    logfunc("Processing data for Heart Rate API")
+    data_list = []
+    source_path = ''
+    for file in files_found:
+        file = str(file)
+        source_path = file
+        logfunc("Processing file: " + file)
+        with open(file, "r", encoding='utf-8', errors='replace') as f:
+            data = json.load(f)
+
+        if len(data) > 0:
+            payload = data['AllDayHR']['payload']
+            date = payload['calendarDate']
+            max_hr = payload['maxHeartRate'] if payload['maxHeartRate'] is not None else 'N/A'
+            min_hr = payload['minHeartRate'] if payload['minHeartRate'] is not None else 'N/A'
+            resting_hr = payload['restingHeartRate'] if payload['restingHeartRate'] is not None else 'N/A'
+            average_hr = payload['lastSevenDaysAvgRestingHeartRate'] if payload['lastSevenDaysAvgRestingHeartRate'] is not None else 'N/A'
+            data_list.append((date, max_hr, min_hr, resting_hr, average_hr))
+
+    data_headers = ('Date', 'Max Heart Rate', 'Min Heart Rate', 'Resting Heart Rate', 'Last Seven Days Average Resting Heart Rate (as stored)')
+    return data_headers, data_list, source_path

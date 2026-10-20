@@ -1,0 +1,209 @@
+# pylint: disable=W0718
+__artifacts_v2__ = {
+    "get_teams": {
+        "name": "Teams - Messages",
+        "description": "Parses Microsoft Teams messages (timestamp, user, content, topic, delete time and conversation) from SkypeTeams.db.",
+        "author": "@abrignoni",
+        "creation_date": "2021-04-29",
+        "last_update_date": "2021-04-29",
+        "requirements": "none",
+        "category": "Teams",
+        "notes": "",
+        "paths": ('*/com.microsoft.teams/databases/SkypeTeams.db*',),
+        "output_types": "standard",
+        "artifact_icon": "message",
+        "sample_data": {
+            "pixel7a_a14": "Android 14 | com.microsoft.teams vc 2024132725 | 32 rows",
+        },
+    },
+    "get_teams_users": {
+        "name": "Teams - Users",
+        "description": "Parses Microsoft Teams users (last sync, name, email, phone numbers and account flags) from SkypeTeams.db.",
+        "author": "@abrignoni",
+        "creation_date": "2021-04-29",
+        "last_update_date": "2021-04-29",
+        "requirements": "none",
+        "category": "Teams",
+        "notes": "",
+        "paths": ('*/com.microsoft.teams/databases/SkypeTeams.db*',),
+        "output_types": ['html', 'tsv', 'lava'],
+        "artifact_icon": "users",
+        "sample_data": {
+            "pixel7a_a14": "Android 14 | com.microsoft.teams vc 2024132725 | 3 rows",
+        },
+    },
+    "get_teams_calllog": {
+        "name": "Teams - Call Log",
+        "description": "Parses Microsoft Teams call log properties (connect and end time, state, type, "
+                       "originator, direction, target and the target's given name) from SkypeTeams.db.",
+        "author": "@abrignoni",
+        "creation_date": "2021-04-29",
+        "last_update_date": "2026-10-04",
+        "requirements": "none",
+        "category": "Teams",
+        "notes": "One row per MessagePropertyAttribute row whose propertyId is CallLog. Target is the "
+                 "target value of the call log property, as stored. Target Participant Name is the "
+                 "givenName of the User table row whose mri equals that target and whose tenantId "
+                 "equals the property row's tenantId (the User table's primary key is mri and "
+                 "tenantId); it is blank when the User table has no such row, and the call is still "
+                 "reported. On pixel7a_a14 both call log properties matched a User row on both "
+                 "columns. The blank case was exercised on a copy of that database with the "
+                 "target's User row removed (constructed input): 2 rows with a blank name, where "
+                 "the earlier inner join returned 0.",
+        "paths": ('*/com.microsoft.teams/databases/SkypeTeams.db*',),
+        "output_types": "standard",
+        "artifact_icon": "phone-call",
+        "sample_data": {
+            "pixel7a_a14": "Android 14 | com.microsoft.teams vc 2024132725 | 2 rows",
+        },
+    },
+    "get_teams_activity": {
+        "name": "Teams - Activity Feed",
+        "description": "Parses the Microsoft Teams activity feed (timestamp, display name, message preview, activity type and read state) from SkypeTeams.db.",
+        "author": "@abrignoni",
+        "creation_date": "2021-04-29",
+        "last_update_date": "2021-04-29",
+        "requirements": "none",
+        "category": "Teams",
+        "notes": "",
+        "paths": ('*/com.microsoft.teams/databases/SkypeTeams.db*',),
+        "output_types": "standard",
+        "artifact_icon": "activity",
+        "sample_data": {
+            "pixel7a_a14": "Android 14 | com.microsoft.teams vc 2024132725 | 0 rows",
+        },
+    },
+    "get_teams_fileinfo": {
+        "name": "Teams - File Info",
+        "description": "Parses Microsoft Teams file references (modified time, file name, type, object URL, folder flag and last modified by) from SkypeTeams.db.",
+        "author": "@abrignoni",
+        "creation_date": "2021-04-29",
+        "last_update_date": "2021-04-29",
+        "requirements": "none",
+        "category": "Teams",
+        "notes": "",
+        "paths": ('*/com.microsoft.teams/databases/SkypeTeams.db*',),
+        "output_types": "standard",
+        "artifact_icon": "file",
+        "sample_data": {
+            "pixel7a_a14": "Android 14 | com.microsoft.teams vc 2024132725 | 0 rows",
+        },
+    }
+}
+
+import datetime
+
+from scripts.ilapfuncs import artifact_processor, logfunc, open_sqlite_db_readonly
+
+
+def _ms_to_utc(value):
+    if value:
+        return datetime.datetime.fromtimestamp(int(value) / 1000, datetime.timezone.utc)
+    return ''
+
+
+def _teams_db(files_found):
+    for file_found in files_found:
+        file_found = str(file_found)
+        if file_found.endswith('SkypeTeams.db'):
+            return file_found
+    return ''
+
+
+def _run(source_path, sql):
+    if not source_path:
+        return []
+    db = open_sqlite_db_readonly(source_path)
+    cursor = db.cursor()
+    try:
+        cursor.execute(sql)
+        rows = cursor.fetchall()
+    except Exception as e:
+        logfunc(str(e))
+        rows = []
+    db.close()
+    return rows
+
+
+@artifact_processor
+def get_teams(context):
+    files_found = context.get_files_found()
+    source_path = _teams_db(files_found)
+    rows = _run(source_path, '''
+        SELECT arrivalTime, userDisplayName, content, displayName, deleteTime,
+        Message.conversationId, messageId
+        FROM Message
+        left join Conversation on Message.conversationId = Conversation.conversationId
+        ORDER BY Message.conversationId, arrivalTime, Message.rowid, Conversation.rowid
+    ''')
+    data_list = [(_ms_to_utc(r[0]), r[1], r[2], r[3], _ms_to_utc(r[4]), r[5], r[6]) for r in rows]
+    data_headers = (('Timestamp', 'datetime'), 'User Display Name', 'Content', 'Topic Name', ('Delete Time', 'datetime'), 'Conversation ID', 'Message ID')
+    return data_headers, data_list, source_path
+
+
+@artifact_processor
+def get_teams_users(context):
+    files_found = context.get_files_found()
+    source_path = _teams_db(files_found)
+    rows = _run(source_path, '''
+        SELECT lastSyncTime, givenName, surname, displayName, email, secondaryEmail, alternativeEmail,
+        telephoneNumber, homeNumber, accountEnabled, type, userType, isSkypeTeamsUser, isPrivateChatEnabled
+        from User
+    ''')
+    data_list = [(_ms_to_utc(r[0]), r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9], r[10], r[11], r[12], r[13]) for r in rows]
+    data_headers = (('Last Sync', 'datetime'), 'Given Name', 'Surname', 'Display Name', 'Email', 'Secondary Email', 'Alt. Email', ('Telephone Number', 'phonenumber'), ('Home Number', 'phonenumber'), 'Account Enabled?', 'Type', 'User Type', 'Is Teams User?', 'Is Private Chat Enabled?')
+    return data_headers, data_list, source_path
+
+
+@artifact_processor
+def get_teams_calllog(context):
+    files_found = context.get_files_found()
+    source_path = _teams_db(files_found)
+    rows = _run(source_path, '''
+        SELECT
+        json_extract(attributeValue, '$.connectTimeMillis'),
+        json_extract(attributeValue, '$.endTimeMillis'),
+        json_extract(attributeValue, '$.callState'),
+        json_extract(attributeValue, '$.callType'),
+        json_extract(attributeValue, '$.originatorDisplayName'),
+        json_extract(attributeValue, '$.callDirection'),
+        User.givenName,
+        json_extract(attributeValue, '$.sessionType'),
+        json_extract(attributeValue, '$.target')
+        from MessagePropertyAttribute
+        left join User on json_extract(attributeValue, '$.target') = User.mri
+        and MessagePropertyAttribute.tenantId = User.tenantId
+        where propertyId = 'CallLog'
+    ''')
+    data_list = [(_ms_to_utc(r[0]), _ms_to_utc(r[1]), r[2], r[3], r[4], r[5], r[8], r[6], r[7]) for r in rows]
+    data_headers = (('Connect Time', 'datetime'), ('End Time', 'datetime'), 'Call State', 'Call Type', 'Originator', 'Call Direction', 'Target', 'Target Participant Name', 'Session Type')
+    return data_headers, data_list, source_path
+
+
+@artifact_processor
+def get_teams_activity(context):
+    files_found = context.get_files_found()
+    source_path = _teams_db(files_found)
+    rows = _run(source_path, '''
+        SELECT activityTimestamp, sourceUserImDisplayName, messagePreview, activityType, activitySubtype, isRead
+        FROM ActivityFeed
+    ''')
+    data_list = [(_ms_to_utc(r[0]), r[1], r[2], r[3], r[4], r[5]) for r in rows]
+    data_headers = (('Timestamp', 'datetime'), 'Display Name', 'Message Preview', 'Activity Type', 'Activity Subtype', 'Is read?')
+    return data_headers, data_list, source_path
+
+
+@artifact_processor
+def get_teams_fileinfo(context):
+    files_found = context.get_files_found()
+    source_path = _teams_db(files_found)
+    rows = _run(source_path, '''
+        SELECT lastModifiedTime, fileName, type, objectUrl, isFolder, lastModifiedBy
+        FROM FileInfo
+    ''')
+    data_list = []
+    for r in rows:
+        mtime = r[0].replace('T', ' ') if r[0] else ''
+        data_list.append((mtime, r[1], r[2], r[3], r[4], r[5]))
+    data_headers = ('Timestamp', 'File Name', 'Type', 'Object URL', 'Is Folder?', 'Last Modified By')
+    return data_headers, data_list, source_path
