@@ -5,16 +5,15 @@ It ships as a single executable with both tools inside. You can open an existing
 or analyze a new extraction (folder, zip, tar, tar.gz, iTunes/Finder backup, encrypted iTunes
 backup for iOS 10 and later, adb backup) without installing Python or either LEAPP.
 
-
-> [!NOTE]
-> ***This is a first release and may still need some work, but I'm happy to share it.***
->
-> ***For details about the logic and architecture, see https://g33kf.github.io/LEXIS/***
-
-
 Evidence is opened read-only: databases are read from temporary copies, and nothing is written
 beside the evidence. Tags and notes go to `_reader_tags.db` beside the case, AI results to
 `_reader_ai.db`.
+
+> [!NOTE]
+> *This is a first release and may still need some work, but I'm happy to share it.*
+>
+> *For details about the logic and architecture, see https://g33kf.github.io/LEXIS/*
+
 
 ## Download
 
