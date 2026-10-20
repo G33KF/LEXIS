@@ -1,13 +1,35 @@
 # LEXIS — LEAPP Reader
 
-LEXIS is a Windows desktop reader for the reports of **ALEAPP** (Android) and **iLEAPP** (iOS).
-It ships as a single executable with both tools inside. You can open an existing LEAPP case,
-or analyze a new extraction (folder, zip, tar, tar.gz, iTunes/Finder backup, encrypted iTunes
-backup for iOS 10 and later, adb backup) without installing Python or either LEAPP.
+LEXIS is a Windows graphical analysis environment for **ALEAPP** (Android) and **iLEAPP** (iOS).
+LEAPP parses the extraction and reports each artifact on its own; LEXIS brings those results
+together, so you can search, correlate and tag across artifacts and across devices. Both tools
+are bundled in a single portable exe: open an existing LEAPP report, or load a new extraction
+and LEXIS runs the right tool for you. No Python, nothing to install.
 
-Evidence is opened read-only: databases are read from temporary copies, and nothing is written
-beside the evidence. Tags and notes go to `_reader_tags.db` beside the case, AI results to
-`_reader_ai.db`.
+On top of the LEAPP reports it adds:
+- **LEAPP artifacts, organized**: every artifact from the LAVA output, sorted into 16 categories
+  and data types (Messages › SMS, Calls › Call Log, ...), or grouped by application. Tables
+  load as you scroll, with column filters, `/regex/` search, inline media and CSV/JSON export
+- **Multi-device cases**: joint timeline and map, co-presence, common contacts, search across devices
+- **Chats, timeline, map and media gallery** in one window, with one search syntax
+- **The extraction file system**: file browser, SQLite reader with WAL and free-page carving, plist reader
+- **Indicators**: matching of STIX2 indicators and hash sets, root/jailbreak traces, crypto addresses and seed phrases
+- **Verifiable exports**: tags and notes, SHA-256 manifests, signed portable cases
+- **AI analysis**: off by default. Plug in Ollama, LM Studio or any OpenAI-compatible
+  model to analyze, explain, summarize and translate, read images (OCR) and transcribe audio,
+  with every answer citing the records it used. A built-in MCP server lets any MCP client
+  query the open case
+
+**Supported inputs**
+- Existing LEAPP report folders
+- File system extractions: unpacked folder, zip, tar, tar.gz
+- Extractions from major third-party forensic tools (UFD, GK)
+- iTunes/Finder backups, including encrypted backups from iOS 10.2 and later
+- Android adb backups (`.ab`), plain or encrypted
+
+Evidence is never modified: databases are opened from temporary copies, so the original
+files keep their hashes. Tags and notes are saved in `_reader_tags.db` beside the case,
+AI results in `_reader_ai.db`.
 
 > [!NOTE]
 > *This is a first release and may still need some work, but I'm happy to share it.*
