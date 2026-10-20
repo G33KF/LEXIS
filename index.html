@@ -1,9 +1,17 @@
 <!doctype html>
-<html lang="it">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>LEXIS code map</title>
+<meta name="description" content="How LEXIS, the forensic reader for ALEAPP and iLEAPP reports, is built: modules, logic flows and code.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="LEXIS — LEAPP Reader · code map">
+<meta property="og:description" content="How LEXIS, the forensic reader for ALEAPP and iLEAPP reports, is built: modules, logic flows and code.">
+<meta property="og:url" content="https://g33kf.github.io/LEXIS/">
+<meta property="og:image" content="https://g33kf.github.io/LEXIS/social-preview.png">
+<meta property="og:image:width" content="1280"><meta property="og:image:height" content="640">
+<meta name="twitter:card" content="summary_large_image">
 <script src="dati.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.0/mermaid.min.js"></script>
 <script src="https://unpkg.com/vis-network@9.1.6/standalone/umd/vis-network.min.js"></script>
@@ -16,7 +24,8 @@
 body{margin:0;background:var(--sfondo);color:var(--testo);font:14px/1.5 system-ui,"Segoe UI",sans-serif}
 header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--bordo);background:var(--carta);position:sticky;top:0;z-index:5}
 header h1{font-size:16px;margin:0}
-header .links{margin-left:auto;display:flex;gap:8px}header .links a{padding:4px 10px;border:1px solid var(--bordo);border-radius:6px;text-decoration:none}header .links{margin-left:auto;display:flex;gap:8px}header .links a{padding:4px 10px;border:1px solid var(--bordo);border-radius:6px;text-decoration:none}header .meta{color:var(--tenue);font-size:12px}
+header .links{margin-left:auto;display:flex;gap:8px}header .links a{padding:4px 10px;border:1px solid var(--bordo);border-radius:6px;text-decoration:none}
+header .meta{color:var(--tenue);font-size:12px}
 nav{display:flex;flex-wrap:wrap;gap:4px}
 nav button,.btn{border:1px solid var(--bordo);background:var(--carta);color:var(--testo);border-radius:6px;padding:4px 10px;cursor:pointer;font:inherit}
 nav button.on{background:var(--accento);border-color:var(--accento);color:#fff}
@@ -78,7 +87,7 @@ code{font-size:12px}
  <label>Module <select id="modulo"><option value="">all</option></select></label>
  <span class="links"><a href="https://github.com/G33KF/LEXIS">Repository</a> <a href="https://github.com/G33KF/LEXIS/releases/latest">Download</a></span>
 </header>
-<main><div id="vista"></div><aside id="pannello"><p class="vuoto">Click a node, a group or a row for details.</p></aside></main>
+<main><div id="vista"></div><aside id="pannello"><p class="vuoto"><b>LEXIS</b> is a forensic reader for ALEAPP and iLEAPP reports. This map shows how it is built: modules, logic flows and code.<br><br>Click a node, a group or a row for details.</p></aside></main>
 <script>
 const K = window.KRAPHWORK;
 if (!K) document.getElementById('vista').innerHTML = '<p class="vuoto">dati.js missing.</p>';
