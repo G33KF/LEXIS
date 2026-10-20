@@ -7,9 +7,10 @@ are bundled in a single portable exe: open an existing LEAPP report, or load a n
 and LEXIS runs the right tool for you. No Python, nothing to install.
 
 On top of the LEAPP reports it adds:
-- **LEAPP artifacts, organized**: every artifact from the LAVA output, sorted into 16 categories
+- **LEAPP artifacts, organized**: every artifact from the LAVA output, sorted into categories
   and data types (Messages › SMS, Calls › Call Log, ...), or grouped by application. Tables
-  load as you scroll, with column filters, `/regex/` search, inline media and CSV/JSON export
+  load as you scroll, with column filters, `/regex/` search, inline media and export. Cells
+  holding JSON, XML, plists or protobuf (decoded by recognized schema) open as a tree
 - **Multi-device cases**: joint timeline and map, co-presence, common contacts, search across devices
 - **Chats, timeline, map and media gallery** in one window, with one search syntax
 - **The extraction file system**: file browser, SQLite reader with WAL and free-page carving, plist reader
