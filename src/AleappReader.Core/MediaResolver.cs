@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Microsoft.Data.Sqlite;
 
 namespace AleappReader.Core;
@@ -10,6 +10,8 @@ public sealed record MediaRef(string RefId, string Name, string? MimeType, strin
 {
     /// <summary>Set for a portable case, whose media stay in the zip.</summary>
     public DeferredFiles? Deferred { get; init; }
+    /// <summary>The case's folders of decoded audio (<see cref="SilkAudio.Folders"/>): the first is written, all are searched.</summary>
+    public string[]? AudioFolders { get; init; }
     public bool Exists => FullPath is not null && (File.Exists(FullPath) || Deferred?.Has(FullPath) == true);
     bool OnDisk => File.Exists(FullPath);
 
@@ -53,6 +55,8 @@ public sealed record MediaRef(string RefId, string Name, string? MimeType, strin
 /// <summary>Resolves media cells (a media ref id, or a JSON list of them) through _lava_media_info.</summary>
 public sealed class MediaResolver(CaseSession session)
 {
+    string[]? _audio;
+
     public static IReadOnlyList<string> RefIds(object? cell)
     {
         if (cell is not string s || string.IsNullOrWhiteSpace(s)) return [];
@@ -101,7 +105,7 @@ public sealed class MediaResolver(CaseSession session)
         var extraction = S("extraction_path");
         return new MediaRef(S("media_ref_id") ?? "", S("name") ?? Path.GetFileName(extraction ?? ""), S("type"),
             S("source_path"), extraction, session.ResolveInCase(extraction), S("module_name") ?? "", S("artifact_name") ?? "",
-            Epoch(S("created_at")), Epoch(S("updated_at"))) { Deferred = session.Deferred };
+            Epoch(S("created_at")), Epoch(S("updated_at"))) { Deferred = session.Deferred, AudioFolders = _audio ??= SilkAudio.Folders(session) };
     }
 
     /// <summary>Unix seconds from a stored number (milliseconds are scaled down); 0, negative or text: unknown.</summary>

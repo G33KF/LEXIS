@@ -40,6 +40,8 @@ public static class ChatHtmlExporter
         .chat .media img{max-width:260px;max-height:260px;border-radius:6px}
         .quote{border-left:3px solid #06cf9c;background:rgba(0,0,0,.05);border-radius:4px;padding:3px 7px;margin:2px 0 4px;font-size:12px;color:#3b4a54;white-space:pre-wrap;word-break:break-word}
         .quote a{color:inherit;text-decoration:none}
+        .recovered .bubble{outline:2px dashed #c2410c;outline-offset:1px}
+        .recnote{font-size:11px;color:#c2410c;font-weight:600;margin-top:3px}
         .tagnote{font-size:11px;background:#fff4cc;border:1px solid #e8d48a;border-radius:4px;padding:2px 6px;margin-top:3px}
         .av{display:none}
         .chat.telegram{background:#c8d9b9}
@@ -215,7 +217,7 @@ public static class ChatHtmlExporter
         foreach (var m in ms)
         {
             var day = m.Time.Length >= 10 && DateOnly.TryParseExact(m.Time[..10], "yyyy-MM-dd", out _) ? m.Time[..10] : "";
-            r.Write($"<div class=\"m{(day != lastDay ? " showday" : "")}\" id=\"r{m.RowId}\" data-day=\"{E(day)}\"><div class=\"msg {(m.IsSystem ? "sys" : m.IsSent ? "out" : "in")}\">" +
+            r.Write($"<div class=\"m{(day != lastDay ? " showday" : "")}\" id=\"r{m.RowId}\" data-day=\"{E(day)}\"><div class=\"msg {(m.IsSystem ? "sys" : m.IsSent ? "out" : "in")}{(m.Recovered != "" ? " recovered" : "")}\">" +
                     $"{(m.IsSent || m.IsSystem ? "" : Avatar(m))}<div class=\"bubble\">");
             lastDay = day;
             if (m.Sender != "") r.Write($"<div class=\"sender\">{E(m.Sender)}</div>");
@@ -229,6 +231,7 @@ public static class ChatHtmlExporter
             if (m.Location is { } p)
                 r.Write($"<div class=\"extra\">Location {E(m.LocationText)}{(p.TableName != x.A.TableName ? $" ({E(p.Artifact)}, record {p.RowId})" : "")} · " +
                         FormattableString.Invariant($"<a rel=\"noreferrer\" title=\"Opens openstreetmap.org\" href=\"https://www.openstreetmap.org/?mlat={p.Lat}&amp;mlon={p.Lon}#map=16/{p.Lat}/{p.Lon}\">map</a></div>"));
+            if (m.Recovered != "") r.Write($"<div class=\"recnote\">&#9851; Recovered: {E(m.Recovered)}</div>");
             if (x.Tags.GetValueOrDefault(m.RowId) is { } t)
                 r.Write($"<div class=\"tagnote\">Examiner tag: {E(t.Tag)}{(t.Note != "" ? $" · Note: {E(t.Note)}" : "")}</div>");
             r.WriteLine($"<div class=\"foot\">{E(string.Join(" · ", new[] { m.Time, m.SourceRecord != "" ? m.SourceRecord : $"parser row {m.RowId}" }.Where(t => t != "")))}</div></div></div></div>");

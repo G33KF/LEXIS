@@ -51,6 +51,10 @@ public partial class SqliteWindow : Window
         if (Vm.Paged) Vm.SortBy(int.Parse(e.Column.SortMemberPath));
     }
 
-    void OnCurrentCellChanged(object? sender, EventArgs e) =>
-        Vm.Inspect(Grid.CurrentCell.Item as SqlRow, Grid.CurrentCell.Column is { } c ? Grid.Columns.IndexOf(c) : -1);
+    // the selected cell first (a click, the keyboard), else the current one: either can change without the other
+    void OnCellChanged(object? sender, EventArgs e)
+    {
+        var c = Grid.SelectedCells.Count > 0 ? Grid.SelectedCells[0] : Grid.CurrentCell;
+        Vm.Inspect(c.Item as SqlRow, c.Column is { } col ? Grid.Columns.IndexOf(col) : -1);
+    }
 }

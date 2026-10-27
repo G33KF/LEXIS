@@ -315,6 +315,140 @@ public class CoreTests : IDisposable
     }
 
     [Fact]
+    public void File_contents_are_read_once_and_kept_with_scanned_pdfs_flagged()
+    {
+        var dir = Path.Combine(_c.Root, "content-extraction");
+        var app = Path.Combine(dir, "data", "data", "com.example.chat");
+        var dl = Path.Combine(dir, "sdcard", "Download");
+        Directory.CreateDirectory(Path.Combine(app, "databases"));
+        Directory.CreateDirectory(dl);
+        File.WriteAllText(Path.Combine(dl, "notes.txt"), "meet at the harbour");
+        File.WriteAllText(Path.Combine(app, "prefs.plist"),
+            "<?xml version=\"1.0\"?><plist version=\"1.0\"><dict><key>city</key><string>harbour town</string></dict></plist>");
+        using (var con = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={Path.Combine(app, "databases", "msgstore")};Pooling=false"))
+        {
+            con.Open();
+            using var cmd = con.CreateCommand();
+            cmd.CommandText = "CREATE TABLE messages(body TEXT, ts INTEGER); INSERT INTO messages VALUES('see you at the harbour', 1), ('other', 2)";
+            cmd.ExecuteNonQuery();
+        }
+        using (var z = System.IO.Compression.ZipFile.Open(Path.Combine(dl, "plan.docx"), System.IO.Compression.ZipArchiveMode.Create))
+        using (var w = new StreamWriter(z.CreateEntry("word/document.xml").Open()))
+            w.Write("<w:document xmlns:w=\"urn:w\"><w:body><w:p><w:r><w:t>harbour plan</w:t></w:r></w:p></w:body></w:document>");
+        static byte[] Pdf(bool text)
+        {
+            var b = new UglyToad.PdfPig.Writer.PdfDocumentBuilder();
+            var page = b.AddPage(UglyToad.PdfPig.Content.PageSize.A4);
+            if (text) page.AddText("harbour on page one", 12, new UglyToad.PdfPig.Core.PdfPoint(25, 700),
+                                   b.AddStandard14Font(UglyToad.PdfPig.Fonts.Standard14Fonts.Standard14Font.Helvetica));
+            else page.AddPng(Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="),
+                             new UglyToad.PdfPig.Core.PdfRectangle(0, 0, 100, 100));
+            return b.Build();
+        }
+        File.WriteAllBytes(Path.Combine(dl, "report.pdf"), Pdf(true));
+        File.WriteAllBytes(Path.Combine(dl, "scan.pdf"), Pdf(false));
+
+        using var x = ExtractionFiles.Open(dir)!;
+        var store = new TextStore(Path.Combine(_c.Root, "content-text.db"));
+        Assert.Equal(6, ContentIndex.Build(store, x, ContentIndex.Kinds));
+        Assert.Equal(["data/data/com.example.chat/databases/msgstore | messages #1", "data/data/com.example.chat/prefs.plist | ",
+                      "sdcard/Download/notes.txt | ", "sdcard/Download/plan.docx | word/document", "sdcard/Download/report.pdf | page 1"],
+                     store.Search("harbour").Select(h => h.File.Path + " | " + h.Part).Order(StringComparer.Ordinal));
+        Assert.Contains("body: see you at the harbour", store.Search("harbour").First(h => h.File.Kind == RawFiles.Databases).Text);
+        Assert.Equal(["sdcard/Download/plan.docx"], store.Search("harbour", [RawFiles.Documents]).Select(h => h.File.Path).Where(p => p.EndsWith(".docx")));
+        var scan = Assert.Single(store.Files(s => s.Contains("scanned")));
+        Assert.Equal(("sdcard/Download/scan.pdf", TextStore.Scanned, 1), (scan.Path, scan.Status, scan.Pages));
+        Assert.Equal(0, ContentIndex.Build(store, x, ContentIndex.Kinds)); // read once, kept
+    }
+
+    [Fact]
+    public void The_search_covers_the_chosen_categories_and_gives_one_filterable_row_per_record()
+    {
+        using var s = CaseSession.Open(_c.Report);
+        var all = GlobalSearch.Run(s, "anna | rome");
+        var category = all[0].Artifact.Category;
+        Assert.All(GlobalSearch.Run(s, "anna | rome", categories: [category]), h => Assert.Equal(category, h.Artifact.Category));
+        Assert.Empty(GlobalSearch.Run(s, "anna | rome", categories: ["No such category"]));
+
+        var rows = all.SelectMany(h => GlobalSearch.Rows(h, "anna | rome", "Phone A")).ToList();
+        Assert.Equal(all.Sum(h => h.Rows.Count), rows.Count);
+        Assert.All(rows, r =>
+        {
+            Assert.Equal(SearchRow.ReportData, r.Origin);
+            Assert.Equal("Phone A", r.Device);
+            Assert.NotEqual("", r.Where);                                   // the column that matched
+            Assert.True(SearchQuery.Parse("anna | rome").Matches([r.Snippet]));
+        });
+
+        var none = new Dictionary<string, string>();
+        Assert.All(rows, r => Assert.True(SearchRows.Keep(r, "", none, [])));
+        Assert.Equal(rows.Count(r => r.Kind == rows[0].Kind),
+                     rows.Count(r => SearchRows.Keep(r, "", new Dictionary<string, string> { ["Kind"] = rows[0].Kind }, [])));
+        Assert.Equal(rows.Count(r => r.Snippet.Contains("anna", StringComparison.OrdinalIgnoreCase)),
+                     rows.Count(r => SearchRows.Keep(r, "anna", none, [])));
+        Assert.Equal(rows.Count(r => r.Where.Contains(rows[0].Where)),
+                     rows.Count(r => SearchRows.Keep(r, "", none, [new ColumnFilter("Where", "contains", rows[0].Where)])));
+        var kinds = SearchRows.Count(rows, "Kind");
+        Assert.Equal(rows.Count, kinds.Sum(k => k.Count));
+        Assert.True(kinds.SequenceEqual(kinds.OrderByDescending(k => k.Count).ThenBy(k => k.Value, StringComparer.OrdinalIgnoreCase)));
+
+        var dated = s.Manifest.Artifacts.Single(a => a.TableName == "get_chat");      // has a datetime column
+        var hit = Assert.Single(GlobalSearch.Run(s, "hello", categories: [dated.Category]), h => h.Artifact == dated);
+        var row = Assert.Single(GlobalSearch.Rows(hit, "hello"));
+        Assert.NotNull(row.Epoch);
+        Assert.NotEqual("", row.Date);
+        Assert.True(SearchRows.Keep(row, "", none, [new ColumnFilter("Date", "between", row.Epoch.ToString(), row.Epoch.ToString())]));
+        Assert.False(SearchRows.Keep(row, "", none, [new ColumnFilter("Date", "between", (row.Epoch + 1).ToString(), null)]));
+    }
+
+    [Fact]
+    public void A_keyword_list_file_is_read_per_line_and_separator_in_any_encoding()
+    {
+        Assert.Equal(["alpha", "beta gamma", "δέλτα", "中文", "#tag"],
+            KeywordList.Parse("alpha, beta gamma\r\n\n# a comment\n δέλτα ,中文,alpha\n#tag\nALPHA"));
+        Assert.Equal(["a,b", "c"], KeywordList.Parse("a,b;c", ";"));
+        Assert.Equal(["a,b", "c"], KeywordList.Parse("a,b\nc", ""));          // no separator: lines only
+        Assert.Equal(["a", "b"], KeywordList.Parse("a\tb", "\\t"));
+        Assert.Equal(("中文,毒品", "UTF-8"), KeywordList.Decode([0xEF, 0xBB, 0xBF, .. System.Text.Encoding.UTF8.GetBytes("中文,毒品")]));
+        Assert.Equal(("中文", "UTF-8"), KeywordList.Decode(System.Text.Encoding.UTF8.GetBytes("中文")));
+        Assert.Equal(("中文", "UTF-16"), KeywordList.Decode([0xFF, 0xFE, .. System.Text.Encoding.Unicode.GetBytes("中文")]));
+        System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
+        var gbk = System.Text.Encoding.GetEncoding(936);
+        Assert.Equal("中文", KeywordList.Decode(gbk.GetBytes("中文"), gbk).Text);   // GBK without BOM: not UTF-8, so the code page
+    }
+
+    [Fact]
+    public void Search_matches_Chinese_whole_words_and_non_latin_case()
+    {
+        using (var w = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={Path.Combine(_c.Report, "_lava_artifacts.db")};Pooling=False"))
+        {
+            w.Open();
+            using var cmd = w.CreateCommand();
+            cmd.CommandText = "INSERT INTO get_chat VALUES (1714557800,'3','我说中文很好','Received','+393334444444',NULL,'510','acc1');" +
+                              "INSERT INTO get_chat VALUES (1714557860,'3','ПРИВЕТ, Città','Sent','+393334444444',NULL,'511','acc1');";
+            cmd.ExecuteNonQuery();
+        }
+        using var s = CaseSession.Open(_c.Report);
+        using var con = s.OpenDb();
+        var chat = s.Manifest.Artifacts.Single(a => a.TableName == "get_chat");
+        long Count(string f) => ArtifactQuery.Query(con, chat, new PageRequest(Filter: f)).Total;
+
+        Assert.Equal(1, Count("中文"));
+        Assert.Equal(1, Count(SearchQuery.Compose("中文", SearchQuery.Mode.AllWords, true, "")!));   // no spaces in Chinese: no \b
+        Assert.Equal(1, Count("привет"));                                                          // LIKE alone would miss it
+        Assert.Equal(1, Count("CITTÀ"));
+        Assert.Equal(1, Count(SearchQuery.Compose("привет", SearchQuery.Mode.AllWords, true, "")!));
+        Assert.Equal(0, Count(SearchQuery.Compose("приве", SearchQuery.Mode.AllWords, true, "")!));
+        Assert.Equal(2, Count(SearchQuery.Compose("", SearchQuery.Mode.AnyWord, false, "", KeywordList.Parse("中文\nпривет"))!));
+        Assert.Equal("hello | \"two words\" | 中文", SearchQuery.Compose("hello", SearchQuery.Mode.AnyWord, false, "", ["two words", "中文"]));
+        Assert.Equal("hello \"two words\"", SearchQuery.Compose("hello", SearchQuery.Mode.AllWords, false, "", ["two words"]));
+        Assert.Equal("/a+/ | /b/", SearchQuery.Compose("a+", SearchQuery.Mode.RegularExpression, false, "", ["b"]));
+        Assert.Null(SearchQuery.Compose("", SearchQuery.Mode.RegularExpression, false, "", ["("]));
+        Assert.Equal("/中文x\\b/", SearchQuery.Compose("中文x", SearchQuery.Mode.AllWords, true, ""));       // \b on the Latin side only
+        Assert.Equal(1, Assert.Single(GlobalSearch.Run(s, "中文 | привет")).TermCounts[0]);
+    }
+
+    [Fact]
     public void Technical_fields_are_left_out_on_request_by_their_values()
     {
         using var s = CaseSession.Open(_c.Report);
@@ -367,18 +501,41 @@ public class CoreTests : IDisposable
     }
 
     [Fact]
-    public void Media_know_the_earliest_message_they_came_with_and_their_file_dates()
+    public void Media_know_every_message_they_came_with_earliest_first_and_their_file_dates()
     {
         using var s = CaseSession.Open(_c.Report);
         using var con = s.OpenDb();
         var uses = MediaUses.Build(con, s.Manifest);
         Assert.Equal(["ref1", "ref2", "ref_evil"], uses.Keys.Order(StringComparer.Ordinal));
-        var r1 = uses["ref1"];                                   // in rows 2 and 3: the earlier one
-        Assert.Equal((2L, "1", "Local User", (bool?)true, (long?)1714557660), (r1.RowId, r1.Chat, r1.Sender, r1.Sent, r1.Epoch));
-        Assert.Equal(("Received", "+393333333333"), (uses["ref2"].Direction, uses["ref2"].Sender));
+        var r1 = uses["ref1"];                                   // sent in row 2, received again in row 3
+        Assert.Equal([(2L, "1", "Local User", (bool?)true, (long?)1714557660), (3L, "2", "+393333333333", false, 1714557720)],
+            r1.Select(u => (u.RowId, u.Chat, u.Sender, u.Sent, u.Epoch)));
+        Assert.Equal(("Received", "+393333333333"), (uses["ref2"].Single().Direction, uses["ref2"].Single().Sender));
+        Assert.DoesNotContain(r1, u => u.Group);                 // chat ids "1" and "2" are not group ids
         var media = new MediaResolver(s);
         Assert.Equal((1714557600L, 1714557700L), (media.Get(con, "ref2")!.Created, media.Get(con, "ref2")!.Modified)); // ms scaled to s
         Assert.Null(media.Get(con, "ref1")!.Created);            // 0: unknown
+    }
+
+    [Fact]
+    public void A_chat_account_is_named_by_what_identifies_it_and_unidentified_when_nothing_does()
+    {
+        Assert.Equal("@someone (42)", ConversationBuilder.AccountTitle("42", "@someone"));
+        Assert.Equal("42", ConversationBuilder.AccountTitle("42", ""));
+        Assert.Equal("Some Name", ConversationBuilder.AccountTitle("", "Some Name"));
+        Assert.Equal("Unidentified Account", ConversationBuilder.AccountTitle("", ""));
+    }
+
+    [Fact]
+    public void Files_with_the_same_bytes_are_grouped_by_size_then_hash()
+    {
+        var files = new Dictionary<string, byte[]>
+        {
+            ["sent.jpg"] = [1, 2, 3], ["received.jpg"] = [1, 2, 3], ["other.jpg"] = [1, 2, 4], ["alone.jpg"] = [9], ["empty.jpg"] = [], ["empty2.jpg"] = [],
+        };
+        var groups = MediaUses.SameContent(files.Keys.Append("gone.jpg"), f => files.TryGetValue(f, out var b) ? b.Length : 3,
+            f => files.TryGetValue(f, out var b) ? new MemoryStream(b) : throw new FileNotFoundException(f));
+        Assert.Equal(["received.jpg", "sent.jpg"], Assert.Single(groups).Order(StringComparer.Ordinal)); // same size, other bytes, empty or unreadable: apart
     }
 
     [Fact]
@@ -542,6 +699,7 @@ public class CoreTests : IDisposable
         var one = ConversationBuilder.Build(con, s, chat, 100).Conversations.Single(c => c.Key == "1");
         var sys = one.Messages.Single(m => m.MessageId == "505");
         Assert.True(sys.IsSystem);
+        Assert.Equal(1714557700, sys.Epoch);   // the chat's date filter compares this, not the shown "(UTC+01:00)" text
         Assert.Equal(("505", "System message · no text in the report"), (sys.MessageId, sys.Placeholder));
         Assert.Equal("Text · no text in the report", one.Messages.Single(m => m.MessageId == "506").Placeholder);
         Assert.Equal("", one.Messages.Single(m => m.MessageId == "501").Placeholder);
@@ -552,6 +710,29 @@ public class CoreTests : IDisposable
         var page = Path.Combine(_c.Root, "sys.html");
         ChatHtmlExporter.Write(page, s, chat, one);
         Assert.Contains("<div class=\"msg sys\">", File.ReadAllText(page));
+    }
+
+    [Fact]
+    public void A_whatsapp_row_without_text_shows_its_content_in_the_bubble()
+    {
+        var lava = Path.Combine(_c.Report, "_lava_data.lava");
+        File.WriteAllText(lava, File.ReadAllText(lava).Replace("\"account_id\": \"Account ID\"}", "\"account_id\": \"Account ID\", \"kind\": \"Message Type\", \"content\": \"Content\"}"));
+        using (var w = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={Path.Combine(_c.Report, "_lava_artifacts.db")};Pooling=False"))
+        {
+            w.Open();
+            using var cmd = w.CreateCommand();
+            cmd.CommandText = "ALTER TABLE get_chat ADD COLUMN kind TEXT; ALTER TABLE get_chat ADD COLUMN content TEXT;" +
+                              "INSERT INTO get_chat VALUES (1714557700,'1','','Received','+393331111111',NULL,'509','acc1','Deleted For Everyone','Deleted for everyone at 2023-11-14 22:13:20 UTC');";
+            cmd.ExecuteNonQuery();
+        }
+        using var s = CaseSession.Open(_c.Report);
+        using var con = s.OpenDb();
+        var chat = s.Manifest.Artifacts.Single(a => a.TableName == "get_chat");
+        var one = ConversationBuilder.Build(con, s, chat, 100).Conversations.Single(c => c.Key == "1");
+        Assert.Equal("Deleted for everyone at 2023-11-14 22:13:20 UTC", one.Messages.Single(m => m.MessageId == "509").Text);
+        var page = Path.Combine(_c.Root, "content.html");
+        ChatHtmlExporter.Write(page, s, chat, one);
+        Assert.Contains("Deleted for everyone at 2023-11-14 22:13:20 UTC", File.ReadAllText(page));
     }
 
     [Fact]
@@ -659,6 +840,58 @@ public class CoreTests : IDisposable
         Assert.Contains("=cmd|calc", r);
         Assert.DoesNotContain("Hello 100% sure", r);
         Assert.Contains("<img src=\"rows_files/", r);
+    }
+
+    [Fact]
+    public void Recovered_records_are_marked_from_Recovered_or_In_Active_Database()
+    {
+        ColumnInfo C(string d) => new(d.ToLowerInvariant(), d, "text");
+        Assert.Null(ConversationBuilder.RecoveredReader([C("Message"), C("Account ID")]));
+        var rec = ConversationBuilder.RecoveredReader([C("Message"), C("Recovered")])!;
+        Assert.Equal("Deleted: recovered from backup x.crypt15", rec(["hi", "Deleted: recovered from backup x.crypt15"]));
+        Assert.Equal("", rec(["hi", null]));
+        Assert.Equal("", rec(["hi", "No"]));
+        var act = ConversationBuilder.RecoveredReader([C("Message"), C("Backup"), C("In Active Database")])!;
+        Assert.Equal("Not in the active database", act(["hi", "WhatsApp: x", "No"]));
+        Assert.Equal("", act(["hi", "WhatsApp: x", "Yes"]));
+        Assert.Equal("/data/x.db", ConversationBuilder.RecoveredReader([C("Recovered From")])!(["/data/x.db"]));
+    }
+
+    [Fact]
+    public void Sms_split_per_sim_and_ios_messages_per_destination_caller_id()
+    {
+        ArtifactInfo Art(params string[] cols) => new() { Category = "SMS", Name = "x", TableName = "x", Columns = cols.Select(c => new ColumnInfo(c, c, null)).ToList() };
+        Assert.Equal("SIM", ConversationBuilder.AccountOf(Art("Body", "SIM Name", "SIM", "SIM ICCID"))!.Display);
+        Assert.Equal("Destination Caller ID", ConversationBuilder.AccountOf(Art("Message", "Account", "Destination Caller ID"))!.Display);
+        Assert.Null(ConversationBuilder.AccountOf(Art("Body", "SIM Slot", "SIM ICCID")));
+        Assert.Equal("Carrier A (+391110000001)", new ConversationItem { Key = "1", Label = "x", Account = "+391110000001", AccountName = "Carrier A" }.AccountDisplay);
+        Assert.Equal("+391110000001", new ConversationItem { Key = "1", Label = "x", Account = "+391110000001" }.AccountDisplay);
+    }
+
+    [Fact]
+    public void Parsed_by_says_lexis_or_the_leapp()
+    {
+        static LavaManifest M(string info, string modules) => LavaManifest.Parse(System.Text.Json.JsonDocument.Parse(
+            $$"""{"parser_info":{"leapp_name":"ALEAPP","leapp_version":"3.4.0"{{info}}},"modules":[{{modules}}]}""").RootElement);
+        Assert.Equal("LEXIS (ALEAPP 3.4.0 with the LEXIS modules)", M(""","processed_with":"LEXIS" """, "").ParsedBy);
+        Assert.Equal("LEXIS (ALEAPP 3.4.0 with the LEXIS modules)", M("", """{"module_name":"LEXIS_WhatsApp"},{"module_name":"weChat"}""").ParsedBy);
+        Assert.Equal("ALEAPP 3.4.0", M(""","processed_with":"ALEAPP" """, """{"module_name":"weChat"}""").ParsedBy);
+        Assert.Equal("ALEAPP 3.4.0", M("", "").ParsedBy);
+    }
+
+    [Fact]
+    public void Chat_type_is_group_by_id_or_by_several_other_senders_and_the_owner_falls_back_to_the_sent_messages()
+    {
+        static MessageItem In(string who) => new() { RowId = 0, Raw = [], Sender = who };
+        static ConversationItem Chat(string key, params MessageItem[] ms) { var c = new ConversationItem { Key = key, Label = key }; c.Messages.AddRange(ms); return c; }
+        Assert.Equal("Group", Chat("123-456@g.us").Type);
+        Assert.Equal("Group", Chat("123@chatroom").Type);
+        Assert.Equal("Group", Chat("x", In("A"), In("B")).Type);
+        Assert.Equal("Private", Chat("x", In("A"), In("A")).Type);
+        Assert.Equal("Private", Chat("x").Type);
+        Assert.Equal("Me", Chat("x", In("A"), new MessageItem { RowId = 1, Raw = [], Sender = "Me", IsSent = true }).Owner);
+        Assert.Equal("", Chat("x", In("A")).Owner);
+        Assert.Equal("Carrier A (+391110000001)", new ConversationItem { Key = "1", Label = "x", Account = "+391110000001", AccountName = "Carrier A" }.Owner);
     }
 
     [Fact]
@@ -1339,6 +1572,172 @@ public class RunProgressTests
     }
 
     [Fact]
+    public void Accounts_overview_merges_an_account_across_artifacts_into_one_card_per_service_and_android_user()
+    {
+        using var c = new SyntheticCase();
+        var db = Path.Combine(c.Report, "_lava_artifacts.db");
+        using (var w = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={db};Pooling=False"))
+        {
+            w.Open();
+            using var cmd = w.CreateCommand();
+            cmd.CommandText = """
+                CREATE TABLE accts (account_type TEXT, account_name TEXT, password TEXT);
+                INSERT INTO accts VALUES ('com.google', 'a@example.com', 'p1'), ('com.example.app', 'user42', 'p2');
+                CREATE TABLE chrome (email TEXT, full_name TEXT, gaia_id TEXT, picture_url TEXT, source_file TEXT);
+                INSERT INTO chrome VALUES ('A@example.com', 'Ann Example', '111', 'https://example.com/p.jpg', 'x/data/data/com.android.chrome/app_chrome/Default/Preferences');
+                CREATE TABLE wa (package TEXT, name TEXT, registration_screen_country_code TEXT, registration_screen_phone_number TEXT, source_files TEXT);
+                INSERT INTO wa VALUES ('com.whatsapp', 'Ann', '1', '0000000001', 'Dump/data/data/com.whatsapp/shared_prefs/a.xml'),
+                                      ('com.whatsapp.w4b', 'Ann B', '1', '0000000002', 'Dump/data/user/10/com.whatsapp.w4b/shared_prefs/a.xml');
+                CREATE TABLE pkgs (name TEXT, installer TEXT);
+                INSERT INTO pkgs VALUES ('com.whatsapp', 'com.android.vending'), ('com.whatsapp.w4b', 'com.example.store');
+                CREATE TABLE wechat (field_id_as_stored TEXT, value TEXT, account_uin TEXT);
+                INSERT INTO wechat VALUES ('2', 'wxid_a', '123'), ('4', 'Nick', '123');
+                """;
+            cmd.ExecuteNonQuery();
+        }
+        static string Md5(string s) => Convert.ToHexStringLower(System.Security.Cryptography.MD5.HashData(System.Text.Encoding.UTF8.GetBytes(s)));
+        var folder = $"Dump/data/data/com.tencent.mm/MicroMsg/{Md5("mm123")}";
+        ArtifactInfo Art(string name, string table, string? source, params string[] cols) => new()
+        {
+            Category = "Accounts", Name = name, TableName = table, RecordCount = 2, SourcePath = source,
+            Columns = cols.Select(x => new ColumnInfo(x, string.Join(' ', x.Split('_').Select(w => char.ToUpperInvariant(w[0]) + w[1..])), null)).ToList(),
+        };
+        using var con = CaseSession.OpenReadOnly(db);
+        var cards = AccountsOverview.Build(con, [
+            Art("Accounts_ce", "accts", "Dump/data/system_ce/0/accounts_ce.db", "account_type", "account_name", "password"),
+            Art("Chrome Preferences - Accounts", "chrome", null, "email", "full_name", "gaia_id", "picture_url", "source_file"),
+            Art("WhatsApp - User Profile", "wa", null, "package", "name", "registration_screen_country_code", "registration_screen_phone_number", "source_files"),
+            Art("package_info", "pkgs", null, "name", "installer"),
+            Art("WeChat - Account", "wechat", $"{folder}/EnMicroMsg.db", "field_id_as_stored", "value", "account_uin")]);
+
+        Assert.Equal(["Google", "WhatsApp", "WhatsApp Business (Android user 10)", "WeChat", "example"], cards.Select(x => x.Title));
+        var g = cards[0];
+        string Of(AccountCard card, string label) => card.Values.Single(v => v.Label == label).Value;
+        Assert.Equal("a@example.com", Of(g, "E-mail"));
+        Assert.Contains("Accounts_ce · Account Name", g.Values.Single(v => v.Label == "E-mail").Source);
+        Assert.Contains("Chrome Preferences - Accounts · Email", g.Values.Single(v => v.Label == "E-mail").Source);
+        Assert.Equal(("Ann Example", "111", "https://example.com/p.jpg"), (Of(g, "Full name"), Of(g, "UID"), Of(g, "Picture URL")));
+        Assert.Empty(g.Pictures); // a picture held online is a value, never fetched
+        Assert.DoesNotContain(g.Values, v => v.Label == "Installation source");
+        Assert.DoesNotContain(cards.SelectMany(x => x.Values), v => v.Value is "p1" or "p2");
+
+        var wa = cards[1];
+        Assert.Equal("Google Play (com.android.vending)", Of(wa, "Installation source"));
+        Assert.Contains(wa.Values, v => v is { Label: "Phone", Value: "+10000000001", Derived: true });
+        Assert.Contains(wa.Values, v => v is { Label: "UID", Value: "10000000001@s.whatsapp.net", Derived: true });
+        Assert.Equal(["Dump/data/data/com.whatsapp/files/me.jpg"], wa.Pictures);
+        Assert.Equal("com.example.store", Of(cards[2], "Installation source"));
+
+        var wx = cards[3];
+        Assert.Equal(("wxid_a", "Nick"), (Of(wx, "UID"), Of(wx, "Nickname")));
+        Assert.Equal($"{folder}/avatar/{Md5("wxid_a")[..2]}/{Md5("wxid_a")[2..4]}/user_hd_{Md5("wxid_a")}.png", wx.Pictures[0]);
+        Assert.Equal("user42", Of(cards[4], "Account"));
+    }
+
+    [Fact]
+    public void Accounts_overview_on_ios_reads_the_apple_id_the_own_telegram_peer_and_the_account_of_the_chats()
+    {
+        using var c = new SyntheticCase();
+        var db = Path.Combine(c.Report, "_lava_artifacts.db");
+        using (var w = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={db};Pooling=False"))
+        {
+            w.Open();
+            using var cmd = w.CreateCommand();
+            cmd.CommandText = """
+                CREATE TABLE acct (account_desc TEXT, username TEXT, bundle_id TEXT);
+                INSERT INTO acct VALUES ('iTunes Store', 'local', 'promotedcontentd'), ('iCloud', 'a@example.com', 'com.apple.Preferences'),
+                                        ('Game Center', 'a@example.com', 'com.apple.Preferences'), ('CalDAV', '', 'com.apple.accountsd');
+                CREATE TABLE buys (app_name TEXT, bundle_id TEXT, purchaser_apple_id TEXT, purchaser_id TEXT);
+                INSERT INTO buys VALUES ('X', 'com.example.x', 'a@example.com', '123'), ('Y', 'com.example.y', 'a@example.com', '123');
+                CREATE TABLE tga (account_id TEXT, user_id TEXT);
+                INSERT INTO tga VALUES ('900', '555');
+                CREATE TABLE tgp (account_id TEXT, peer_id TEXT, first_name TEXT, last_name TEXT, username TEXT, phone TEXT);
+                INSERT INTO tgp VALUES ('900', '555', 'Ann', 'Example', '', '10000000003'), ('900', '777', 'Bob', 'Other', 'bob', '10000000009');
+                CREATE TABLE tgm (text TEXT, account_id TEXT, account_name TEXT);
+                INSERT INTO tgm VALUES ('hi', '555', '10000000003');
+                CREATE TABLE wam (message TEXT, account_id TEXT, account_name TEXT, app TEXT);
+                INSERT INTO wam VALUES ('hi', '10000000004@s.whatsapp.net', 'Ann W', 'WhatsApp');
+                """;
+            cmd.ExecuteNonQuery();
+        }
+        ArtifactInfo Art(string name, string table, bool chat, params string[] cols) => new()
+        {
+            Category = "Accounts", Name = name, TableName = table, RecordCount = 2,
+            Conversation = chat ? new ConversationView(cols[1], null, cols[0], null, null, null, null, null, null, []) : null,
+            Columns = cols.Select(x => new ColumnInfo(x, string.Join(' ', x.Split('_').Select(w => char.ToUpperInvariant(w[0]) + w[1..])), null)).ToList(),
+        };
+        using var con = CaseSession.OpenReadOnly(db);
+        var cards = AccountsOverview.Build(con, [
+            Art("Account Data", "acct", false, "account_desc", "username", "bundle_id"),
+            Art("Purchased Apps History (storeUser)", "buys", false, "app_name", "bundle_id", "purchaser_apple_id", "purchaser_id"),
+            Art("Telegram Accounts", "tga", false, "account_id", "user_id"),
+            Art("Telegram Contacts & Peers", "tgp", false, "account_id", "peer_id", "first_name", "last_name", "username", "phone"),
+            Art("Telegram Messages", "tgm", true, "text", "account_id", "account_name"),
+            Art("WhatsApp - Messages", "wam", true, "message", "account_id", "account_name", "app")]);
+
+        Assert.Equal(["Apple", "WhatsApp", "Telegram"], cards.Select(x => x.Title));
+        string Of(AccountCard card, string label) => card.Values.Single(v => v.Label == label).Value;
+        Assert.Equal(("a@example.com", "123"), (Of(cards[0], "E-mail"), Of(cards[0], "DSID")));
+        Assert.Equal(["iCloud", "Game Center"], cards[0].Values.Where(v => v.Label == "Service").Select(v => v.Value));
+        Assert.DoesNotContain(cards.SelectMany(x => x.Values), v => v.Value == "local");
+        Assert.Contains(cards[1].Values, v => v is { Label: "UID", Value: "10000000004@s.whatsapp.net" });
+        Assert.Contains(cards[1].Values, v => v is { Label: "Phone", Value: "+10000000004", Derived: true });
+        Assert.Equal("Ann W", Of(cards[1], "Full name"));
+        var tg = cards[2];
+        Assert.Equal(("555", "900", "Ann Example", "10000000003"), (Of(tg, "UID"), Of(tg, "Account ID"), Of(tg, "Full name"), Of(tg, "Phone")));
+        Assert.DoesNotContain(tg.Values, v => v.Value is "bob" or "Bob Other");
+    }
+
+    [Fact]
+    public void Sim_history_merges_the_cards_by_iccid_then_imsi_then_number_with_first_and_last_dates()
+    {
+        using var c = new SyntheticCase();
+        var db = Path.Combine(c.Report, "_lava_artifacts.db");
+        using (var w = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={db};Pooling=False"))
+        {
+            w.Open();
+            using var cmd = w.CreateCommand();
+            cmd.CommandText = """
+                CREATE TABLE siminfo (user_id TEXT, number TEXT, imsi TEXT, display_name TEXT, carrier_name TEXT, icc_id TEXT);
+                INSERT INTO siminfo VALUES ('0', '+391110000001', '222010000000001', 'Mine', 'Carrier A', '8939000000000000001F'), ('0', '', '222010000000002', '', 'Carrier B', '8939000000000000002');
+                CREATE TABLE cst (verification_time INTEGER, phone_number TEXT, imsi TEXT, sim_slot TEXT);
+                INSERT INTO cst VALUES (1700000000, '+391110000001', '222010000000001', '0'), (1710000000, '3110000001', '', '0'), (1720000000, '+399990000009', '', '1');
+                CREATE TABLE calls (ts INTEGER, phone_number TEXT);
+                INSERT INTO calls VALUES (1700000000, '+398880000008');
+                """;
+            cmd.ExecuteNonQuery();
+        }
+        ArtifactInfo Art(string name, string table, (string Col, string? Type)[] cols) => new()
+        {
+            Category = "Device Information", Name = name, TableName = table, RecordCount = 3,
+            Columns = cols.Select(x => new ColumnInfo(x.Col, string.Join(' ', x.Col.Split('_').Select(w => char.ToUpperInvariant(w[0]) + w[1..])), x.Type)).ToList(),
+        };
+        using var con = CaseSession.OpenReadOnly(db);
+        DeviceFact[] facts = [new("Cellular", "SIM Cards", "Slot 2 -> ICCID: 8939000000000000002 | MSISDN: +392220000002 | Last Update: 2024-05-01 10:00:00+00:00", "subscriberInfo")];
+        var cards = SimHistory.Collect(facts, con, [
+            Art("siminfo", "siminfo", [("user_id", null), ("number", null), ("imsi", null), ("display_name", null), ("carrier_name", null), ("icc_id", null)]),
+            Art("Constellation SIM Verifications", "cst", [("verification_time", "datetime"), ("phone_number", null), ("imsi", null), ("sim_slot", null)]),
+            Art("Call Logs", "calls", [("ts", "datetime"), ("phone_number", null)])]);
+
+        // card 1: the ICCID (F-padded), its IMSI's verification and the number-only one joined; card 2: the fact and the
+        // siminfo row by ICCID; a number seen once stands alone; the call log is no SIM source
+        Assert.Equal(3, cards.Count);
+        var one = cards[0];
+        Assert.Equal("8939000000000000001F", one.Iccid);
+        Assert.Equal("+391110000001\n3110000001", one.Number);
+        Assert.Equal("Carrier A", one.Carrier);
+        Assert.StartsWith(ValueFormatter.FormatTime(DateTimeOffset.FromUnixTimeSeconds(1700000000)), one.FirstSeen);
+        Assert.StartsWith(ValueFormatter.FormatTime(DateTimeOffset.FromUnixTimeSeconds(1710000000)), one.LastSeen);
+        Assert.Equal("siminfo\nConstellation SIM Verifications", one.Sources);
+        var two = cards.Single(x => x.Iccid == "8939000000000000002");
+        Assert.Equal(("+392220000002", "222010000000002", "Carrier B", "2"), (two.Number, two.Imsi, two.Carrier, two.Slot));
+        Assert.Equal("2024-05-01 10:00:00+00:00 (subscriberInfo)", two.FirstSeen);
+        Assert.Contains(cards, x => x.Number == "+399990000009" && x.Iccid == "" && x.Slot == "1");
+        Assert.DoesNotContain(cards, x => x.Number.Contains("8880000008"));
+        Assert.True(LeappDeviceInfo.IsSim("siminfo"));
+    }
+
+    [Fact]
     public void The_overview_shows_the_last_sim_and_the_wipe_setup_and_restore_dates()
     {
         using var c = new SyntheticCase();
@@ -1409,6 +1808,47 @@ public class RunProgressTests
         var wx = AccountRoster.Collect(con, arts).Single(x => x.Service == "WeChat");
         Assert.Equal(("WeChat", "wxid_example", "Ann W"), (wx.Service, wx.Account, wx.Names));
         Assert.Equal(["WeChat ID=wxid_example", "Phone Number=+390000000000"], wx.Ids.Select(i => $"{i.Label}={i.Value}"));
+        // the users tab: one row per user id, the status blank for a user record
+        Assert.Equal(["0|Owner|", "10||Index entry without returned user record (missing)", "150|Secure Folder|"],
+            DeviceOverview.UserTable(con, arts).Select(u => $"{u.Id}|{u.Name}|{u.Status}"));
+        Assert.Equal("2024-05-01 10:00:00 UTC", DeviceOverview.UserTable(con, arts).Single(u => u.Id == "150").Created);
+    }
+
+    [Fact]
+    public void The_device_profile_reads_fixed_rows_per_group_per_user_and_falls_back_to_the_device_information()
+    {
+        using var c = new SyntheticCase();
+        var db = Path.Combine(c.Report, "_lava_artifacts.db");
+        using (var w = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={db};Pooling=False"))
+        {
+            w.Open();
+            using var cmd = w.CreateCommand();
+            cmd.CommandText = """
+                CREATE TABLE b (key TEXT, value TEXT);
+                INSERT INTO b VALUES ('Manufacturer', 'Acme'), ('Android Version', '14'), ('Model', 'M-1');
+                CREATE TABLE ss (user TEXT, name TEXT, value TEXT);
+                INSERT INTO ss VALUES ('0', 'android_id', 'aaaa'), ('10', 'android_id', 'bbbb'), ('0', 'mock_location', '0'), ('10', 'mock_location', '0');
+                CREATE TABLE sg (user TEXT, name TEXT, value TEXT, package TEXT);
+                INSERT INTO sg VALUES ('0', 'adb_enabled', '1', ''), ('0', 'device_name', '', '');
+                """;
+            cmd.ExecuteNonQuery();
+        }
+        ArtifactInfo Art(string name, string table, string[] cols) => new()
+        {
+            Category = "Device Information", Name = name, TableName = table, RecordCount = 3,
+            Columns = cols.Select(x => new ColumnInfo(x, char.ToUpperInvariant(x[0]) + x[1..], null)).ToList(),
+        };
+        using var con = CaseSession.OpenReadOnly(db);
+        var p = DeviceOverview.Profile(con, [Art("Build", "b", ["key", "value"]), Art("settingsSecure", "ss", ["user", "name", "value"]),
+            Art("Settings Global", "sg", ["user", "name", "value", "package"])], [("Model", "From UFD"), ("Serial number", "SN-1"), ("IMEI / MEID", "")]);
+        // the artifact wins over the overview; a value per user when the users differ; a switch said in words; empty left out
+        Assert.Equal(["Common info|Android version|14", "Common info|Android ID|aaaa (user 0)\nbbbb (user 10)", "Device|Manufacturer|Acme", "Device|Model|M-1",
+            "Device|Serial number|SN-1", "Settings|Mock locations|0 (off)", "Settings|USB debugging (ADB)|1 (on)"], p.Select(e => $"{e.Group}|{e.Label}|{e.Value}"));
+        Assert.Equal("Build · Model", p.Single(e => e.Label == "Model").Hint);
+        Assert.StartsWith("Device information", p.Single(e => e.Label == "Serial number").Hint);
+        Assert.Empty(DeviceOverview.Profile(con, [], []));
+        // the MCC: the first three digits of an IMSI, nothing from anything else
+        Assert.Equal(["222", "", "", ""], new[] { "222010000000001", "22201", "2220100000000x1", "" }.Select(SimHistory.MccOf));
     }
 
     [Fact]
@@ -1440,6 +1880,43 @@ public class RunProgressTests
             "c@example.com | bunq | Account Extras", "d@example.com | Apple | Account Data"], Lines("E-mail addresses"));
         Assert.Equal(["User Id 71565419 | bunq | A. Example   ·   Account Id 123456"], Lines("User IDs and usernames in apps"));
         Assert.Equal(["app com.example.app |  | ann3", "example.com |  | ann1, ann2"], Lines("Sites and apps with a saved login (password manager)"));
+    }
+
+    [Fact]
+    public void The_accounts_leave_out_the_device_users_and_the_accounts_an_app_keeps_for_itself()
+    {
+        using var c = new SyntheticCase();
+        var db = Path.Combine(c.Report, "_lava_artifacts.db");
+        using (var w = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={db};Pooling=False"))
+        {
+            w.Open();
+            using var cmd = w.CreateCommand();
+            cmd.CommandText = """
+                CREATE TABLE ac (account_name TEXT, account_type TEXT);
+                INSERT INTO ac VALUES ('Meet', 'com.google.android.apps.tachyon'), ('WhatsApp', 'com.whatsapp'), ('a@example.com', 'com.google'), ('s@example.com', 'com.osp.app.signin'),
+                                      ('Intesa Sanpaolo', 'com.example.intesasanpaolo'), ('m@example.com', 'com.android.email');
+                CREATE TABLE au (user_id TEXT, user_name TEXT);
+                INSERT INTO au VALUES ('0', 'Owner'), ('150', 'Secure Folder');
+                CREATE TABLE ld (username TEXT, origin_url TEXT);
+                INSERT INTO ld VALUES ('ann1', 'https://www.example.com/login');
+                """;
+            cmd.ExecuteNonQuery();
+        }
+        ArtifactInfo Art(string name, string table, params string[] cols) => new()
+        {
+            Category = "Accounts", Name = name, TableName = table, RecordCount = 2,
+            Columns = cols.Select(x => new ColumnInfo(x, string.Join(' ', x.Split('_').Select(w => char.ToUpperInvariant(w[0]) + w[1..])), null)).ToList(),
+        };
+        using var con = CaseSession.OpenReadOnly(db);
+        ArtifactInfo[] arts = [Art("Accounts_ce", "ac", "account_name", "account_type"), Art("Android Users and Profiles", "au", "user_id", "user_name"),
+            Art("Login Data", "ld", "username", "origin_url")];
+        var g = AccountRoster.Summarize(AccountRoster.Collect(con, arts));
+        IEnumerable<string> Lines(string title) => g.Single(x => x.Title == title).Rows.Select(r => $"{r.Value} | {r.Where}");
+        // Meet, WhatsApp and Intesa Sanpaolo name the app, not an account; the users of the device are not accounts; Chrome's login is a site's
+        Assert.Equal(["E-mail addresses", "Sites and apps with a saved login (password manager)"], g.Select(x => x.Title));
+        Assert.Equal(["a@example.com | Google", "m@example.com | E-mail app", "s@example.com | Samsung"], Lines("E-mail addresses"));
+        Assert.Equal(["example.com | "], Lines("Sites and apps with a saved login (password manager)"));
+        Assert.Equal(["Google", "E-mail app", "Samsung"], AccountsOverview.Build(con, arts).Select(x => x.Title));
     }
 
     [Fact]

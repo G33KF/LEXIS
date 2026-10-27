@@ -60,7 +60,7 @@
                 <TextBlock DockPanel.Dock="Bottom" Text="{Binding Notes}" Margin="6,2" TextWrapping="Wrap" Foreground="{StaticResource TagTextBrush}"/>
                 <DataGrid x:Name="Grid" ItemsSource="{Binding Rows}" AutoGenerateColumns="False" IsReadOnly="True" SelectionUnit="Cell" SelectionMode="Single"
                           HeadersVisibility="Column" GridLinesVisibility="Horizontal" EnableRowVirtualization="True" EnableColumnVirtualization="True"
-                          CanUserSortColumns="True" Sorting="OnSorting" CurrentCellChanged="OnCurrentCellChanged" AutomationProperties.Name="Rows"/>
+                          CanUserSortColumns="True" Sorting="OnSorting" CurrentCellChanged="OnCellChanged" SelectedCellsChanged="OnCellChanged" AutomationProperties.Name="Rows"/>
             </DockPanel>
             <GridSplitter Grid.Column="3" HorizontalAlignment="Stretch"/>
             <DockPanel Grid.Column="4">

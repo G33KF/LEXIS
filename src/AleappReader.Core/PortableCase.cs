@@ -125,7 +125,7 @@ public static partial class PortableCase
         try
         {
             Directory.CreateDirectory(staging);
-            var (caseFiles, counts) = sel.Tables is null && !sel.TaggedOnly ? (CaseFilesAll(s, sel.Media), null) : Stage(s, staging, sel, log);
+            var (caseFiles, counts) = sel.Tables is null && !sel.TaggedOnly ? (CaseFilesAll(s, sel.Media, staging), null) : Stage(s, staging, sel, log);
             var fs = FileSystemFiles(s, sel, ct);
             caseFiles.Insert(0, (WriteManifest(s, staging, counts, sel.Describe(), sel.FileSystemContent(), fs), Path.GetFileName(s.ManifestPath)));
             // written aside and moved in place when complete, so a cancelled or failed build leaves no half-written zip
@@ -202,7 +202,7 @@ public static partial class PortableCase
         return found.Count == 1 ? found[0] : null;
     }
 
-    static List<(string Src, string Rel)> CaseFilesAll(CaseSession s, bool media)
+    static List<(string Src, string Rel)> CaseFilesAll(CaseSession s, bool media, string staging)
     {
         var files = new List<(string, string)> { (s.DbPath, Path.GetFileName(s.DbPath)) };
         if (s.HasTimeline) files.Add((s.TimelinePath, "_Timeline/tl.db"));
@@ -213,6 +213,7 @@ public static partial class PortableCase
                 files.AddRange(Directory.EnumerateFiles(full, "*", SearchOption.AllDirectories).Select(f => (f, Path.GetRelativePath(s.RootDir, f))));
         }
         if (File.Exists(s.Tags.Path)) files.Add((s.Tags.Path, TagStore.FileName));
+        if (media) files.AddRange(SilkAudio.ForExport(s, staging, null)); // the voice messages already decoded, played without decoding again
         return files;
     }
 
@@ -283,6 +284,7 @@ public static partial class PortableCase
             .Select(p => s.ResolveInCase(Path.Combine("data", p.Replace('\\', '/').TrimStart('/')))).OfType<string>().Where(File.Exists);
         foreach (var f in mediaFiles.Concat(copies).Distinct(StringComparer.OrdinalIgnoreCase))
             files.Add((f, Path.GetRelativePath(s.RootDir, f)));
+        files.AddRange(SilkAudio.ForExport(s, staging, mediaFiles)); // only the chosen voice messages' decoded audio
         if (File.Exists(s.Tags.Path))
         {   // only the chosen artifacts' tags and notes travel, and the files' tags when the tagged files do
             var tags = Path.Combine(staging, TagStore.FileName);

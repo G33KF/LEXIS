@@ -3,9 +3,11 @@
                     xmlns:vm="clr-namespace:AleappReader.App.ViewModels"
                     xmlns:views="clr-namespace:AleappReader.App.Views"
                     xmlns:local="clr-namespace:AleappReader.App"
-                    xmlns:core="clr-namespace:AleappReader.Core;assembly=AleappReader.Core">
+                    xmlns:core="clr-namespace:AleappReader.Core;assembly=AleappReader.Core"
+                    xmlns:sys="clr-namespace:System;assembly=System.Runtime">
 
     <local:NullToCollapsedConverter x:Key="Vis"/>
+    <sys:String x:Key="AccountCardsNote">One row per account of each app or service, merged from the artifacts that record it; an account found in the files of another Android user says which. Select a row for all its values and the artifact and column each was read from; a derived value is built from stored ones. Pictures only from the extraction: one held online is given as its address and never fetched. Never passwords or tokens. An account on the device is not proof of who used it.</sys:String>
     <local:MediaImageConverter x:Key="MediaImage"/>
     <local:MediaUriConverter x:Key="MediaUri"/>
     <local:PreviewFitConverter x:Key="PreviewFit"/>
@@ -64,6 +66,53 @@
                 <DataTemplate>
                     <DockPanel Margin="0,2"><TextBox Style="{StaticResource Selectable}" Text="{Binding Name, Mode=OneWay}" Width="170" Foreground="{StaticResource MutedBrush}"/>
                         <TextBox Style="{StaticResource Selectable}" Text="{Binding Value, Mode=OneWay}"/></DockPanel>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+    </DataTemplate>
+
+    <!-- The accounts table: one row per account, its main values; the selected one shows every value and its source in the details -->
+    <DataTemplate x:Key="AccountCards">
+        <DataGrid ItemsSource="{Binding}" SelectionMode="Single" HeadersVisibility="Column" IsReadOnly="True" AutoGenerateColumns="False" MaxHeight="360"
+                  SelectedItem="{Binding DataContext.SelectedAccount, RelativeSource={RelativeSource AncestorType=ContentControl}}">
+            <DataGrid.Columns>
+                <DataGridTemplateColumn Width="34" CanUserSort="False">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <Image Source="{Binding Picture}" Width="24" Height="24" Stretch="UniformToFill" ToolTip="Profile picture, from the extraction"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTextColumn Header="App or service" Binding="{Binding Card.Title}" Width="Auto" FontWeight="SemiBold"/>
+                <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="*"/>
+                <DataGridTextColumn Header="Username" Binding="{Binding Username}" Width="*"/>
+                <DataGridTextColumn Header="Phone" Binding="{Binding Phone}" Width="*"/>
+                <DataGridTextColumn Header="E-mail" Binding="{Binding Email}" Width="*"/>
+                <DataGridTextColumn Header="UID / account" Binding="{Binding Ids}" Width="*"/>
+                <DataGridTextColumn Header="Services" Binding="{Binding Services}" Width="*"/>
+                <DataGridTextColumn Header="Read from" Binding="{Binding Card.Sources}" Width="1.5*"/>
+            </DataGrid.Columns>
+        </DataGrid>
+    </DataTemplate>
+
+    <!-- The device profile, one block per fixed group: label and value; where it was read from on hover -->
+    <DataTemplate x:Key="ProfileGroups">
+        <ItemsControl ItemsSource="{Binding}">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <StackPanel Margin="0,0,0,10">
+                        <TextBlock Text="{Binding Title}" Style="{StaticResource SectionHeader}" Margin="0,0,0,4"/>
+                        <ItemsControl ItemsSource="{Binding Entries}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <DockPanel Margin="0,2" ToolTip="{Binding Hint}">
+                                        <TextBox Style="{StaticResource Selectable}" Text="{Binding Label, Mode=OneWay}" Width="200" Foreground="{StaticResource MutedBrush}"/>
+                                        <TextBox Style="{StaticResource Selectable}" Text="{Binding Value, Mode=OneWay}"/>
+                                    </DockPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
                 </DataTemplate>
             </ItemsControl.ItemTemplate>
         </ItemsControl>
@@ -206,7 +255,7 @@
                     <TextBlock Text="{Binding Integrity}" TextWrapping="Wrap"/>
                 </Border>
             </StackPanel>
-            <TabControl Margin="12,0,12,12">
+            <TabControl Margin="12,0,12,12" SelectedIndex="{Binding Tab}">
                 <TabItem Header="Overview">
                     <!-- cards of the same width filling each row, in the examiner's order; then the user's contents by kind on demand -->
                     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -239,25 +288,46 @@
                             <WrapPanel Margin="0,0,0,6">
                                 <Border Style="{StaticResource Card}" Visibility="{Binding Glance.Count, Converter={StaticResource Vis}}">
                                     <StackPanel>
-                                        <TextBlock Text="DEVICE" Style="{StaticResource SectionHeader}" Margin="0,0,0,4"/>
+                                        <DockPanel Margin="0,0,0,4">
+                                            <TextBlock DockPanel.Dock="Right"><Hyperlink Command="{Binding ShowTabCommand}" CommandParameter="1">Details →</Hyperlink></TextBlock>
+                                            <TextBlock Style="{StaticResource SectionHeader}">DEVICE</TextBlock>
+                                        </DockPanel>
                                         <ContentControl Content="{Binding Glance}" ContentTemplate="{StaticResource FieldList}" Focusable="False"/>
                                     </StackPanel>
                                 </Border>
                                 <Border Style="{StaticResource Card}" Visibility="{Binding LastSim.Count, Converter={StaticResource Vis}}">
                                     <StackPanel>
-                                        <TextBlock Text="LAST SIM CARD" Style="{StaticResource SectionHeader}" Margin="0,0,0,4"/>
+                                        <DockPanel Margin="0,0,0,4">
+                                            <TextBlock DockPanel.Dock="Right"><Hyperlink Command="{Binding ShowTabCommand}" CommandParameter="2">Details →</Hyperlink></TextBlock>
+                                            <TextBlock Style="{StaticResource SectionHeader}">LAST SIM CARD<Run Text="{Binding SimCount, Mode=OneWay, StringFormat='   {0}'}" Foreground="{StaticResource MutedBrush}" FontWeight="Normal"/></TextBlock>
+                                        </DockPanel>
                                         <ContentControl Content="{Binding LastSim}" ContentTemplate="{StaticResource FieldList}" Focusable="False"/>
                                     </StackPanel>
                                 </Border>
                                 <Border Style="{StaticResource Card}" Visibility="{Binding Users.Count, Converter={StaticResource Vis}}">
                                     <StackPanel>
-                                        <TextBlock Text="USERS AND PROFILES" Style="{StaticResource SectionHeader}" Margin="0,0,0,4"/>
+                                        <DockPanel Margin="0,0,0,4">
+                                            <TextBlock DockPanel.Dock="Right"><Hyperlink Command="{Binding ShowTabCommand}" CommandParameter="4">Details →</Hyperlink></TextBlock>
+                                            <TextBlock Style="{StaticResource SectionHeader}">USERS AND PROFILES</TextBlock>
+                                        </DockPanel>
                                         <ContentControl Content="{Binding Users}" ContentTemplate="{StaticResource FieldList}" Focusable="False"/>
+                                    </StackPanel>
+                                </Border>
+                                <Border Style="{StaticResource Card}" Visibility="{Binding OwnerGlance.Count, Converter={StaticResource Vis}}">
+                                    <StackPanel>
+                                        <DockPanel Margin="0,0,0,4">
+                                            <TextBlock DockPanel.Dock="Right"><Hyperlink Command="{Binding ShowTabCommand}" CommandParameter="3">Details →</Hyperlink></TextBlock>
+                                            <TextBlock Style="{StaticResource SectionHeader}">OWNER AND ACCOUNTS</TextBlock>
+                                        </DockPanel>
+                                        <ContentControl Content="{Binding OwnerGlance}" ContentTemplate="{StaticResource FieldList}" Focusable="False"/>
                                     </StackPanel>
                                 </Border>
                                 <Border Style="{StaticResource Card}" Visibility="{Binding Lifecycle.Count, Converter={StaticResource Vis}}">
                                     <StackPanel>
-                                        <TextBlock Text="WIPE, SETUP, ACTIVATION AND RESTORE" Style="{StaticResource SectionHeader}" Margin="0,0,0,4"/>
+                                        <DockPanel Margin="0,0,0,4">
+                                            <TextBlock DockPanel.Dock="Right"><Hyperlink Command="{Binding ShowTabCommand}" CommandParameter="1">Details →</Hyperlink></TextBlock>
+                                            <TextBlock Style="{StaticResource SectionHeader}">WIPE, SETUP, ACTIVATION AND RESTORE</TextBlock>
+                                        </DockPanel>
                                         <ContentControl Content="{Binding Lifecycle}" ContentTemplate="{StaticResource FieldList}" Focusable="False"/>
                                     </StackPanel>
                                 </Border>
@@ -363,6 +433,7 @@
                 <TabItem Header="Device">
                     <ScrollViewer VerticalScrollBarVisibility="Auto">
                         <StackPanel Margin="8" MaxWidth="1100" HorizontalAlignment="Left">
+                            <ContentControl Content="{Binding Profile}" ContentTemplate="{StaticResource ProfileGroups}" Focusable="False"/>
                             <StackPanel Visibility="{Binding HasUfd, Converter={StaticResource Vis}}" Margin="0,0,0,10">
                                 <TextBlock Text="DEVICE (from the .ufd file, as stored)" Style="{StaticResource SectionHeader}" Margin="0,0,0,4"/>
                                 <ContentControl Content="{Binding Device}" ContentTemplate="{StaticResource FieldList}" Focusable="False"/>
@@ -377,11 +448,47 @@
                     </ScrollViewer>
                 </TabItem>
 
+                <TabItem Header="SIM cards">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel Margin="8" MaxWidth="1100" HorizontalAlignment="Left">
+                            <TextBlock Text="{Binding FactsSource}" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,6"/>
+                            <StackPanel Visibility="{Binding SimCards.Count, Converter={StaticResource Vis}}" Margin="0,0,0,8">
+                                <TextBlock Text="SIM HISTORY" Style="{StaticResource SectionHeader}" Margin="0,0,0,4"/>
+                                <TextBlock Text="Every SIM card recorded, merged from the device information and the SIM artifacts: one card per ICCID (without one, per IMSI, else per number). The MCC is the first three digits of the IMSI; the MNC and the country only as a source stores them. First and last seen only where a source dates the card, each with its source. Values as stored, several one per line."
+                                           Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,4"/>
+                                <ItemsControl ItemsSource="{Binding SimCardViews}" Focusable="False">
+                                    <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="12,8" Margin="0,0,10,10" Width="420">
+                                                <StackPanel>
+                                                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="14" Foreground="{StaticResource AccentBrush}" TextTrimming="CharacterEllipsis" Margin="0,0,0,4"/>
+                                                    <ContentControl Content="{Binding Fields}" ContentTemplate="{StaticResource FieldList}" Focusable="False"/>
+                                                    <TextBlock Text="{Binding Sources, StringFormat='Sources: {0}'}" Foreground="{StaticResource MutedBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                            <ContentControl Content="{Binding SimFacts}" ContentTemplate="{StaticResource FactGroups}" Focusable="False"/>
+                            <TextBlock Text="SIM CARDS AND NUMBERS" Style="{StaticResource SectionHeader}" Margin="0,4,0,4"/>
+                            <TextBlock Text="Artifacts with records whose name is about SIM cards, subscriber identities, carriers or phone numbers: the history of the SIMs seen is there."
+                                       Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,4"/>
+                            <ContentControl Content="{Binding SimArtifacts}" ContentTemplate="{StaticResource ArtifactLinks}" Focusable="False"/>
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+
                 <TabItem Header="Owner &amp; accounts">
                     <ScrollViewer VerticalScrollBarVisibility="Auto">
                         <StackPanel Margin="8" MaxWidth="1100" HorizontalAlignment="Left">
                             <TextBlock Text="{Binding FactsSource}" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,6"/>
                             <ContentControl Content="{Binding OwnerFacts}" ContentTemplate="{StaticResource FactGroups}" Focusable="False"/>
+                            <TextBlock Text="ACCOUNTS OVERVIEW" Style="{StaticResource SectionHeader}" Margin="0,4,0,4"/>
+                            <TextBlock Text="{StaticResource AccountCardsNote}" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,4"/>
+                            <TextBlock Text="Reading the account artifacts…" Foreground="{StaticResource MutedBrush}" Visibility="{Binding AccountCards, Converter={StaticResource Vis}, ConverterParameter=invert}"/>
+                            <ContentControl Content="{Binding AccountCards}" ContentTemplate="{StaticResource AccountCards}" Focusable="False" Margin="0,0,0,6"/>
                             <TextBlock Text="ACCOUNTS IN SHORT" Style="{StaticResource SectionHeader}" Margin="0,4,0,4"/>
                             <TextBlock Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,4"
                                        Text="The names, phone numbers and e-mail addresses recorded with the accounts (with the apps they are in), then the accounts of each app and the logins saved for websites: read from the artifacts about accounts, profiles and logins, never passwords. An account on the device is not proof of who used it; the account artifacts below hold every record."/>
@@ -389,9 +496,9 @@
                             <ItemsControl ItemsSource="{Binding Accounts}" Focusable="False" Margin="0,0,0,10">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
-                                        <!-- a small table per group: the value, the apps it was found in, the rest; every cell can be selected and copied -->
+                                        <!-- a small table per group: the value, the apps it was found in, the rest; fixed widths so a long cell wraps; every cell can be selected and copied -->
                                         <Expander Header="{Binding Header}" IsExpanded="{Binding Expanded, Mode=OneTime}" Margin="0,0,0,2">
-                                            <StackPanel Grid.IsSharedSizeScope="True" Margin="18,2,0,6">
+                                            <StackPanel Margin="18,2,0,6">
                                                 <StackPanel.Resources>
                                                     <Style TargetType="TextBox">
                                                         <Setter Property="IsReadOnly" Value="True"/>
@@ -403,8 +510,8 @@
                                                 </StackPanel.Resources>
                                                 <Grid TextBlock.FontWeight="SemiBold" TextBlock.Foreground="{StaticResource MutedBrush}">
                                                     <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition SharedSizeGroup="V" MinWidth="180"/>
-                                                        <ColumnDefinition SharedSizeGroup="W" MinWidth="120"/>
+                                                        <ColumnDefinition Width="260"/>
+                                                        <ColumnDefinition Width="240"/>
                                                         <ColumnDefinition Width="*"/>
                                                     </Grid.ColumnDefinitions>
                                                     <TextBlock Text="{Binding ValueHeader}" Margin="2,0,16,2"/>
@@ -418,8 +525,8 @@
                                                                 <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
                                                                     <Grid>
                                                                         <Grid.ColumnDefinitions>
-                                                                            <ColumnDefinition SharedSizeGroup="V" MaxWidth="360"/>
-                                                                            <ColumnDefinition SharedSizeGroup="W" MaxWidth="260"/>
+                                                                            <ColumnDefinition Width="260"/>
+                                                                            <ColumnDefinition Width="240"/>
                                                                             <ColumnDefinition Width="*"/>
                                                                         </Grid.ColumnDefinitions>
                                                                         <TextBox Text="{Binding Value, Mode=OneWay}" FontWeight="SemiBold"/>
@@ -444,15 +551,26 @@
                     </ScrollViewer>
                 </TabItem>
 
-                <TabItem Header="SIM cards">
+                <TabItem Header="Users">
                     <ScrollViewer VerticalScrollBarVisibility="Auto">
-                        <StackPanel Margin="8" MaxWidth="1100" HorizontalAlignment="Left">
-                            <TextBlock Text="{Binding FactsSource}" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,6"/>
-                            <ContentControl Content="{Binding SimFacts}" ContentTemplate="{StaticResource FactGroups}" Focusable="False"/>
-                            <TextBlock Text="SIM CARDS AND NUMBERS" Style="{StaticResource SectionHeader}" Margin="0,4,0,4"/>
-                            <TextBlock Text="Artifacts with records whose name is about SIM cards, subscriber identities, carriers or phone numbers: the history of the SIMs seen is there."
+                        <StackPanel Margin="8" HorizontalAlignment="Left">
+                            <TextBlock Text="ANDROID USERS AND PROFILES" Style="{StaticResource SectionHeader}" Margin="0,0,0,4"/>
+                            <TextBlock Text="The owner, a Secure Folder, a work profile and any other user, one row per user id, from &quot;Android Users and Profiles&quot;. Values as stored."
                                        Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,4"/>
-                            <ContentControl Content="{Binding SimArtifacts}" ContentTemplate="{StaticResource ArtifactLinks}" Focusable="False"/>
+                            <TextBlock Text="No Android users recorded in this report." Foreground="{StaticResource MutedBrush}"
+                                       Visibility="{Binding UserTable.Count, Converter={StaticResource Vis}, ConverterParameter=invert}"/>
+                            <DataGrid ItemsSource="{Binding UserTable}" SelectionMode="Single" HeadersVisibility="Column" AutoGenerateColumns="False" IsReadOnly="True"
+                                      ScrollViewer.VerticalScrollBarVisibility="Disabled" Visibility="{Binding UserTable.Count, Converter={StaticResource Vis}}">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="User ID" Binding="{Binding Id}"/>
+                                    <DataGridTextColumn Header="Name" Binding="{Binding Name}"/>
+                                    <DataGridTextColumn Header="Type" Binding="{Binding Type}"/>
+                                    <DataGridTextColumn Header="Created" Binding="{Binding Created}"/>
+                                    <DataGridTextColumn Header="Last logged in" Binding="{Binding LastLoggedIn}"/>
+                                    <DataGridTextColumn Header="Last in foreground" Binding="{Binding LastForeground}"/>
+                                    <DataGridTextColumn Header="Status" Binding="{Binding Status}"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
                         </StackPanel>
                     </ScrollViewer>
                 </TabItem>
@@ -971,6 +1089,16 @@
                     <TextBlock Text="{Binding Info}" Foreground="{StaticResource MutedBrush}"/>
                 </StackPanel>
             </Border>
+            <!-- User Accounts & Details: the account cards above the artifacts -->
+            <Expander DockPanel.Dock="Top" IsExpanded="True" Margin="8,6,8,4" Visibility="{Binding AccountCards, Converter={StaticResource Vis}}">
+                <Expander.Header>
+                    <TextBlock Text="{Binding AccountCards.Count, StringFormat='ACCOUNTS OVERVIEW ({0})'}" Style="{StaticResource SectionHeader}"/>
+                </Expander.Header>
+                <StackPanel Margin="0,4,0,0">
+                    <TextBlock Text="{StaticResource AccountCardsNote}" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,6"/>
+                    <ContentControl Content="{Binding AccountCards}" ContentTemplate="{StaticResource AccountCards}" Focusable="False"/>
+                </StackPanel>
+            </Expander>
             <DataGrid ItemsSource="{Binding Artifacts}" SelectionMode="Single" HeadersVisibility="Column" IsReadOnly="True">
                 <DataGrid.Columns>
                     <DataGridTemplateColumn Header="Artifact" Width="2*" SortMemberPath="Name">
@@ -1490,7 +1618,7 @@
                             <TextBlock Text="Tag" VerticalAlignment="Center" Margin="0,0,6,0"/>
                             <ComboBox x:Name="SearchTagChoice" ItemsSource="{Binding TagChoices}" SelectedIndex="0" MinWidth="110" VerticalAlignment="Center"/>
                             <Button Style="{StaticResource FlatButton}" Content="Tag results" Command="{Binding TagCommand}"
-                                    ToolTip="Tags every record behind the selected results; with none selected, every record the search found">
+                                    ToolTip="Tags the selected rows; with none selected, the rows shown, or every record the search found when no filter is set">
                                 <Button.CommandParameter>
                                     <MultiBinding Converter="{StaticResource ToArray}">
                                         <Binding ElementName="SearchTagChoice" Path="SelectedItem"/>
@@ -1511,7 +1639,52 @@
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
                         </DockPanel>
+                        <WrapPanel Margin="0,6,0,0">
+                            <TextBlock Text="Search in" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <CheckBox Content="Report data" IsChecked="{Binding SearchReport}" Margin="0,2,14,2" ToolTip="The records of the report's artifacts, of the categories checked below"/>
+                            <CheckBox Content="File contents" IsChecked="{Binding SearchFiles}" Margin="0,2,14,2"
+                                      ToolTip="The text inside the extraction's files (PDF, Office documents, databases, property lists, text). The first search reads the files and keeps their text: later searches do not read them again"/>
+                            <CheckBox Content="AI results" IsChecked="{Binding SearchAi}" Margin="0,2,14,2" ToolTip="Translations, analyses, descriptions and OCR the AI produced for this case"/>
+                            <ItemsControl ItemsSource="{Binding FileKindChoices}" Visibility="{Binding SearchFiles, Converter={StaticResource Vis}}" Margin="10,0,0,0">
+                                <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <CheckBox Content="{Binding Label}" IsChecked="{Binding IsChecked}" Margin="0,2,12,2" Foreground="{StaticResource MutedBrush}"
+                                                  ToolTip="Search the text of files of this kind (by content: databases without a name are found too)"/>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </WrapPanel>
+                        <Expander Margin="0,6,0,0" IsEnabled="{Binding SearchReport}">
+                            <Expander.Header>
+                                <TextBlock><Run Text="Categories searched"/> <Run Text="(all, or the one selected in the tree)" Foreground="{StaticResource MutedBrush}"/></TextBlock>
+                            </Expander.Header>
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,4,0,2">
+                                    <Button Style="{StaticResource FlatButton}" Content="All" Command="{Binding AllCategoriesCommand}" CommandParameter="all"/>
+                                    <Button Style="{StaticResource FlatButton}" Content="None" Command="{Binding AllCategoriesCommand}" CommandParameter="none" Margin="6,0,0,0"/>
+                                </StackPanel>
+                                <ItemsControl ItemsSource="{Binding CategoryChoices}">
+                                    <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <CheckBox Content="{Binding Label}" IsChecked="{Binding IsChecked}" Margin="0,2,14,2"
+                                                      ToolTip="Search this category's artifacts (their number in brackets)"/>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Expander>
+                        <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                            <TextBlock Text="Within the results" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <TextBox Text="{Binding ResultFilter, UpdateSourceTrigger=PropertyChanged, Delay=300}" Width="300" VerticalAlignment="Center"
+                                     ToolTip="Narrow the results: text in any column, in the search syntax. Each column's ▾ filters on that column; the values on the right on one value"/>
+                            <Button Style="{StaticResource FlatButton}" Content="Show all" Command="{Binding ClearFiltersCommand}" Margin="8,0,0,0"
+                                    Visibility="{Binding HasFilters, Converter={StaticResource Vis}}" ToolTip="Clear the text, column and value filters"/>
+                            <TextBlock Text="{Binding CountText}" VerticalAlignment="Center" Margin="8,0" Foreground="{StaticResource MutedBrush}"/>
+                        </StackPanel>
                         <Expander Header="Advanced search" Margin="0,6,0,0" IsExpanded="{Binding AdvOpen, Mode=OneTime}">
+                            <StackPanel>
                             <WrapPanel Margin="0,4,0,0">
                                 <WrapPanel.InputBindings><KeyBinding Key="Enter" Command="{Binding SearchAdvancedCommand}"/></WrapPanel.InputBindings>
                                 <TextBlock Text="Find" VerticalAlignment="Center" Margin="0,0,6,0"/>
@@ -1525,12 +1698,53 @@
                                 <Button Style="{StaticResource FlatButton}" Content="Search" Command="{Binding SearchAdvancedCommand}" Margin="6,0,0,0"
                                         ToolTip="Runs the search written in the search syntax, shown above and in the recent searches"/>
                             </WrapPanel>
+                            <WrapPanel Margin="0,4,0,0">
+                                <Button Style="{StaticResource FlatButton}" Content="Load list…" Command="{Binding LoadListCommand}" VerticalAlignment="Center"
+                                        ToolTip="A text file of keywords: one per line, and each line also split on the separator. A line starting with &quot;# &quot; is a comment. Any language; the encoding is detected"/>
+                                <TextBlock Text="Separator" VerticalAlignment="Center" Margin="12,0,6,0"/>
+                                <TextBox Text="{Binding AdvSeparator, UpdateSourceTrigger=PropertyChanged}" Width="40" VerticalAlignment="Center"
+                                         ToolTip="Splits each line into keywords; \t for a tab, empty for one keyword per line"/>
+                                <TextBlock Text="{Binding AdvListInfo}" VerticalAlignment="Center" Margin="12,0,6,0" Foreground="{StaticResource MutedBrush}"/>
+                                <Button Style="{StaticResource FlatButton}" Content="Clear" Command="{Binding ClearListCommand}" VerticalAlignment="Center"
+                                        ToolTip="Forgets the loaded list"/>
+                            </WrapPanel>
+                            </StackPanel>
                         </Expander>
                     </StackPanel>
                 </DockPanel>
             </ScrollViewer></Border>
-            <Border DockPanel.Dock="Right" Width="220" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1,0,0,0" Padding="8,6">
-                <DockPanel>
+            <Border DockPanel.Dock="Right" Width="260" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1,0,0,0" Padding="8,6">
+                <Grid>
+                <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto" MaxHeight="240"/></Grid.RowDefinitions>
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <ItemsControl x:Name="SearchFacets" ItemsSource="{Binding FacetGroups}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Margin="0,0,0,8">
+                                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" Margin="0,0,0,2"/>
+                                    <ItemsControl ItemsSource="{Binding Values}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock x:Name="v" Text="{Binding Label}" Cursor="Hand" Foreground="{StaticResource AccentBrush}" TextTrimming="CharacterEllipsis"
+                                                           Margin="6,1,0,1" ToolTip="Show only these results (click again: all)">
+                                                    <TextBlock.InputBindings>
+                                                        <MouseBinding Gesture="LeftClick" Command="{Binding DataContext.ChooseFacetCommand, ElementName=SearchFacets}" CommandParameter="{Binding}"/>
+                                                    </TextBlock.InputBindings>
+                                                </TextBlock>
+                                                <DataTemplate.Triggers>
+                                                    <DataTrigger Binding="{Binding IsChosen}" Value="True">
+                                                        <Setter TargetName="v" Property="FontWeight" Value="Bold"/>
+                                                    </DataTrigger>
+                                                </DataTemplate.Triggers>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+                <DockPanel Grid.Row="1" Margin="0,6,0,0">
                     <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
                         <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Content="Clear" Command="{Binding ClearHistoryCommand}"
                                 ToolTip="Forget the searches of this case (kept on this machine only, never in the case)"/>
@@ -1553,40 +1767,30 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
                 </DockPanel>
+                </Grid>
             </Border>
-            <ListBox x:Name="SearchHitList" ItemsSource="{Binding HitsView}" BorderThickness="0" HorizontalContentAlignment="Stretch" SelectionMode="Extended">
-                <ListBox.InputBindings>
-                    <KeyBinding Key="Delete" Command="{Binding RemoveHitsCommand}" CommandParameter="{Binding SelectedItems, ElementName=SearchHitList}"/>
-                </ListBox.InputBindings>
-                <ListBox.ContextMenu>
-                    <ContextMenu>
-                        <MenuItem Header="Remove the selected results from the list (Del)"
-                                  Command="{Binding PlacementTarget.DataContext.RemoveHitsCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                  CommandParameter="{Binding PlacementTarget.SelectedItems, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
-                    </ContextMenu>
-                </ListBox.ContextMenu>
-                <ListBox.GroupStyle>
-                    <GroupStyle>
-                        <GroupStyle.HeaderTemplate>
-                            <DataTemplate><TextBlock Text="{Binding Name}" FontWeight="SemiBold" Foreground="{StaticResource AccentBrush}" Margin="4,10,0,2"/></DataTemplate>
-                        </GroupStyle.HeaderTemplate>
-                    </GroupStyle>
-                </ListBox.GroupStyle>
-                <ListBox.ItemTemplate>
-                    <DataTemplate>
-                        <Border Padding="6,5" Background="Transparent" Cursor="Hand">
-                            <Border.InputBindings>
-                                <MouseBinding Gesture="LeftClick" Command="{Binding DataContext.OpenCommand, RelativeSource={RelativeSource AncestorType=ListBox}}" CommandParameter="{Binding}"/>
-                            </Border.InputBindings>
-                            <StackPanel>
-                                <TextBlock><Run Text="{Binding Title, Mode=OneWay}" FontWeight="SemiBold"/>  <Run Text="{Binding Category, Mode=OneWay}" Foreground="{StaticResource MutedBrush}"/>
-                                    <Run Text="{Binding Count, Mode=OneWay, StringFormat=· {0:N0} hits}" Foreground="{StaticResource AccentBrush}"/></TextBlock>
-                                <TextBlock Text="{Binding Preview}" Foreground="{StaticResource MutedBrush}" TextTrimming="CharacterEllipsis"/>
-                            </StackPanel>
-                        </Border>
-                    </DataTemplate>
-                </ListBox.ItemTemplate>
-            </ListBox>
+            <DataGrid x:Name="SearchHitList" ItemsSource="{Binding Rows}" SelectionMode="Extended" BorderThickness="0" IsReadOnly="True"
+                      AutoGenerateColumns="False" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
+                      local:DynamicColumns.HeaderMenus="{Binding ListColumns}"
+                      ToolTip="Double-click or Enter: open the record in its artifact">
+                <DataGrid.Resources><local:BindingProxy x:Key="Ctx" Data="{Binding}"/></DataGrid.Resources>
+                <DataGrid.InputBindings>
+                    <MouseBinding Gesture="LeftDoubleClick" Command="{Binding OpenCommand}" CommandParameter="{Binding SelectedItem, ElementName=SearchHitList}"/>
+                    <KeyBinding Key="Enter" Command="{Binding OpenCommand}" CommandParameter="{Binding SelectedItem, ElementName=SearchHitList}"/>
+                </DataGrid.InputBindings>
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Origin" Binding="{Binding Origin}" Width="95"/>
+                    <DataGridTextColumn Header="Category" Binding="{Binding Category}" Width="130"/>
+                    <DataGridTextColumn Header="Artifact / type" Binding="{Binding Kind}" Width="190"/>
+                    <DataGridTextColumn Header="Date" Binding="{Binding Date}" Width="190"/>
+                    <DataGridTextColumn Header="App / module" Binding="{Binding App}" Width="130"/>
+                    <DataGridTextColumn Header="Device" Binding="{Binding Device}" Width="110"
+                                        Visibility="{Binding Data.IsMulti, Source={StaticResource Ctx}, Converter={StaticResource Vis}}"/>
+                    <DataGridTextColumn Header="Found in" Binding="{Binding Where}" Width="120"/>
+                    <DataGridTextColumn Header="Text" Binding="{Binding Snippet}" Width="*" MinWidth="240"/>
+                    <DataGridTextColumn Header="Source" Binding="{Binding Path}" Width="200"/>
+                </DataGrid.Columns>
+            </DataGrid>
         </DockPanel>
     </DataTemplate>
 
@@ -1612,6 +1816,11 @@
                         <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                             <TextBox Style="{StaticResource SearchBox}" Text="{Binding Filter, UpdateSourceTrigger=PropertyChanged, Delay=300}"
                                      Width="320" ToolTip="Filter chats by name, ID or message text. Each column header's ▾ filters on that column."/>
+                            <ComboBox ItemsSource="{Binding AccountChoices}" SelectedItem="{Binding AccountChoice}" MinWidth="180" Margin="8,0,0,0"
+                                      Visibility="{Binding HasAccounts, Converter={StaticResource Vis}}"
+                                      ToolTip="The chats of one local account only (an account, a SIM or number, a backup), as the Chats tree splits them"/>
+                            <ComboBox ItemsSource="{x:Static vm:ConversationViewModel.TypeChoices}" SelectedItem="{Binding TypeChoice}" MinWidth="110" Margin="8,0,0,0"
+                                      ToolTip="Private (one to one) or group chats. Group: the chat ID is a group ID (@g.us, @chatroom), or more than one person other than the local account wrote in it"/>
                             <Button Style="{StaticResource FlatButton}" Content="Clear column filters" Command="{Binding ClearColumnFiltersCommand}" Margin="8,0,0,0"
                                     Visibility="{Binding HasColumnFilters, Converter={StaticResource Vis}}"/>
                             <TextBlock Text="{Binding CountText}" VerticalAlignment="Center" Margin="8,0" Foreground="{StaticResource MutedBrush}"/>
@@ -1622,12 +1831,16 @@
             <DataGrid ItemsSource="{Binding Conversations}" SelectedItem="{Binding Selected}" SelectionMode="Extended" BorderThickness="0" local:RecordGrid.Enabled="True"
                       ToolTip="Double-click: open the chat. Right-click: tags (every message of the selected chats), AI, export"
                       VirtualizingPanel.IsVirtualizing="True" local:DynamicColumns.HeaderMenus="{Binding ListColumns}">
+                <DataGrid.Resources><local:BindingProxy x:Key="Ctx" Data="{Binding}"/></DataGrid.Resources>
                 <DataGrid.InputBindings>
                     <MouseBinding Gesture="LeftDoubleClick" Command="{Binding OpenChatCommand}"/>
                     <KeyBinding Key="Enter" Command="{Binding OpenChatCommand}"/>
                 </DataGrid.InputBindings>
                 <DataGrid.Columns>
                     <DataGridTextColumn Header="Chat" Binding="{Binding Label}" Width="230"/>
+                    <DataGridTextColumn Header="Type" Binding="{Binding Type}" Width="70"/>
+                    <DataGridTextColumn Header="Account" Binding="{Binding Owner}" Width="170"
+                                        Visibility="{Binding Data.HasOwner, Source={StaticResource Ctx}, Converter={StaticResource Vis}}"/>
                     <DataGridTextColumn Header="Chat ID" Binding="{Binding Key}" Width="170"/>
                     <DataGridTextColumn Header="Participants" Binding="{Binding ParticipantCount}" Width="85"/>
                     <DataGridTextColumn Header="Messages" Binding="{Binding Messages.Count, StringFormat=N0}" Width="80"/>
@@ -1781,6 +1994,9 @@
                                     <StackPanel x:Name="bubbleRow" HorizontalAlignment="Left" MaxWidth="560">
                                         <TextBlock x:Name="meta" FontSize="10.5" Foreground="{StaticResource MutedBrush}" Margin="4,0">
                                             <Run Text="{Binding Sender, Mode=OneWay}" FontWeight="SemiBold"/>  <Run Text="{Binding Time, Mode=OneWay}"/></TextBlock>
+                                        <TextBlock x:Name="recovered" FontSize="10.5" FontWeight="SemiBold" Foreground="{StaticResource RecoveredBrush}" Margin="4,0,4,1"
+                                                   ToolTip="{Binding Recovered}" Visibility="{Binding Recovered, Converter={StaticResource Vis}}">
+                                            <Run Text="&#xE777;" FontFamily="{StaticResource IconFont}"/> Recovered (deleted)</TextBlock>
                                         <Border x:Name="bubble" Background="{StaticResource ReceivedBrush}" CornerRadius="10" Padding="10,6" BorderThickness="2" BorderBrush="#8E9AA8">
                                             <StackPanel>
                                                 <Border BorderThickness="3,0,0,0" BorderBrush="#06CF9C" Background="#14000000" CornerRadius="3" Padding="6,2" Margin="0,0,0,4"
@@ -1869,6 +2085,7 @@
                                             <Setter TargetName="bubble" Property="BorderBrush" Value="#0D4F9E"/>
                                             <Setter TargetName="bubble" Property="TextElement.Foreground" Value="White"/>
                                             <Setter TargetName="meta" Property="HorizontalAlignment" Value="Right"/>
+                                            <Setter TargetName="recovered" Property="HorizontalAlignment" Value="Right"/>
                                         </DataTrigger>
                                         <!-- After IsSent, so a system message is centred and neutral whichever direction the row records. -->
                                         <DataTrigger Binding="{Binding IsSystem}" Value="True">
@@ -1878,7 +2095,12 @@
                                             <Setter TargetName="bubble" Property="TextElement.Foreground" Value="#3B4A54"/>
                                             <Setter TargetName="bubble" Property="TextElement.FontStyle" Value="Italic"/>
                                             <Setter TargetName="meta" Property="HorizontalAlignment" Value="Center"/>
+                                            <Setter TargetName="recovered" Property="HorizontalAlignment" Value="Center"/>
                                             <Setter TargetName="bubble" Property="ToolTip" Value="System message: an app event recorded by the artifact, not text written by the sender shown"/>
+                                        </DataTrigger>
+                                        <!-- Before the search trigger, so a matched recovered message shows the match border. -->
+                                        <DataTrigger Binding="{Binding Recovered, Converter={StaticResource Vis}}" Value="Visible">
+                                            <Setter TargetName="bubble" Property="BorderBrush" Value="{StaticResource RecoveredBrush}"/>
                                         </DataTrigger>
                                         <DataTrigger Value="True">
                                             <DataTrigger.Binding>
@@ -1920,6 +2142,15 @@
                                         <DataTemplate>
                                             <TextBlock Style="{StaticResource Icon}" Text="&#xE8EC;" Foreground="{Binding Tag, Converter={StaticResource TagColor}}" FontSize="13"
                                                        ToolTip="{Binding Tag}" Visibility="{Binding Tag, Converter={StaticResource Vis}}"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTemplateColumn Header="&#xE777;" Width="26" CanUserSort="False"
+                                                        Visibility="{Binding Data.HasRecovered, Source={StaticResource Ctx}, Converter={StaticResource Vis}}">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Style="{StaticResource Icon}" Text="&#xE777;" Foreground="{StaticResource RecoveredBrush}" FontSize="13"
+                                                       ToolTip="{Binding Recovered}" Visibility="{Binding Recovered, Converter={StaticResource Vis}}"/>
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>

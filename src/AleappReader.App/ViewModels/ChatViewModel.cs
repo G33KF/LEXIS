@@ -50,11 +50,12 @@ public partial class ChatViewModel : ObservableObject
         Columns = cols;
         var tags = s.Tags.ForTable(a.TableName);
         Rows = chat.Messages.Select(m => new GridRow(m.RowId, m.Raw.Select((v, i) => ValueFormatter.Format(v, cols[i])).ToArray(), m.Raw,
-            tags.GetValueOrDefault(m.RowId)?.Tag)).ToList();
+            tags.GetValueOrDefault(m.RowId)?.Tag, recovered: m.Recovered)).ToList();
+        HasRecovered = chat.Messages.Any(m => m.Recovered != "");
         (messages, shownRows) = (chat.Messages, Rows);
         tagsByRow = Rows.Where(r => r.Tag is not null).ToDictionary(r => r.RowId, r => r.Tag!);
         var sent = chat.Messages.Count(m => m.IsSent);
-        Subtitle = $"{a.Category} · {chat.Messages.Count:N0} messages ({sent:N0} sent, {chat.Messages.Count - sent:N0} received) · " +
+        Subtitle = $"{a.Category}{(chat.Account != "" ? $" · account {chat.AccountDisplay}" : "")} · {chat.Messages.Count:N0} messages ({sent:N0} sent, {chat.Messages.Count - sent:N0} received) · " +
                    $"{chat.FirstTime} → {chat.LastTime}";
         People = chat.Participants.Select(p => new PersonView(p, null, null)).ToList();
         Translation = new TranslationView(s, a);
@@ -140,9 +141,11 @@ public partial class ChatViewModel : ObservableObject
             _ => true,
         };
         if (!ok) return false;
+        // on the stored epoch, in the display zone: the shown time ends in "(UTC+01:00)", which does not parse back
         if ((From ?? To) is null) return true;
-        if (!DateTime.TryParse(m.Time, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AllowWhiteSpaces, out var t)) return false;
-        return (From is not { } f || t >= f.Date) && (To is not { } e || t < e.Date.AddDays(1));
+        if (m.Epoch is not { } t) return false;
+        var (f, e) = ValueFormatter.Days(From, To);
+        return (f is null || t >= f) && (e is null || t <= e);
     }
 
     /// <summary>A message matches the search (<see cref="SearchQuery"/> syntax) over its formatted columns.</summary>
@@ -165,6 +168,8 @@ public partial class ChatViewModel : ObservableObject
 
     public CaseSession Session => _s;
     public TranslationView Translation { get; }
+    /// <summary>The chat holds recovered (deleted) messages: the table shows a column for the mark.</summary>
+    public bool HasRecovered { get; }
 
     /// <summary>Messages checked with their boxes (bubbles and table), all at first: what Translate, Summarize and AI act
     /// on, among those shown.</summary>

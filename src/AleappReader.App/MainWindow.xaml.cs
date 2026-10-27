@@ -229,23 +229,7 @@ public partial class MainWindow : Window
         try
         {
             if (DetailsView.HtmlView.CoreWebView2 is null)
-            {
-                var data = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AleappReader", "WebView2");
-                await DetailsView.HtmlView.EnsureCoreWebView2Async(await CoreWebView2Environment.CreateAsync(null, data));
-                var core = DetailsView.HtmlView.CoreWebView2!;
-                core.Settings.IsScriptEnabled = false;
-                core.Settings.AreDefaultContextMenusEnabled = false;
-                core.Settings.AreDevToolsEnabled = false;
-                core.Settings.IsStatusBarEnabled = false;
-                core.NewWindowRequested += (_, a) => a.Handled = true;
-                core.NavigationStarting += (_, a) => a.Cancel = !a.Uri.StartsWith("data:", StringComparison.Ordinal) && a.Uri != _pdfUri;
-                core.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All);
-                core.WebResourceRequested += (_, a) =>
-                {
-                    if (!a.Request.Uri.StartsWith("data:", StringComparison.Ordinal) && a.Request.Uri != _pdfUri)
-                        a.Response = core.Environment.CreateWebResourceResponse(null, 403, "Blocked", "");
-                };
-            }
+                await Views.MediaViewer.Sandbox(DetailsView.HtmlView, u => u.StartsWith("data:", StringComparison.Ordinal) || u == _pdfUri);
             if (html is null) { _pdfUri = pdfUri; DetailsView.HtmlView.CoreWebView2!.Navigate(pdfUri); return; }
             _pdfUri = null;
             // ponytail: NavigateToString caps at 2 MB; the largest real body seen is ~120 KB, so longer ones are cut.

@@ -8,11 +8,13 @@ namespace AleappReader.App.ViewModels;
 
 /// <summary>One grid row: formatted cells for display, raw values for details and export.</summary>
 public partial class GridRow(long rowId, string[] cells, object?[] raw, string? tag, bool isChecked = false,
-    Action<GridRow>? onCheck = null) : ObservableObject
+    Action<GridRow>? onCheck = null, string recovered = "") : ObservableObject
 {
     public long RowId { get; } = rowId;
     public string[] Cells { get; } = cells;
     public object?[] Raw { get; } = raw;
+    /// <summary>Why the record is a recovered (deleted) one, "" for a live record.</summary>
+    public string Recovered { get; } = recovered;
     /// <summary>A row still loading.</summary>
     public bool IsPlaceholder => RowId < 0;
     [ObservableProperty] private string? tag = tag;
@@ -106,12 +108,15 @@ public partial class ArtifactViewModel : ObservableObject, IRefreshable, IDispos
         if (columnFilter is not null) { _columnFilters.Add(columnFilter); ColumnFilterCount = 1; }
         this.filter = filter ?? "";
         Translation = new TranslationView(s, artifact);
+        HasRecovered = ConversationBuilder.RecoveredReader(artifact.Columns) is not null;
         _chats = ConversationBuilder.MessagesOf(s.Manifest.Artifacts, artifact);
         _ = LoadAsync();
         _ = Translation.LoadAsync();
     }
 
     public TranslationView Translation { get; }
+    /// <summary>The table marks recovered (deleted) records: the grid shows a column for the mark.</summary>
+    public bool HasRecovered { get; }
 
     // A chat list (WeChat Conversations…) beside its app's messages: a row opens its chat and shows the chat's picture.
     readonly ArtifactInfo? _chats;
@@ -188,12 +193,13 @@ public partial class ArtifactViewModel : ObservableObject, IRefreshable, IDispos
     List<GridRow> Read(RecordCursor cursor, IReadOnlyList<ColumnInfo> cols, long start, int n)
     {
         var tags = _s.Tags.ForTable(Artifact.TableName);
+        var recovered = ConversationBuilder.RecoveredReader(cols);
         var rows = cursor.Fetch(start, n);
         bool[] isChecked;
         lock (_flip) isChecked = rows.Select(r => On(r.RowId)).ToArray();
         return rows.Select((r, k) => new GridRow(r.RowId,
             r.Values.Select((v, i) => ValueFormatter.Display(v, cols[i])).ToArray(), r.Values,
-            tags.GetValueOrDefault(r.RowId)?.Tag, isChecked[k], OnCheck)).ToList();
+            tags.GetValueOrDefault(r.RowId)?.Tag, isChecked[k], OnCheck, recovered?.Invoke(r.Values) ?? "")).ToList();
     }
 
     void OnCheck(GridRow row)
@@ -299,7 +305,7 @@ public partial class ArtifactViewModel : ObservableObject, IRefreshable, IDispos
         if (v != _tiles) return;
         Tiles.Clear();
         var tags = _s.Tags.ForTable(Artifact.TableName);
-        lock (_flip) foreach (var (row, m) in found) Tiles.Add(new GalleryItem(m, null, On(row), OnTileCheck) { RowId = row, Tag = tags.GetValueOrDefault(row)?.Tag });
+        lock (_flip) foreach (var (row, m) in found) Tiles.Add(new GalleryItem(m, [], On(row), OnTileCheck) { RowId = row, Tag = tags.GetValueOrDefault(row)?.Tag });
         TilesText = found.Count == 0 ? "No pictures, videos or audio in the records in view"
             : $"{found.Count:N0} files of the records in view" + (found.Count >= MaxTiles ? $" (the first {MaxTiles:N0}: filter the table to see others)" : "");
         _ = GalleryViewModel.LoadThumbnailsAsync(_s, Tiles.ToList(), () => v != _tiles);

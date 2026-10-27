@@ -292,6 +292,10 @@ def initialize_lava(input_path, output_path, input_type, profile_filename=None):
         "parser_info": {
             "leapp_name": leapp_name,
             "leapp_version": leapp_version,
+            # LEXIS: this build loads scripts/lexis_artifacts, so the report says it was made by LEXIS
+            # even when no LEXIS module found data (only modules with data are listed under modules).
+            "processed_with": ("LEXIS" if os.path.isdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), "lexis_artifacts"))
+                               else leapp_name),
             # From source the script's name says which program runs. A build is one
             # executable that opens the window when started without arguments, so there the
             # GUI module having been loaded is what says it.

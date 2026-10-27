@@ -24,6 +24,7 @@ public sealed class PlayerView : UserControl
     readonly MediaElement _me = new() { LoadedBehavior = MediaState.Manual, UnloadedBehavior = MediaState.Close, ScrubbingEnabled = true };
     readonly Slider _seek = new() { Minimum = 0, IsMoveToPointEnabled = true, VerticalAlignment = VerticalAlignment.Center, MinWidth = 80, Margin = new Thickness(6, 0, 6, 0) };
     readonly TextBlock _time = new() { VerticalAlignment = VerticalAlignment.Center, FontSize = 11, Text = "0:00" };
+    readonly TextBlock _note = new() { FontSize = 11, Opacity = 0.75, TextWrapping = TextWrapping.Wrap, Visibility = Visibility.Collapsed };
     readonly DispatcherTimer _tick = new() { Interval = TimeSpan.FromMilliseconds(250) };
     bool _moving; // the bar follows the playback: not a seek
 
@@ -39,7 +40,7 @@ public sealed class PlayerView : UserControl
         }
         var bar = new DockPanel();
         var buttons = new StackPanel { Orientation = Orientation.Horizontal };
-        buttons.Children.Add(B("", "Play", () => { if (Open()) { _me.Play(); _tick.Start(); } }));
+        buttons.Children.Add(B("", "Play", async () => { if (await Open()) { _me.Play(); _tick.Start(); } }));
         buttons.Children.Add(B("", "Pause", () => _me.Pause()));
         buttons.Children.Add(B("", "Stop", () => { _me.Stop(); Show(); }));
         DockPanel.SetDock(buttons, Dock.Left);
@@ -50,6 +51,7 @@ public sealed class PlayerView : UserControl
         var root = new StackPanel();
         root.Children.Add(_me);
         root.Children.Add(bar);
+        root.Children.Add(_note);
         Content = root;
         _me.MediaOpened += (_, _) =>
         {
@@ -74,25 +76,43 @@ public sealed class PlayerView : UserControl
         _time.Text = $"{T(_me.Position)} / {(_me.NaturalDuration.HasTimeSpan ? T(_me.NaturalDuration.TimeSpan) : "?")}";
     }
 
-    void Load()
+    async void Load()
     {
         _tick.Stop();
         _seek.Maximum = 0;
         _time.Text = "0:00";
+        _note.Visibility = Visibility.Collapsed;
         _me.Source = null;
         var m = Media;
         var playable = m is { Exists: true } && (m.Kind == "audio" || m.Kind == "video" && !AudioOnly);
         _me.Visibility = m?.Kind == "video" ? Visibility.Visible : Visibility.Collapsed;
         Visibility = playable ? Visibility.Visible : Visibility.Collapsed;
-        if (playable && m!.Kind == "video" && Open()) { _me.Play(); _me.Pause(); } // shows the first frame and the length
+        if (playable && m!.Kind == "video" && await Open()) { _me.Play(); _me.Pause(); } // shows the first frame and the length
     }
 
-    /// <summary>The file opened in the player, on first play for audio: a portable case's is written out of the zip then.</summary>
-    bool Open()
+    /// <summary>The file opened in the player, on first play for audio: a portable case's is written out of the zip then,
+    /// and SILK audio (WeChat voice messages) is decoded into the case's audio cache and its WAV played (<see cref="SilkAudio"/>).</summary>
+    async Task<bool> Open()
     {
         if (_me.Source is not null) return true;
-        try { _me.Source = Media is { } m ? new Uri(m.LocalFile()) : null; }
-        catch (Exception e) when (e is System.IO.IOException or UnauthorizedAccessException) { _time.Text = "Cannot read the file: " + e.Message; }
+        if (Media is not { } m) return false;
+        try
+        {
+            _time.Text = "Opening…";
+            var (file, sha) = await Task.Run(() => m.AudioFolders is { Length: > 0 } f ? SilkAudio.Playable(m, f) : (m.LocalFile(), null));
+            if (Media != m) return false;
+            _me.Source = new Uri(file);
+            if (sha is not null)
+            {
+                _note.Text = "SILK audio, converted to WAV for listening; original unchanged.";
+                _note.ToolTip = $"Original: {m.Name}, SHA-256 {sha}\nWAV: {file}\nDecoder: {SilkAudio.Decoder}";
+                _note.Visibility = Visibility.Visible;
+            }
+        }
+        catch (Exception e) when (e is System.IO.IOException or UnauthorizedAccessException or System.IO.InvalidDataException or DllNotFoundException or BadImageFormatException)
+        {
+            if (Media == m) _time.Text = (e is System.IO.IOException or UnauthorizedAccessException ? "Cannot read the file: " : "Cannot convert the SILK audio: ") + e.Message;
+        }
         return _me.Source is not null;
     }
 }

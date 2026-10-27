@@ -9,11 +9,17 @@
   <ItemGroup>
     <PackageReference Include="MetadataExtractor" Version="2.8.1" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.12" />
+    <PackageReference Include="PdfPig" Version="0.1.16" />
   </ItemGroup>
 
   <ItemGroup>
     <!-- BIP-39 English wordlist, github.com/bitcoin/bips bip-0039/english.txt, sha256 2f5eed53a4727b4bf8880d8f3f199efc90e58503646d9ff8eff3a2ed3b24dbda -->
     <EmbeddedResource Include="Resources/bip39-english.txt" LogicalName="bip39-english.txt" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- SILK SDK decoder (x64), built by tools/silk/build.cmd from kn007/silk-v3-decoder 507be6b; licence notices in NOTICE -->
+    <None Include="native/silk.dll" Link="silk.dll" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

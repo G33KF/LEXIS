@@ -72,6 +72,17 @@ public sealed class LavaManifest
     public string ProcessingStatus { get; private init; } = "";
     public IReadOnlyList<ArtifactInfo> Artifacts { get; private init; } = [];
     public IReadOnlyList<ModuleStatus> Modules { get; private init; } = [];
+    /// <summary>LEXIS or ALEAPP/iLEAPP, with the version: LEXIS when the report says so (parser_info.processed_with,
+    /// from 1.2.4) or lists a LEXIS module (LEXIS_*, which older LEXIS reports show when one of them found data).</summary>
+    public string ParsedBy
+    {
+        get
+        {
+            var leapp = $"{ParserInfo.GetValueOrDefault("leapp_name") ?? "LEAPP"} {ParserInfo.GetValueOrDefault("leapp_version")}".Trim();
+            var lexis = ParserInfo.GetValueOrDefault("processed_with") == "LEXIS" || Modules.Any(m => m.Name.StartsWith("LEXIS_", StringComparison.OrdinalIgnoreCase));
+            return lexis ? $"LEXIS ({leapp} with the LEXIS modules)" : leapp;
+        }
+    }
     /// <summary>The data source as recorded when a portable case was made (portable_case.provenance), else null.</summary>
     public IReadOnlyList<(string Group, string Name, string Value)>? FrozenProvenance { get; private init; }
     /// <summary>A portable case made with the extraction's files under Case/extraction (portable_case.file_system).</summary>

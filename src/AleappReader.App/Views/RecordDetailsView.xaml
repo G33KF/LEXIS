@@ -53,6 +53,32 @@
         <GridSplitter x:Name="PreviewSplitter" Grid.Row="1" Height="5" HorizontalAlignment="Stretch" Visibility="Collapsed"
                       Background="{StaticResource BorderBrush}" ResizeBehavior="PreviousAndNext" ToolTip="Drag to resize the preview"/>
         <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+        <StackPanel>
+        <!-- every message the file went through (gallery); a click opens the message in its table -->
+        <Border Margin="10,8,10,0" Padding="8,6" CornerRadius="3" Background="{StaticResource PanelBrush}"
+                BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" Visibility="{Binding History.Count, Converter={StaticResource Vis}}">
+            <StackPanel>
+                <TextBlock Text="{Binding History.Count, StringFormat='SENT / RECEIVED HISTORY ({0})'}" Style="{StaticResource SectionHeader}" Margin="0,0,0,4"
+                           Foreground="{StaticResource AccentBrush}"/>
+                <ItemsControl ItemsSource="{Binding History}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="{x:Type vm:MediaHistoryEntry}">
+                            <Button Style="{StaticResource FlatButton}" HorizontalContentAlignment="Stretch" Padding="4,3" Margin="0,1"
+                                    Command="{Binding DataContext.OpenHistoryCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                    CommandParameter="{Binding}" ToolTip="Open the message in its artifact table">
+                                <StackPanel>
+                                    <DockPanel>
+                                        <TextBlock DockPanel.Dock="Right" Text="{Binding When}" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="8,0,0,0"/>
+                                        <TextBlock Text="{Binding What}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                    </DockPanel>
+                                    <TextBlock Text="{Binding Who}" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}"/>
+                                </StackPanel>
+                            </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </Border>
         <ItemsControl ItemsSource="{Binding Fields}" Margin="10,6,10,10">
             <ItemsControl.Resources>
                 <!-- the kind of a structured value as a chip: a click shows it decoded right here -->
@@ -147,6 +173,7 @@
                 </DataTemplate>
             </ItemsControl.ItemTemplate>
         </ItemsControl>
+        </StackPanel>
         </ScrollViewer>
     </Grid>
 </UserControl>

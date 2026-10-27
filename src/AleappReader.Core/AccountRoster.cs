@@ -43,17 +43,30 @@ public static class AccountRoster
 {
     const int MaxRows = 20_000; // ponytail: an account artifact this big is a log, not a roster; open it instead
 
-    static readonly Regex AccountArtifact = new(@"account|owner|apple ?id|profile|login",RegexOptions.IgnoreCase);
-    // the SIM slots and calling services of the phone app ("Telecom Phone Accounts") name the device, not its user
-    static readonly Regex NotTheUser = new(@"telecom", RegexOptions.IgnoreCase);
-    static readonly Regex Secret = new(@"password|passwd|token|secret|\bkey\b|hash|cookie", RegexOptions.IgnoreCase);
+    internal static readonly Regex AccountArtifact = new(@"account|owner|apple ?id|profile|login",RegexOptions.IgnoreCase);
+    // the SIM slots and calling services of the phone app ("Telecom Phone Accounts") name the device, not its user; the
+    // device's own users and profiles (owner, work profile, Secure Folder) are in the Users tab
+    internal static readonly Regex NotTheUser = new(@"telecom|users and profiles", RegexOptions.IgnoreCase);
+    internal static readonly Regex Secret = new(@"password|passwd|token|secret|\bkey\b|hash|cookie", RegexOptions.IgnoreCase);
+    // a value standing for no account (iOS's App Store daemons are signed in as "local")
+    internal static readonly Regex Placeholder = new(@"^(local|unknown|null|none|n/?a|-+)$", RegexOptions.IgnoreCase);
+    // the label an app gives the account it keeps for itself, not the user's (Google Meet's "Meet", Microsoft's "Work account")
+    // ponytail: the labels seen so far; add one when a report shows it
+    static readonly Regex AppLabel = new(@"^(meet|duo|work account|personal account)$", RegexOptions.IgnoreCase);
+
+    /// <summary>A value that names no account of the user: a placeholder, an app's own label, or the app's name itself
+    /// (WhatsApp's account on Android is called "WhatsApp", a bank's "Intesa Sanpaolo" for com.….intesasanpaolo).</summary>
+    internal static bool NotAnId(string value, string family) =>
+        Placeholder.IsMatch(value) || AppLabel.IsMatch(value) || family != "" && string.Equals(Letters(value), Letters(family), StringComparison.OrdinalIgnoreCase);
+
+    static string Letters(string v) => new(v.Where(char.IsLetterOrDigit).ToArray());
 
     static readonly string[] IdColumns = ["account name", "username", "user name", "email", "e mail", "email address", "google account email",
         "apple id", "account", "mobile number", "phone number", "phone", "handle", "user id", "account id", "uid", "registration screen phone number"];
-    static readonly string[] ServiceColumns = ["account type", "origin", "signon realm", "account desc", "account description", "bundle id"];
+    static readonly string[] ServiceColumns = ["account type", "origin", "origin url", "signon realm", "account desc", "account description", "bundle id"];
     static readonly string[] NameColumns = ["full name", "display name", "holder name", "name", "nickname", "given name"];
 
-    static string Norm(ColumnInfo c) => Regex.Replace(Regex.Replace(c.Display.ToLowerInvariant(), "[^a-z0-9]", " "), @"\s+", " ").Trim();
+    internal static string Norm(ColumnInfo c) => Regex.Replace(Regex.Replace(c.Display.ToLowerInvariant(), "[^a-z0-9]", " "), @"\s+", " ").Trim();
 
     public static IReadOnlyList<AccountEntry> Collect(SqliteConnection con, IEnumerable<ArtifactInfo> artifacts)
     {
@@ -78,9 +91,11 @@ public static class AccountRoster
                 {
                     string V(int i) => i < 0 ? "" : ValueFormatter.Format(r.Values[i], cols[i]).Trim();
                     // every identifier the row fills, the first one naming the account; "tel:+39…" is the number
+                    var svc = V(service) is { Length: > 0 } s ? s : app;
+                    var family = Family(svc, [a.Name]);
                     var rowIds = ids.Select(i => new AccountId(cols[i].Display, Regex.Replace(V(i), "^tel:", "", RegexOptions.IgnoreCase).Trim()))
-                        .Where(x => x.Value != "").DistinctBy(x => x.Value, StringComparer.OrdinalIgnoreCase).ToList();
-                    Add(found, V(service) is { Length: > 0 } s ? s : app, rowIds, [V(name), $"{V(first)} {V(last)}".Trim()], a.Name);
+                        .Where(x => x.Value != "" && !NotAnId(x.Value, family)).DistinctBy(x => x.Value, StringComparer.OrdinalIgnoreCase).ToList();
+                    Add(found, svc, rowIds, [V(name), $"{V(first)} {V(last)}".Trim()], a.Name);
                 }
             }
             catch (SqliteException) { } // an unreadable artifact adds nothing
@@ -136,31 +151,34 @@ public static class AccountRoster
         catch (SqliteException) { }
     }
 
-    static readonly Regex Site = new(@"^(https?|android)://", RegexOptions.IgnoreCase);
+    internal static readonly Regex Site = new(@"^(https?|android)://", RegexOptions.IgnoreCase);
     static readonly Regex Package = new(@"^[a-z][\w]*(\.[\w]+)+$", RegexOptions.IgnoreCase);
     static readonly Regex GenericSource = new(@"^(accounts?([ _](ce|de|data|extras|sync.*))?|sync accounts.*)$", RegexOptions.IgnoreCase);
     static readonly (string Name, Regex Match)[] Families = [.. new[]
     {
-        ("Google", @"google|gmail|com\.android\.vending|youtube"), ("WhatsApp", "whatsapp"), ("Telegram", @"telegram|telegra\.ph"),
+        // Chrome's signed-in account is a Google account; WhatsApp Business is an account of its own
+        ("Google", @"google|gmail|com\.android\.vending|youtube|chrome preferences - accounts"), ("WhatsApp Business", @"com\.whatsapp\.w4b|whatsapp business"), ("WhatsApp", "whatsapp"), ("Telegram", @"telegram|telegra\.ph"),
         ("Messenger", @"facebook\.orca|messenger"), ("Facebook", "facebook"), ("Instagram", "instagram"), ("WeChat", @"wechat|tencent\.mm"),
         ("Signal", @"\bsignal\b|thoughtcrime"), ("Snapchat", "snapchat"), ("TikTok", "tiktok|musically|zhiliaoapp"), ("X (Twitter)", "twitter"),
-        ("Microsoft", "microsoft|outlook|skype|hotmail|exchange"), ("Samsung", "samsung"), ("Viber", "viber"), ("Chrome", "chrome"),
+        ("Microsoft", "microsoft|outlook|skype|hotmail|exchange"), ("Samsung", @"samsung|com\.osp\.app\.signin"), ("Viber", "viber"), ("Chrome", "chrome"),
         // the services of an Apple ID as iOS lists them (Accounts3: CloudKit, Game Center, iTunes Store, Messages…)
         ("Apple", @"\bapple\b|icloud|^(cloudkit|game ?center|device locator|find my.*|idms|itunes.*|messages|facetime|imessage)$"),
-        ("Device user", @"users and profiles"),
+        // the phone maker's own mail app (com.android.email, com.hihonor.email)
+        ("E-mail app", @"^com\.[\w.]+\.email$"),
     }.Select(f => (f.Item1, new Regex(f.Item2, RegexOptions.IgnoreCase)))];
 
     /// <summary>The app or service family an account belongs to: a well-known one named in its service or artifacts
     /// (com.google, "Google Account History" → Google), else the app of a package id (com.bunq → bunq), else the app its
     /// artifact is named for, unless that name is only about accounts in general ("Account Data"): then its service.</summary>
-    static string Family(AccountEntry e)
+    static string Family(AccountEntry e) => Family(e.Service, e.Sources.Split('\n'));
+
+    internal static string Family(string service, IReadOnlyList<string> sources)
     {
-        var sources = e.Sources.Split('\n');
-        if (Families.FirstOrDefault(f => f.Match.IsMatch(e.Service) || sources.Any(f.Match.IsMatch)) is { Name: { } known }) return known;
-        if (Package.IsMatch(e.Service))
-            return e.Service.Split('.').Reverse().FirstOrDefault(p => !Regex.IsMatch(p, "^(android|app|apps|mobile|client|activity)$", RegexOptions.IgnoreCase)) ?? e.Service;
+        if (Families.FirstOrDefault(f => f.Match.IsMatch(service) || sources.Any(f.Match.IsMatch)) is { Name: { } known }) return known;
+        if (Package.IsMatch(service))
+            return service.Split('.').Reverse().FirstOrDefault(p => !Regex.IsMatch(p, "^(android|app|apps|mobile|client|activity)$", RegexOptions.IgnoreCase)) ?? service;
         var app = sources[0].Split(" - ")[0].Trim();
-        return GenericSource.IsMatch(app) ? e.Service : app;
+        return GenericSource.IsMatch(app) ? service : app;
     }
 
     /// <summary>The site a saved login is for, by its domain (a.b.example.com → example.com, x.example.co.uk → example.co.uk),

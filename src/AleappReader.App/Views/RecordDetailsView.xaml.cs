@@ -17,6 +17,9 @@ public partial class RecordDetailsView : UserControl
     void CopyPath(object sender, RoutedEventArgs e) { if (NodeOf(sender) is { } n) Clipboard.SetText(n.Path); }
     void CopyValue(object sender, RoutedEventArgs e) { if (NodeOf(sender) is { } n) Clipboard.SetText(n.Value); }
 
+    /// <summary>False in the media window, whose viewer shows the file: the fields only.</summary>
+    public bool Preview { get; init; } = true;
+
     GridLength _preview = new(320);
     DetailsViewModel? _vm;
 
@@ -44,7 +47,7 @@ public partial class RecordDetailsView : UserControl
     /// <summary>The preview row opens at its last dragged height when there is media or HTML, and closes when there is none.</summary>
     void Layout()
     {
-        bool media = _vm?.Media.Count > 0, html = HtmlBox.Visibility == Visibility.Visible;
+        bool media = Preview && _vm?.Media.Count > 0, html = HtmlBox.Visibility == Visibility.Visible;
         MediaRow.Height = media ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
         HtmlRow.Height = html ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
         var open = media || html;

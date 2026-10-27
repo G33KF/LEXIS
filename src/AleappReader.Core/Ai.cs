@@ -296,14 +296,15 @@ public sealed class AiStore(string path)
         return new AiResult(id, DateTimeOffset.FromUnixTimeMilliseconds(at), kind, p.Name, p.Where, model, prompt, scope, output, cited, unknown);
     }
 
-    /// <summary>Results newest first: of one kind, or (null) every kind but the per-batch and per-file "… item" ones.</summary>
-    public IReadOnlyList<AiResult> Results(string? kind = null)
+    /// <summary>Results newest first: of one kind, or (null) every kind but the per-batch and per-file "… item" ones
+    /// (every kind with <paramref name="items"/>).</summary>
+    public IReadOnlyList<AiResult> Results(string? kind = null, bool items = false)
     {
         if (!File.Exists(path)) return [];
         using var con = Open();
         using var cmd = con.CreateCommand();
         cmd.CommandText = "SELECT id,at,kind,provider,location,model,prompt,scope,output,cited,unknown FROM results WHERE " +
-                          (kind is null ? "kind NOT LIKE '% item'" : "kind = @k") + " ORDER BY id DESC";
+                          (kind is not null ? "kind = @k" : items ? "1" : "kind NOT LIKE '% item'") + " ORDER BY id DESC";
         if (kind is not null) cmd.Parameters.AddWithValue("@k", kind);
         using var r = cmd.ExecuteReader();
         var list = new List<AiResult>();
@@ -316,7 +317,7 @@ public sealed class AiStore(string path)
 
     /// <summary>What the AI read in single files (descriptions with OCR, classifications, transcriptions), newest first.</summary>
     public IReadOnlyList<AiResult> MediaResults() =>
-        [.. new[] { "Image description item", "Image classification item", "Transcription" }.SelectMany(Results).OrderByDescending(x => x.Id)];
+        [.. new[] { "Image description item", "Image classification item", "Transcription" }.SelectMany(k => Results(k)).OrderByDescending(x => x.Id)];
 
     /// <summary>Results of any kind that cite <paramref name="key"/> ([table#row], [media#id]), newest first.</summary>
     public IReadOnlyList<AiResult> Citing(string key)

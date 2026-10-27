@@ -77,15 +77,31 @@ public partial class NodeViewModel : ObservableObject
 }
 
 /// <summary>A category of the tree opened: its artifacts, each with its app and records, most records first; one opens
-/// its table.</summary>
-public partial class CategoryViewModel(MainViewModel main, NodeViewModel node)
+/// its table. User Accounts &amp; Details shows the device's account cards above them.</summary>
+public partial class CategoryViewModel : ObservableObject
 {
-    public string Title { get; } = node.Title;
-    public IReadOnlyList<ArtifactInfo> Artifacts { get; } = [.. node.Artifacts().Distinct().OrderByDescending(a => a.RecordCount)];
+    readonly MainViewModel _main;
+
+    public CategoryViewModel(MainViewModel main, NodeViewModel node, CaseSession s)
+    {
+        _main = main;
+        Title = node.Title;
+        Artifacts = [.. node.Artifacts().Distinct().OrderByDescending(a => a.RecordCount)];
+        if (Title == MacroCategories.Accounts.Name)
+            _ = AccountCardView.LoadAsync(s).ContinueWith(t => AccountCards = t.IsCompletedSuccessfully ? t.Result : [], TaskScheduler.FromCurrentSynchronizationContext());
+    }
+
+    public string Title { get; }
+    public IReadOnlyList<ArtifactInfo> Artifacts { get; }
     public string Info => $"{Artifacts.Count:N0} artifact{(Artifacts.Count == 1 ? "" : "s")} · {Artifacts.Sum(a => a.RecordCount):N0} records";
+    /// <summary>The account cards, for User Accounts &amp; Details; null for another category or while they are read.</summary>
+    [ObservableProperty] private IReadOnlyList<AccountCardView>? accountCards;
+    [ObservableProperty] private AccountCardView? selectedAccount;
+
+    partial void OnSelectedAccountChanged(AccountCardView? value) => value?.Show(_main.Details);
 
     [RelayCommand]
-    void Open(ArtifactInfo? a) { if (a is not null) main.NavigateTo(a); }
+    void Open(ArtifactInfo? a) { if (a is not null) _main.NavigateTo(a); }
 }
 
 /// <summary>A tab of the main area: one per opened tree node, chat or map; <see cref="Key"/> finds it again.</summary>
@@ -230,7 +246,8 @@ public partial class MainViewModel : ObservableObject
         if (Settings.Current.SingleNavigationTab) return "single";
         if (!Settings.Current.NavigationGroupTabs || node is null) return null; // ponytail: a chat or a map opened from a view gets its own tab
         var path = Walk(Nodes).FirstOrDefault(x => x.Node == node).Path ?? [];
-        return "group|" + KeyOf(path.Append(node).First(n => n.Kind is not (NodeKind.Case or NodeKind.Device or NodeKind.Group)));
+        // a case's or a device's own view (its summary) belongs to no group: a tab of its own
+        return path.Append(node).FirstOrDefault(n => n.Kind is not (NodeKind.Case or NodeKind.Device or NodeKind.Group)) is { } g ? "group|" + KeyOf(g) : null;
     }
 
     const string BrowserColumn = "Browser Name";
@@ -305,7 +322,7 @@ public partial class MainViewModel : ObservableObject
             NodeKind.Artifact => () => new ArtifactViewModel(this, s, value.Artifact!, columnFilter: value.Filter),
             NodeKind.ChatApp => () => new ConversationViewModel(this, s, value.Artifact!),
             NodeKind.ChatAccount => () => new ConversationViewModel(this, s, value.Artifact!, value.Account, value.Title),
-            NodeKind.Category => () => new CategoryViewModel(this, value),
+            NodeKind.Category => () => new CategoryViewModel(this, value, s),
             _ => null, // groups only fold the tree
         };
         if (make is not null) Show(KeyOf(value), value.Title, value.Glyph, make, value);
@@ -926,12 +943,10 @@ public partial class MainViewModel : ObservableObject
         foreach (var (n, acc) in chatNodes.Zip(accounts))
         {
             n.CountText = $"{acc.Sum(x => x.Chats):N0} chats · {acc.Sum(x => x.Messages):N0}";
-            if (acc.Count == 1 && acc[0].Account == "") continue;
+            if (ConversationBuilder.AccountOf(n.Artifact!) is null) continue; // the artifact records no account: no level
             foreach (var x in acc)
                 n.Children.Add(new NodeViewModel { Session = s, Kind = NodeKind.ChatAccount, Artifact = n.Artifact, Account = x.Account, Glyph = "",
-                    Title = x.Account == "" ? "(no account recorded)" : x.Name != "" ? $"{x.Name} ({x.Account})" : x.Account,
-                    CountText = $"{x.Chats:N0} chats · {x.Messages:N0}" });
-            n.IsExpanded = true;
+                    Title = ConversationBuilder.AccountTitle(x.Account, x.Name), CountText = $"{x.Chats:N0} chats · {x.Messages:N0}" });
         }
         var (timeline, media) = await Task.Run(() =>
         {
@@ -1095,7 +1110,10 @@ public partial class MainViewModel : ObservableObject
         // across the devices of the case of the device in front, or the one device of a device's Search
         if (CaseOf(Session) is not { } c) return;
         var one = devices is { Count: 1 } && c.Devices.Count > 1 ? devices[0] : null;
-        var search = new SearchViewModel(this, one is null ? c.Devices : [one], query);
+        // the categories of the node selected in the tree (a category or a group of them), else all
+        var categories = SelectedNode is { Kind: NodeKind.Category or NodeKind.Group } n && n.Artifacts().Any()
+            ? n.Artifacts().Select(a => a.Category).ToHashSet() : null;
+        var search = new SearchViewModel(this, one is null ? c.Devices : [one], query, categories);
         var node = one is null ? c.SearchNode : SearchNodeOf(one.Session);
         if (one is null) c.LastSearch = search;
         else if (node is not null) node.Kept = search;
@@ -1175,7 +1193,8 @@ public partial class MainViewModel : ObservableObject
         "android-crypto-wallet-forensics: https://github.com/GabrielNeves24/android-crypto-wallet-forensics\n" +
         "verichron-epoch: https://github.com/vermiliontides/verichron-epoch\n\n" +
         "Data and formats: BIP-39 English wordlist (embedded for seed-phrase detection): https://github.com/bitcoin/bips/blob/master/bip-0039/english.txt\n" +
-        "Android backup (.ab) format, from AOSP platform_frameworks_base (Apache-2.0): https://android.googlesource.com/platform/frameworks/base");
+        "Android backup (.ab) format, from AOSP platform_frameworks_base (Apache-2.0): https://android.googlesource.com/platform/frameworks/base\n\n" +
+        new System.IO.StreamReader(typeof(MainViewModel).Assembly.GetManifestResourceStream("NOTICE")!).ReadToEnd());
 }
 
 public interface IRefreshable { void Refresh(); }

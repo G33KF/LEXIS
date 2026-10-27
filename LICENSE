@@ -19,7 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
-The ALEAPP/ and ILEAPP/ folders are vendored copies of ALEAPP and iLEAPP by
-Alexis Brignoni and contributors, under their own MIT licences (see the
-LICENSE file in each folder), with the additions described in README.md.

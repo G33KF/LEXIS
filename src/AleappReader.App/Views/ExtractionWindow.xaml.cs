@@ -15,8 +15,8 @@ public partial class ExtractionWindow : Window
         };
         Closing += (_, e) =>
         {
-            if (DataContext is ExtractionViewModel { Running: true } &&
-                MessageBox.Show(this, "ALEAPP is still running. Stop it and close?", Title, MessageBoxButton.YesNo) != MessageBoxResult.Yes)
+            if (DataContext is ExtractionViewModel { Running: true } running &&
+                MessageBox.Show(this, $"{running.ToolName} is still running. Stop it and close?", Title, MessageBoxButton.YesNo) != MessageBoxResult.Yes)
                 e.Cancel = true;
             else if (DataContext is ExtractionViewModel vm) vm.CancelCommand.Execute(null);
         };

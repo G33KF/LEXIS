@@ -10,7 +10,7 @@
     <RootNamespace>AleappReader.App</RootNamespace>
     <Product>LEXIS - LEAPP Reader</Product>
     <ApplicationIcon>app.ico</ApplicationIcon>
-    <Version>1.2.0</Version>
+    <Version>1.2.5</Version>
   </PropertyGroup>
 
   <ItemGroup>
@@ -24,6 +24,11 @@
   </ItemGroup>
   <ItemGroup Condition="Exists('engine\ileapp-engine.zip')">
     <EmbeddedResource Include="engine\ileapp-engine.zip" LogicalName="ileapp-engine.zip" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- the licence notices, shown in About (the SILK decoder's licence asks for them with the binary) -->
+    <EmbeddedResource Include="..\..\NOTICE" LogicalName="NOTICE" />
   </ItemGroup>
 
   <ItemGroup>

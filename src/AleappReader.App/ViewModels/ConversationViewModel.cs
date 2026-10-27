@@ -13,10 +13,12 @@ public partial class ConversationViewModel : ObservableObject, IColumnFilters
     /// <summary>The chat list's columns that take a condition from their header (Sql = the column's SortMemberPath).</summary>
     public IReadOnlyList<ColumnInfo> ListColumns { get; } =
     [
-        new("Label", "Chat", null), new("Key", "Chat ID", null), new("ParticipantCount", "Participants", "number"),
+        new("Label", "Chat", null), new("Type", "Type", null), new("Key", "Chat ID", null), new("ParticipantCount", "Participants", "number"),
         new("Messages.Count", "Messages", "number"), new("FirstTime", "First message", "datetime"),
-        new("LastTime", "Last message", "datetime"), new("Preview", "Last text", null),
+        new("LastTime", "Last message", "datetime"), new("Preview", "Last text", null), new("Owner", "Account", null),
     ];
+    const string AllAccounts = "All accounts";
+    public static IReadOnlyList<string> TypeChoices { get; } = ["All chats", "Private", "Group"];
     readonly List<ColumnFilter> _columnFilters = [];
 
     const int MaxMessages = 50000; // ponytail: whole-artifact load; page by conversation if a case exceeds this
@@ -40,6 +42,14 @@ public partial class ConversationViewModel : ObservableObject, IColumnFilters
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasColumnFilters))] private int columnFilterCount;
     public bool HasColumnFilters => ColumnFilterCount > 0;
     public string CountText => Conversations.Count == _all.Count ? "" : $"{Conversations.Count:N0} of {_all.Count:N0} chats shown";
+    /// <summary>The local accounts (SIM, number, backup…) the chats belong to, when the list is not already one account's:
+    /// the list splits by them as the Chats tree does.</summary>
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasAccounts))] private IReadOnlyList<string> accountChoices = [];
+    [ObservableProperty] private string accountChoice = AllAccounts;
+    public bool HasAccounts => AccountChoices.Count > 0;
+    [ObservableProperty] private string typeChoice = "All chats";
+    /// <summary>Some chat names the user's side (the local account or the sender of the sent messages).</summary>
+    [ObservableProperty] private bool hasOwner;
 
     public ConversationViewModel(MainViewModel main, CaseSession s, ArtifactInfo a, string? account = null, string? accountLabel = null)
     {
@@ -59,12 +69,17 @@ public partial class ConversationViewModel : ObservableObject, IColumnFilters
             return ConversationBuilder.Build(con, _s, _a, MaxMessages, account: _account);
         });
         (_all, _cols, _truncated) = (set.Conversations, set.Columns, set.Truncated);
+        if (_account is null && _all.Any(c => c.Account != ""))
+            AccountChoices = [AllAccounts, .. _all.Select(c => c.AccountDisplay).Distinct().Order(StringComparer.OrdinalIgnoreCase)];
+        HasOwner = _all.Any(c => c.Owner != "");
         Info = $"{_all.Count:N0} chats · {_all.Sum(c => c.Messages.Count):N0} messages" + (set.Truncated ? $" (first {MaxMessages:N0})" : "") +
                " — double-click a chat to open it";
         ApplyFilter();
     }
 
     partial void OnFilterChanged(string value) => ApplyFilter();
+    partial void OnAccountChoiceChanged(string value) => ApplyFilter();
+    partial void OnTypeChoiceChanged(string value) => ApplyFilter();
 
     static bool Matches(ConversationItem c, string filter) => filter == "" || c.Label.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
                                                               c.Key.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
@@ -74,13 +89,13 @@ public partial class ConversationViewModel : ObservableObject, IColumnFilters
     {
         "Label" => c.Label, "Key" => c.Key, "ParticipantCount" => c.ParticipantCount.ToString(System.Globalization.CultureInfo.InvariantCulture),
         "Messages.Count" => c.Messages.Count.ToString(System.Globalization.CultureInfo.InvariantCulture),
-        "FirstTime" => c.FirstTime, "LastTime" => c.LastTime, "Preview" => c.Preview, _ => "",
+        "FirstTime" => c.FirstTime, "LastTime" => c.LastTime, "Preview" => c.Preview, "Owner" => c.Owner, "Type" => c.Type, _ => "",
     };
 
     void ApplyFilter()
     {
         Conversations.Clear();
-        foreach (var c in _all.Where(c => Matches(c, Filter) && _columnFilters.All(f => f.Matches(ValueOf(c, f.Sql), f.Sql.EndsWith("Time")))))
+        foreach (var c in _all.Where(c => Matches(c, Filter) && (AccountChoice is null or AllAccounts || c.AccountDisplay == AccountChoice) && (TypeChoice == TypeChoices[0] || c.Type == TypeChoice) && _columnFilters.All(f => f.Matches(ValueOf(c, f.Sql), f.Sql.EndsWith("Time")))))
             Conversations.Add(c);
         OnPropertyChanged(nameof(CountText));
     }
@@ -122,6 +137,7 @@ public partial class ConversationViewModel : ObservableObject, IColumnFilters
         var sent = value.Messages.Count(m => m.IsSent);
         _main.Details.ShowFields(value.Label, $"{_a.Category} chat", [
             new("Conversation ID", value.Key),
+            new("Type", value.Type),
             new("Local account", value.Participants.FirstOrDefault(p => p.IsOwner)?.Display ?? ""),
             new("Participants", string.Join("\n", value.Participants.Select(p => $"{p.Display} — {p.Messages:N0} messages{(p.IsOwner ? " (local account)" : "")}"))),
             new("Messages", $"{value.Messages.Count:N0} ({sent:N0} sent, {value.Messages.Count - sent:N0} received) · {value.Messages.Sum(m => m.Media.Count):N0} media"),
@@ -199,7 +215,7 @@ public partial class ConversationViewModel : ObservableObject, IColumnFilters
     [RelayCommand]
     async Task ExportShown()
     {
-        var filters = string.Join("; ", new[] { Filter == "" ? "" : $"text {Filter}" }.Concat(_columnFilters.Select(Describe)).Where(x => x != ""));
+        var filters = string.Join("; ", new[] { Filter == "" ? "" : $"text {Filter}", TypeChoice == TypeChoices[0] ? "" : $"{TypeChoice.ToLowerInvariant()} chats" }.Concat(_columnFilters.Select(Describe)).Where(x => x != ""));
         var chats = await Complete(_main, _s, _a, _truncated, Conversations.ToList());
         _main.Status = await ExportChats(_s, _a, chats, filters == "" ? null : $"Chat list filter: {filters} (all messages of each listed chat)")
                        ?? "Export cancelled";

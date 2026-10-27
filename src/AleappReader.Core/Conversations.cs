@@ -14,6 +14,8 @@ public sealed class MessageItem
     /// <summary>The message's identifiers in its source, e.g. "Message ID 1234", for tracing it back to the evidence.</summary>
     public string SourceRecord { get; init; } = "";
     public string Time { get; init; } = "";
+    /// <summary>The message time as Unix seconds, null when its time column is empty or not a datetime.</summary>
+    public long? Epoch { get; init; }
     public string Extra { get; init; } = "";
     public bool IsSent { get; init; }
     /// <summary>The artifact marks the record as a system message (a "System Message" flag column, or a type column
@@ -38,6 +40,9 @@ public sealed class MessageItem
     /// as an empty bubble.</summary>
     public string Placeholder => Text != "" || Media.Count > 0 || Location is not null || Extra != "" ? ""
         : IsSystem ? "System message · no text in the report" : Kind != "" ? $"{Kind} · no text in the report" : "No text in the report";
+    /// <summary>Why the record is a recovered one (deleted, then read back from a backup or by carving), "" for a
+    /// live record: the artifact's Recovered / Recovered From value, or "In Active Database" reading No.</summary>
+    public string Recovered { get; init; } = "";
     public string LocationText => Location is { } p ? string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{p.Lat:0.######}, {p.Lon:0.######}") : "";
 }
 
@@ -57,11 +62,22 @@ public sealed class ConversationItem
     /// <summary>The local account the chat belongs to, when the artifact records one ("" otherwise).</summary>
     public string Account { get; init; } = "";
     public string AccountName { get; init; } = "";
+    /// <summary>The local account as the chat list shows it: its name with the account, or the account alone.</summary>
+    public string AccountDisplay => AccountName != "" && AccountName != Account ? $"{AccountName} ({Account})" : Account;
     public List<MessageItem> Messages { get; } = [];
     public string FirstTime => Messages.Count > 0 ? Messages[0].Time : "";
     public string LastTime => Messages.Count > 0 ? Messages[^1].Time : "";
     public string Preview => Messages.Count > 0 ? Messages[^1].Text : "";
     public int ParticipantCount => Participants.Count;
+
+    /// <summary>A group chat ID: WhatsApp (@g.us), WeChat (@chatroom), or one starting with "group".</summary>
+    public static readonly Regex GroupId = new(@"@g\.us$|@chatroom$|^group", RegexOptions.IgnoreCase);
+    /// <summary>A group: its ID is a group ID, or more than one person other than the local account wrote in it.
+    /// A group with an unrecognised ID where one other person wrote reads as private.</summary>
+    public bool IsGroup => GroupId.IsMatch(Key) || Participants.Count(p => !p.IsOwner) > 1;
+    public string Type => IsGroup ? "Group" : "Private";
+    /// <summary>The user's side of the chat: the local account, else the sender of the sent messages ("" when neither is recorded).</summary>
+    public string Owner => Participants.FirstOrDefault(p => p.IsOwner) is { } o ? (AccountDisplay != "" ? AccountDisplay : o.Display) : "";
 
     /// <summary>The local account first, then everyone else by number of messages.</summary>
     public IReadOnlyList<ChatParticipant> Participants => _participants ??= BuildParticipants();
@@ -100,8 +116,12 @@ public static class ConversationBuilder
 {
     static readonly Regex SenderIdColumn = new(@"^(sender|from|sending party)[ _]?(id|address|jid)$", RegexOptions.IgnoreCase);
     static readonly Regex RecordColumn = new(@"^((msg|message)[ _]?id|source (file|table|db|database))$", RegexOptions.IgnoreCase);
-    static readonly Regex AccountColumn = new(@"^(account|owner|local account)[ _]?(id|uin|jid)$", RegexOptions.IgnoreCase);
-    static readonly Regex AccountNameColumn = new(@"^(account|owner|local account)[ _]?name$", RegexOptions.IgnoreCase);
+    // "Backup" (LEXIS WhatsApp Backups artifacts) splits the chats per backup file as an account column does per account;
+    // "SIM" (LEXIS Android SMS/MMS) per SIM card, iOS Messages' "Destination Caller ID" per own number or address used.
+    static readonly Regex AccountColumn = new(@"^((account|owner|local account)[ _]?(id|uin|jid)|backup|sim|destination caller id)$", RegexOptions.IgnoreCase);
+    static readonly Regex RecoveredColumn = new(@"^recovered( from)?$", RegexOptions.IgnoreCase);
+    static readonly Regex InActiveColumn = new(@"^in active database$", RegexOptions.IgnoreCase);
+    static readonly Regex AccountNameColumn = new(@"^(account|owner|local account|sim)[ _]?name$", RegexOptions.IgnoreCase);
     // Signal "Quoted Message"/"Quoted Author", SimpleX "Quoted Content (as stored)"; GroupMe/meWe/Discord "Reply To Message ID",
     // Potato "Reply (Message-ID)", Signal/Gettr "Quoted Message ID", Snapchat "Quoted Server Message ID".
     static readonly Regex SystemFlagColumn = new(@"^(is )?system( message)?$", RegexOptions.IgnoreCase);
@@ -123,8 +143,27 @@ public static class ConversationBuilder
             ? artifacts.FirstOrDefault(a => a.Conversation is not null && a.Category == list.Category && a.RecordCount > 0)
             : null;
 
+    /// <summary>The recovered mark of each record of a table with these columns, null when the table has no Recovered,
+    /// Recovered From or In Active Database column.</summary>
+    public static Func<object?[], string>? RecoveredReader(IReadOnlyList<ColumnInfo> cols)
+    {
+        int r = cols.ToList().FindIndex(c => RecoveredColumn.IsMatch(c.Display)), a = cols.ToList().FindIndex(c => InActiveColumn.IsMatch(c.Display));
+        if (r < 0 && a < 0) return null;
+        return v => RecoveredOf(r < 0 ? "" : v[r]?.ToString() ?? "", a < 0 ? "" : v[a]?.ToString() ?? "");
+    }
+
+    /// <summary>The recovered mark of a record from its Recovered value and its In Active Database value.</summary>
+    public static string RecoveredOf(string recovered, string inActive) =>
+        recovered.Trim() is { Length: > 0 } r && r.ToLowerInvariant() is not ("no" or "0" or "false") ? r
+        : inActive.Trim().ToLowerInvariant() is "no" or "0" or "false" ? "Not in the active database" : "";
+
     /// <summary>The column naming the local account each row belongs to, if the artifact has one.</summary>
     public static ColumnInfo? AccountOf(ArtifactInfo a) => a.Columns.FirstOrDefault(c => AccountColumn.IsMatch(c.Display));
+
+    /// <summary>A local account as the chat tree names it: its name (the best label the artifact gives) with its id, either
+    /// alone when the other is not recorded, "Unidentified Account" when neither is.</summary>
+    public static string AccountTitle(string account, string name) =>
+        (account, name) switch { ("", "") => "Unidentified Account", ("", _) => name, (_, "") => account, _ => $"{name} ({account})" };
 
     /// <summary>Per local account (one "" entry when the artifact records none): its name, chats and messages.</summary>
     public static IReadOnlyList<(string Account, string Name, long Chats, long Messages)> Accounts(SqliteConnection con, ArtifactInfo a)
@@ -171,6 +210,7 @@ public static class ConversationBuilder
         var geo = GeoExtractor.GeoPairs(a).Select(p => (Lat: cols.IndexOf(p.Lat), Lon: cols.IndexOf(p.Lon))).Where(p => p.Lat >= 0 && p.Lon >= 0).ToList();
         var iMsgId = cols.FindIndex(c => GeoExtractor.MessageIdRx().IsMatch(c.Display));
         var iSysEvent = cols.FindIndex(c => SystemEventColumn.IsMatch(c.Display));
+        int iRecovered = cols.FindIndex(c => RecoveredColumn.IsMatch(c.Display)), iInActive = cols.FindIndex(c => InActiveColumn.IsMatch(c.Display));
         int iQuote = cols.FindIndex(c => QuoteColumn.IsMatch(c.Display)), iQuoteBy = cols.FindIndex(c => QuoteAuthorColumn.IsMatch(c.Display)),
             iReply = cols.FindIndex(c => ReplyIdColumn.IsMatch(c.Display));
         var sysFlag = cols.Select((c, i) => (c, i)).Where(x => x.i != iText && SystemFlagColumn.IsMatch(x.c.Display)).Select(x => x.i).ToList();
@@ -214,6 +254,7 @@ public static class ConversationBuilder
             conv.Messages.Add(new MessageItem
             {
                 RowId = r.RowId, Raw = r.Values, Text = text, Sender = sender, Time = F(r.Values, iTime), IsSent = sent,
+                Epoch = iTime >= 0 && cols[iTime].IsDateTime && ValueFormatter.TryEpoch(r.Values[iTime], out var epoch) ? epoch.ToUnixTimeSeconds() : null,
                 IsSystem = sysEvent != "" || IsSystem(r.Values),
                 Kind = sysType.Select(i => F(r.Values, i).Trim()).FirstOrDefault(v => v != "") is { } k ? (long.TryParse(k, out _) ? $"Type {k}" : k) : "",
                 SenderId = iSenderId != iSender ? F(r.Values, iSenderId) : "",
@@ -223,6 +264,7 @@ public static class ConversationBuilder
                 Location = Where(r),
                 MessageId = F(r.Values, iMsgId),
                 ReplyToId = F(r.Values, iReply) is var rid && rid != "0" ? rid : "",
+                Recovered = RecoveredOf(F(r.Values, iRecovered), F(r.Values, iInActive)),
                 Quote = F(r.Values, iQuote) is { Length: > 0 } q ? (F(r.Values, iQuoteBy) is { Length: > 0 } by ? $"{by}: {q}" : q) : "",
             });
         }

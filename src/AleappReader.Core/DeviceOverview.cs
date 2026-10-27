@@ -4,6 +4,12 @@ using Microsoft.Data.Sqlite;
 
 namespace AleappReader.Core;
 
+/// <summary>An entry of the device profile: its fixed group and label, the value, and the artifact and key it was read from.</summary>
+public sealed record ProfileEntry(string Group, string Label, string Value, string Hint);
+
+/// <summary>An Android user or profile (the owner, a Secure Folder, a work profile…), each column as stored.</summary>
+public sealed record AndroidUser(string Id, string Name, string Type, string Created, string LastLoggedIn, string LastForeground, string Status);
+
 /// <summary>The parts of the case overview read from the LEAPP's device information and the artifacts: the last SIM card
 /// and the dates of the device's wipes, setups, activations and restores, in plain words. Values as stored.</summary>
 public static class DeviceOverview
@@ -116,7 +122,14 @@ public static class DeviceOverview
     /// ALEAPP's "Android Users and Profiles": the name, the type, when it was created, last logged in and last entered the
     /// foreground, as stored, and the record status when it is not a user record.
     /// </summary>
-    public static IReadOnlyList<(string Label, string Value)> Users(SqliteConnection con, IEnumerable<ArtifactInfo> artifacts)
+    public static IReadOnlyList<(string Label, string Value)> Users(SqliteConnection con, IEnumerable<ArtifactInfo> artifacts) =>
+        UserTable(con, artifacts).Select(u => ($"User {u.Id}", string.Join("\n", new[] { u.Name, u.Type, Prefixed("Created ", u.Created),
+            Prefixed("Last logged in ", u.LastLoggedIn), Prefixed("Last entered foreground ", u.LastForeground), u.Status }.Where(x => x != "")))).ToList();
+
+    static string Prefixed(string prefix, string value) => value == "" ? "" : prefix + value;
+
+    /// <summary>The rows of <see cref="Users"/>, one per user id in id order, each column as stored ("User record" left out of the status).</summary>
+    public static IReadOnlyList<AndroidUser> UserTable(SqliteConnection con, IEnumerable<ArtifactInfo> artifacts)
     {
         if (artifacts.FirstOrDefault(a => a.Name.Equals("Android Users and Profiles", StringComparison.OrdinalIgnoreCase)) is not { } a) return [];
         try
@@ -125,19 +138,88 @@ public static class DeviceOverview
             int Col(string header) => cols.FindIndex(c => c.Display.StartsWith(header, StringComparison.OrdinalIgnoreCase));
             var id = Col("User ID");
             if (id < 0) return [];
-            var parts = new[] { ("", Col("User Name")), ("", Col("User Type")), ("Created ", Col("Created")), ("Last logged in ", Col("Last Logged In")),
-                ("Last entered foreground ", Col("Last Entered Foreground")), ("", Col("Record Status")) };
+            var (name, type, created, logged, fore, status) = (Col("User Name"), Col("User Type"), Col("Created"), Col("Last Logged In"), Col("Last Entered Foreground"), Col("Record Status"));
             return ArtifactQuery.All(con, a).Select(r =>
                 {
                     string V(int i) => i < 0 ? "" : ValueFormatter.Format(r.Values[i], cols[i]).Trim();
-                    var lines = parts.Select(p => (p.Item1, Value: V(p.Item2))).Where(p => p.Value != "" && p.Value != "User record").Select(p => p.Item1 + p.Value);
-                    return (Id: V(id), Value: string.Join("\n", lines));
+                    return new AndroidUser(V(id), V(name), V(type), V(created), V(logged), V(fore), V(status) is "User record" ? "" : V(status));
                 })
                 .Where(u => u.Id != "").Distinct()
-                .OrderBy(u => int.TryParse(u.Id, out var n) ? n : int.MaxValue).ThenBy(u => u.Id, StringComparer.Ordinal)
-                .Select(u => ($"User {u.Id}", u.Value)).ToList();
+                .OrderBy(u => int.TryParse(u.Id, out var n) ? n : int.MaxValue).ThenBy(u => u.Id, StringComparer.Ordinal).ToList();
         }
         catch (SqliteException) { return []; }
+    }
+
+    /// <summary>The fixed groups of the device profile, in the order shown.</summary>
+    public static readonly string[] ProfileGroups = ["Common info", "Device", "Settings"];
+
+    // each entry in the order shown: its group and label, the artifact and the key of the row it is read from (none: only from the
+    // device information), and whether 0 and 1 are a switch. Labels equal to the overview's (Model, Serial number…) take its value
+    // when no artifact gives one
+    static readonly (string Group, string Label, string? Artifact, string? Key, bool Switch)[] Catalog =
+    [
+        ("Common info", "Operating system", null, null, false),
+        ("Common info", "Android version", "Build", "Android Version", false),
+        ("Common info", "SDK", "Build", "SDK", false),
+        ("Common info", "Build", null, null, false),
+        ("Common info", "Security patch", null, null, false),
+        ("Common info", "Android ID", "settingsSecure", "android_id", false),
+        ("Common info", "Time zone", "Persistent Properties", "persist.sys.timezone", false),
+        ("Device", "Manufacturer", "Build", "Manufacturer", false),
+        ("Device", "Brand", "Build", "Brand", false),
+        ("Device", "Model", "Build", "Model", false),
+        ("Device", "Codename", "Build", "Device", false),
+        ("Device", "Device name", "Settings Global", "device_name", false),
+        ("Device", "Serial number", null, null, false),
+        ("Device", "IMEI / MEID", null, null, false),
+        ("Device", "Bluetooth name", "settingsSecure", "bluetooth_name", false),
+        ("Device", "Bluetooth address", "settingsSecure", "bluetooth_address", false),
+        ("Settings", "Mock locations", "settingsSecure", "mock_location", true),
+        ("Settings", "Automatic date and time", "Settings Global", "auto_time", true),
+        ("Settings", "Automatic time zone", "Settings Global", "auto_time_zone", true),
+        ("Settings", "Airplane mode", "Settings Global", "airplane_mode_on", true),
+        ("Settings", "USB debugging (ADB)", "Settings Global", "adb_enabled", true),
+        ("Settings", "Developer options", "Settings Global", "development_settings_enabled", true),
+    ];
+
+    /// <summary>
+    /// The device profile: the <see cref="ProfileGroups"/> filled from fixed rows of the artifacts (Build, settingsSecure, Settings
+    /// Global, Persistent Properties), else from <paramref name="known"/> (the overview's identifiers). An entry without a value
+    /// is left out. A value that differs between Android users is given per user; a switch reads "1 (on)" or "0 (off)".
+    /// </summary>
+    public static IReadOnlyList<ProfileEntry> Profile(SqliteConnection con, IEnumerable<ArtifactInfo> artifacts, IReadOnlyList<(string Label, string Value)> known)
+    {
+        var rows = new Dictionary<string, List<(string Key, string User, string Value)>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var name in Catalog.Select(c => c.Artifact).OfType<string>().Distinct())
+        {
+            if (artifacts.FirstOrDefault(a => a.RecordCount > 0 && a.Name.Equals(name, StringComparison.OrdinalIgnoreCase)) is not { } a) continue;
+            try
+            {
+                var cols = ArtifactQuery.ExistingColumns(con, a).ToList();
+                int Col(params string[] headers) => cols.FindIndex(c => headers.Contains(c.Display.Trim(), StringComparer.OrdinalIgnoreCase));
+                var (k, v, u) = (Col("Key", "Name", "Property"), Col("Value"), Col("User"));
+                if (k < 0 || v < 0) continue;
+                string S(RecordRow r, int i) => i < 0 ? "" : ValueFormatter.Format(r.Values[i], cols[i]).Trim();
+                rows[name] = ArtifactQuery.All(con, a).Select(r => (S(r, k), S(r, u), S(r, v))).ToList();
+            }
+            catch (SqliteException) { } // an unreadable artifact gives nothing
+        }
+        var list = new List<ProfileEntry>();
+        foreach (var c in Catalog)
+        {
+            string Shown(string v) => !c.Switch ? v : v switch { "1" => "1 (on)", "0" => "0 (off)", _ => v };
+            var found = c.Artifact is { } art && rows.TryGetValue(art, out var rs)
+                ? rs.Where(r => r.Value != "" && r.Key.Equals(c.Key, StringComparison.OrdinalIgnoreCase)).Distinct().ToList() : [];
+            if (found.Count > 0)
+            {
+                var value = found.Select(r => r.Value).Distinct().Count() == 1 ? Shown(found[0].Value)
+                    : string.Join("\n", found.Select(r => r.User == "" ? Shown(r.Value) : $"{Shown(r.Value)} (user {r.User})"));
+                list.Add(new(c.Group, c.Label, value, $"{c.Artifact} · {c.Key}"));
+            }
+            else if (known.FirstOrDefault(x => x.Label == c.Label && x.Value != "").Value is { } k)
+                list.Add(new(c.Group, c.Label, k, "Device information (.ufd, DeviceInfo.html)"));
+        }
+        return list;
     }
 
     /// <summary>A date written as text with its zone also in the display zone; anything else as stored.</summary>

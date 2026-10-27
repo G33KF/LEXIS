@@ -34,7 +34,7 @@ public static partial class LeappDeviceInfo
     [GeneratedRegex(@"^<li>(.*) <span title=""[^""]*""[^>]*><i>\(Source: (.*?)\)</i></span></li>$")]
     private static partial Regex ListItem();
 
-    [GeneratedRegex(@"\b(sim|sim cards?|iccid|imsi|msisdn|carrier|cellular|phone numbers?|mcc|mnc)\b", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"\b(sim|sim cards?|siminfo|iccid|imsi|msisdn|carrier|cellular|phone numbers?|mcc|mnc)\b", RegexOptions.IgnoreCase)]
     private static partial Regex SimWords();
 
     [GeneratedRegex(@"\b(accounts?|owner|apple ?id|dsid|e-?mail address|user ?name)\b", RegexOptions.IgnoreCase)]

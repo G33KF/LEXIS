@@ -20,6 +20,10 @@ public sealed record ContentKind(string Name, IReadOnlyList<ContentTile> Tiles)
 }
 /// <summary>A category of the LEAPP's device information, with its facts.</summary>
 public sealed record FactGroup(string Title, IReadOnlyList<DeviceFact> Facts);
+/// <summary>A fixed group of the device profile (Common info, Device, Settings) with its entries.</summary>
+public sealed record ProfileGroup(string Title, IReadOnlyList<ProfileEntry> Entries);
+/// <summary>One SIM card's card: its title, the identifiers it has, its sources on one line.</summary>
+public sealed record SimCardView(string Title, IReadOnlyList<Field> Fields, string Sources);
 
 /// <summary>Case overview: the device and extraction (from the .ufd file when one sits beside the extraction),
 /// what was found, who produced the report, what ran and whether a portable case is intact.</summary>
@@ -53,7 +57,60 @@ public sealed partial class SummaryViewModel : ObservableObject
 
     /// <summary>The device's main identifiers in one place, from the UFD and the LEAPP's device information: what it is,
     /// its software and its identifiers.</summary>
-    public IReadOnlyList<Field> Glance { get; }
+    [ObservableProperty] private IReadOnlyList<Field> glance = [];
+    /// <summary>The device profile in its fixed groups (<see cref="DeviceOverview.Profile"/>), read after the view opens.</summary>
+    [ObservableProperty] private IReadOnlyList<ProfileGroup> profile = [];
+    /// <summary>The Android users and profiles as a table, for the Users tab.</summary>
+    [ObservableProperty] private IReadOnlyList<AndroidUser> userTable = [];
+    /// <summary>The owner and accounts in short: the first values of the account summary's first parts.</summary>
+    [ObservableProperty] private IReadOnlyList<Field> ownerGlance = [];
+    /// <summary>The tab shown: 0 Overview, 1 Device, 2 SIM cards, 3 Owner and accounts, 4 Users, 5 Report.</summary>
+    [ObservableProperty] private int tab;
+    public string SimCount => SimCards.Count == 0 ? "" : $"{SimCards.Count:N0} SIM card{(SimCards.Count == 1 ? "" : "s")} recorded";
+
+    [RelayCommand]
+    void ShowTab(string index) => Tab = int.Parse(index, System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>Each SIM card as its card shows it: the title, the identifiers it has, the sources.</summary>
+    public IReadOnlyList<SimCardView> SimCardViews => SimCards.Select(c => new SimCardView(c.Title,
+        new (string Name, string Value)[] { ("Number", c.Number), ("ICCID", c.Iccid), ("IMSI", c.Imsi), ("MCC", c.Mcc), ("MNC", c.Mnc), ("Carrier", c.Carrier),
+            ("Country", c.Country), ("Slot", c.Slot), ("First seen", c.FirstSeen), ("Last seen", c.LastSeen) }
+            .Where(f => f.Value != "").Select(f => new Field(f.Name, f.Value)).ToList(), c.Sources.Replace("\n", " · "))).ToList();
+
+    partial void OnSimCardsChanged(IReadOnlyList<SimCard> value) { OnPropertyChanged(nameof(SimCount)); OnPropertyChanged(nameof(SimCardViews)); }
+
+    partial void OnAccountsChanged(IReadOnlyList<AccountGroup>? value) => UpdateOwnerGlance();
+    partial void OnAccountCardsChanged(IReadOnlyList<AccountCardView>? value) => UpdateOwnerGlance();
+
+    // what names an account in the overview, in this order, one value of each
+    static readonly string[] CoreValues = ["Full name", "Nickname", "Phone", "E-mail", "Username", "UID"];
+
+    /// <summary>The owner and accounts in short: each account card with its name and main identifiers; until the cards are
+    /// read, or when there are none, the first values of the account summary's first parts.</summary>
+    void UpdateOwnerGlance()
+    {
+        const int Max = 6;
+        if (AccountCards is { Count: > 0 } cards)
+        {
+            OwnerGlance = [.. cards.Take(Max).Select(c => new Field(c.Card.Title, string.Join(" · ", CoreValues
+                    .Select(l => c.Card.Values.FirstOrDefault(v => v.Label == l)?.Value).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase).Take(3)))),
+                .. cards.Count > Max ? [new Field("Other accounts", $"+{cards.Count - Max:N0}")] : Array.Empty<Field>()];
+            return;
+        }
+        OwnerGlance = (Accounts ?? []).Where(g => g.Count > 0).Take(4)
+            .Select(g => new Field(g.Title, string.Join("\n", g.Rows.Take(3).Select(r => r.Value)) + (g.Count > 3 ? $"\n+{g.Count - 3:N0} more" : ""))).ToList();
+    }
+
+    // the overview's identifiers the artifacts can add to: the label, and the label that makes it redundant
+    static readonly (string Label, string? Unless)[] GlanceAdds = [("Manufacturer", null), ("Model", null), ("Android version", "Operating system"), ("Device name", null)];
+
+    partial void OnProfileChanged(IReadOnlyList<ProfileGroup> value)
+    {
+        var have = Glance.Select(f => f.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var add = GlanceAdds.Where(x => !have.Contains(x.Label) && (x.Unless is null || !have.Contains(x.Unless)))
+            .SelectMany(x => value.SelectMany(g => g.Entries).Where(e => e.Label == x.Label)).Select(e => new Field(e.Label, e.Value)).ToList();
+        if (add.Count > 0) Glance = [.. add, .. Glance];
+    }
     public IReadOnlyList<FactGroup> DeviceFacts { get; }
     public IReadOnlyList<FactGroup> OwnerFacts { get; }
     public IReadOnlyList<FactGroup> SimFacts { get; }
@@ -64,11 +121,19 @@ public sealed partial class SummaryViewModel : ObservableObject
     public string FactsSource { get; }
     /// <summary>Each account of the device once per service, with the names recorded with it (<see cref="AccountRoster"/>).</summary>
     [ObservableProperty] private IReadOnlyList<AccountGroup>? accounts;
+    /// <summary>One row per account of each app or service (<see cref="AccountsOverview"/>), read after the view opens;
+    /// the one selected shows in the details.</summary>
+    [ObservableProperty] private IReadOnlyList<AccountCardView>? accountCards;
+    [ObservableProperty] private AccountCardView? selectedAccount;
+
+    partial void OnSelectedAccountChanged(AccountCardView? value) => value?.Show(_main.Details);
     /// <summary>The extraction as the overview shows it: the file, its type and the UFD's details, and the LEAPP that parsed it.</summary>
     public IReadOnlyList<Field> ExtractionOverview { get; }
     /// <summary>The last SIM card and the wipe, setup and restore dates (<see cref="DeviceOverview"/>), read after the view opens.</summary>
     [ObservableProperty] private IReadOnlyList<Field> lastSim = [];
     [ObservableProperty] private IReadOnlyList<Field> lifecycle = [];
+    /// <summary>Every SIM card recorded, with its first and last dates (<see cref="SimHistory"/>).</summary>
+    [ObservableProperty] private IReadOnlyList<SimCard> simCards = [];
     /// <summary>The Android users and profiles (owner, Secure Folder, work profile…), one per user id.</summary>
     [ObservableProperty] private IReadOnlyList<Field> users = [];
     /// <summary>The Statistics view in short: who the device exchanged with most and last, when its user was busiest, its positions.</summary>
@@ -121,6 +186,8 @@ public sealed partial class SummaryViewModel : ObservableObject
         var withData = m.Artifacts.Where(a => a.RecordCount > 0).ToList();
 
         var facts = LeappDeviceInfo.Read(s.RootDir);
+        Glance = GlanceOf(ufd, facts);
+        var known = Glance.Select(f => (f.Name, f.Value)).ToList();
         var leapp = m.ParserInfo.GetValueOrDefault("leapp_name") ?? "LEAPP";
         FactsSource = facts.Count == 0
             ? $"The report keeps no device information from {leapp} (_HTML/_Script_Logs/DeviceInfo.html is missing, as in a portable case). The artifacts below hold it."
@@ -132,15 +199,18 @@ public sealed partial class SummaryViewModel : ObservableObject
         (LifecycleArtifacts, OwnerArtifacts, SimArtifacts) = (Arts(LeappDeviceInfo.IsLifecycle), Arts(LeappDeviceInfo.IsOwner), Arts(LeappDeviceInfo.IsSim));
         _ = Task.Run(() => { using var con = s.OpenDb(); return AccountRoster.Summarize(AccountRoster.Collect(con, withData)); })
             .ContinueWith(t => Accounts = t.IsCompletedSuccessfully ? t.Result : [], TaskScheduler.FromCurrentSynchronizationContext());
+        _ = AccountCardView.LoadAsync(s).ContinueWith(t => AccountCards = t.IsCompletedSuccessfully ? t.Result : [], TaskScheduler.FromCurrentSynchronizationContext());
         _ = Task.Run(() =>
             {
                 using var con = s.OpenDb();
                 static List<Field> F(IEnumerable<(string Label, string Value)> xs) => xs.Select(x => new Field(x.Label, x.Value)).ToList();
-                return (F(DeviceOverview.LastSim(facts, con, withData)), F(DeviceOverview.Lifecycle(facts, con, withData)), F(DeviceOverview.Users(con, withData)));
+                var entries = DeviceOverview.Profile(con, withData, known);
+                IReadOnlyList<ProfileGroup> profile = DeviceOverview.ProfileGroups.Select(g => new ProfileGroup(g, entries.Where(e => e.Group == g).ToList()))
+                    .Where(g => g.Entries.Count > 0).ToList();
+                return (F(DeviceOverview.LastSim(facts, con, withData)), F(DeviceOverview.Lifecycle(facts, con, withData)), F(DeviceOverview.Users(con, withData)),
+                    SimHistory.Collect(facts, con, withData), profile, DeviceOverview.UserTable(con, withData));
             })
-            .ContinueWith(t => { if (t.IsCompletedSuccessfully) (LastSim, Lifecycle, Users) = t.Result; }, TaskScheduler.FromCurrentSynchronizationContext());
-
-        Glance = GlanceOf(ufd, facts);
+            .ContinueWith(t => { if (t.IsCompletedSuccessfully) (LastSim, Lifecycle, Users, SimCards, Profile, UserTable) = t.Result; }, TaskScheduler.FromCurrentSynchronizationContext());
         Contents = withData.GroupBy(a => a.Category).Select(g => (Kind: MacroCategories.UserContentKind(g.Key, g), Tile: new ContentTile(g.Key, g.Sum(a => a.RecordCount), g.Count(),
                 g.OrderByDescending(a => a.RecordCount).Take(4).ToList())))
             .Where(x => x.Kind is not null).GroupBy(x => x.Kind!)
@@ -148,7 +218,7 @@ public sealed partial class SummaryViewModel : ObservableObject
             .Select(g => new ContentKind(g.Key, [.. g.Select(x => x.Tile).OrderByDescending(t => t.Records)])).ToList();
         _ = Task.Run(() => { using var con = s.OpenDb(); return Core.Statistics.Albums(con, withData); })
             .ContinueWith(t => Albums = t.IsCompletedSuccessfully ? t.Result : [], TaskScheduler.FromCurrentSynchronizationContext());
-        ExtractionOverview = [.. Extraction.Where(f => f.Value != ""), new("Parsed by", $"{leapp} {m.ParserInfo.GetValueOrDefault("leapp_version")}".Trim()),
+        ExtractionOverview = [.. Extraction.Where(f => f.Value != ""), new("Parsed by", m.ParsedBy),
             new("Display time zone", ValueFormatter.Zone.DisplayName)];
         Info =
         [

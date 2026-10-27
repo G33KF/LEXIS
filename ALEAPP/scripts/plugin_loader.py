@@ -26,6 +26,10 @@ import importlib.util
 # PLUGINPATH = pathlib.Path("./scripts/artifacts")
 # a bit long-winded to make compatible with PyInstaller
 PLUGINPATH = pathlib.Path(__file__).resolve().parent / pathlib.Path("artifacts")
+# LEXIS replacements for standard artifacts: loaded after PLUGINPATH, so a module there that
+# declares a standard artifact key replaces it. Shipped inside scripts/, so a frozen build finds
+# it beside the standard folder.
+LEXISPATH = PLUGINPATH.parent / pathlib.Path("lexis_artifacts")
 
 
 @dataclasses.dataclass(frozen=True)
@@ -69,7 +73,9 @@ class PluginLoader:
     """
 
     def __init__(self, plugin_paths: typing.Optional[typing.List[pathlib.Path]] = None):
-        self._plugin_paths = plugin_paths or [PLUGINPATH]
+        self._plugin_paths = list(plugin_paths or [PLUGINPATH])
+        if PLUGINPATH in self._plugin_paths and LEXISPATH.is_dir() and LEXISPATH not in self._plugin_paths:
+            self._plugin_paths.insert(self._plugin_paths.index(PLUGINPATH) + 1, LEXISPATH)
         self._plugins: dict[str, PluginSpec] = {}
         self._artifact_names = {}
         self._plugin_sources = {}

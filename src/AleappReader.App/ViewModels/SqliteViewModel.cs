@@ -159,8 +159,8 @@ public sealed partial class SqliteViewModel : ObservableObject, IDisposable
         else
         {
             Columns = ["Table", .. head, "Values"];
-            Rows = recs.Select(r => new SqlRow([r.Table, .. Meta(r), string.Join("; ", r.Columns.Zip(r.Values, (c, v) => $"{c}={Text(v)}"))],
-                [r.Table, r.Kind, r.Confidence, r.Origin, r.Page, r.Offset, r.RowId, null], r)).ToList();
+            Rows = recs.Select(r => (r, values: string.Join("; ", r.Columns.Zip(r.Values, (c, v) => $"{c}={Text(v)}"))))
+                .Select(x => new SqlRow([x.r.Table, .. Meta(x.r), x.values], [x.r.Table, x.r.Kind, x.r.Confidence, x.r.Origin, x.r.Page, x.r.Offset, x.r.RowId, x.values], x.r)).ToList();
         }
         var kinds = string.Join(", ", recs.GroupBy(r => r.Kind).Select(g => $"{g.Count():N0} {g.Key}"));
         Status = $"{recs.Count:N0} records recovered{(one is null ? " from every table" : " of " + one)}{(kinds == "" ? "" : ": " + kinds)}. Live rows are never repeated.";
@@ -204,7 +204,7 @@ public sealed partial class SqliteViewModel : ObservableObject, IDisposable
         }
     }
 
-    static ImageSource? Image(byte[] b)
+    internal static ImageSource? Image(byte[] b)
     {
         try
         {

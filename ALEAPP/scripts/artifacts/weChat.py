@@ -60,13 +60,15 @@ __artifacts_v2__ = {
                  "only inside the com.tencent.mm folder the row's database sits in, so a file of "
                  "the same name under another Android user's copy of the app is not picked up. Two "
                  "WeChat accounts inside one com.tencent.mm folder share the lookup, and the first "
-                 "file of a given name is used. Media is checked in only where the resolved "
-                 "thumbnail is a real image by its leading bytes. On the corpus below image rows "
+                 "file of a given name is used. For an image row Media is checked in only where the "
+                 "resolved thumbnail is a real image by its leading bytes; for a voice row it is "
+                 "the resolved voice file itself, whatever its format, so a reader can offer it "
+                 "for playback, and a voice row whose file was not found leaves Media empty. On the corpus below image rows "
                  "resolved to a JPEG thumbnail, which is rendered. Attachment Format is read from "
                  "the file's leading bytes, and the values seen were the reason the other files "
                  "are not rendered: the full size images are a wxgf container, the voice files "
                  "carry a SILK header despite their amr extension, and the sticker files matched "
-                 "no known signature. Those three are reported by name, format and size so an "
+                 "no known signature. All three are reported by name, format and size so an "
                  "examiner knows the file exists and where, without this artifact claiming to have "
                  "decoded it. Image Path (as stored) keeps the raw imgPath token where the row has "
                  "one. Account ID and Account Name are the values of userinfo ids 2 and 4 in the "
@@ -744,6 +746,8 @@ def wechat_messages(context):
             head = _read_head(thumb)
             if _sniff(head) in ('JPEG', 'PNG', 'GIF'):
                 media = check_in_media(thumb, os.path.basename(thumb))
+        elif kind == 34 and attachment:
+            media = check_in_media(attachment, os.path.basename(attachment))
 
         if attachment:
             attach_name = os.path.basename(attachment)

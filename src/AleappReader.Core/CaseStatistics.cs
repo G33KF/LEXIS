@@ -48,7 +48,7 @@ public static class Statistics
     static readonly Regex NameColumn = new(@"(?<![a-z])((contact|display|full) ?name|name)(?![a-z])", RegexOptions.IgnoreCase);
     static readonly Regex Outgoing = new(@"^(out\w*|sent|dialed|dialled|1|true|yes|from me)$", RegexOptions.IgnoreCase);
     static readonly Regex Jid = new(@"^\d{6,15}(:\d+)?@(s\.whatsapp\.net|c\.us)$", RegexOptions.IgnoreCase);
-    static readonly Regex Group = new(@"@g\.us$|@chatroom$|^group", RegexOptions.IgnoreCase);
+    static readonly Regex Group = ConversationItem.GroupId;
 
     static readonly ConditionalWeakTable<CaseSession, Task<CaseStatistics>> Cache = new();
 

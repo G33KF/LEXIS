@@ -8,3 +8,4 @@ obj/
 *_REPORT_FOLDER/
 /src/AleappReader.App/engine/
 /release/
+/tools/silk/out/

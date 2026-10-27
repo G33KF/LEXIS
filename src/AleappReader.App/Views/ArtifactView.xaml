@@ -93,6 +93,21 @@
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>
+                                <DataGridTemplateColumn Header="&#xE777;" Width="26" CanUserSort="False"
+                                                        Visibility="{Binding Data.HasRecovered, Source={StaticResource Ctx}, Converter={StaticResource Vis}}">
+                                    <DataGridTemplateColumn.HeaderStyle>
+                                        <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource {x:Type DataGridColumnHeader}}">
+                                            <Setter Property="FontFamily" Value="{StaticResource IconFont}"/>
+                                            <Setter Property="ToolTip" Value="Recovered: a deleted record read back from a backup or by carving"/>
+                                        </Style>
+                                    </DataGridTemplateColumn.HeaderStyle>
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Style="{StaticResource Icon}" Text="&#xE777;" Foreground="{StaticResource RecoveredBrush}" FontSize="13"
+                                                       ToolTip="{Binding Recovered}" Visibility="{Binding Recovered, Converter={StaticResource Vis}}"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
                                 <DataGridTemplateColumn Header="Translation (AI)" Width="320" CanUserSort="False"
                                                         Visibility="{Binding Data.Translation.Shown, Source={StaticResource Ctx}, Converter={StaticResource Vis}}">
                                     <DataGridTemplateColumn.CellTemplate>

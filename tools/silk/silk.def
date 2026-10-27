@@ -1,0 +1,5 @@
+LIBRARY silk
+EXPORTS
+    SKP_Silk_SDK_Get_Decoder_Size
+    SKP_Silk_SDK_InitDecoder
+    SKP_Silk_SDK_Decode

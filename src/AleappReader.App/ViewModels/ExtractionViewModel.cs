@@ -274,6 +274,7 @@ public partial class ExtractionViewModel : ObservableObject
         {
             ResultManifest = await ExtractionRunner.RunAsync(engine, opts, log, prog, _cts.Token);
             Append("Done: " + ResultManifest);
+            Running = false; // before closing, or the window's Closing handler sees a run still in progress
             RequestClose?.Invoke();
         }
         catch (OperationCanceledException) { Append("Cancelled."); }

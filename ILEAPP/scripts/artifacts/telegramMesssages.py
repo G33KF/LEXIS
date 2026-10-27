@@ -11,16 +11,18 @@ __artifacts_v2__ = {
         ),
         "author": "Stek29 / Victor Oreshkin, updated by @AlexisBrignoni, @JamesHabben",
         "creation_date": "2023-05-01", # Placeholder, original date unknown
-        "last_update_date": "2026-07-31",
+        "last_update_date": "2026-10-26",
         "requirements": "Python packages: mmh3",
         "category": "Telegram",
         "notes": "Original Gist: "
                  "https://gist.github.com/stek29/8a7ac0e673818917525ec4031d77a713/"
                  "9cb766ed4f977d55ccd0187024be92eac11b65ba (the newest revision on 3 October "
                  "2026; the revision this module was written from is not recorded). This module "
-                 "reads the db_sqlite file of every account under telegram-data. Rows do not name "
-                 "the account, and peer names and media files are looked up across all accounts "
-                 "read. Media files are linked from the postbox/media directory by file name. A "
+                 "reads the db_sqlite file of every account under telegram-data. Account ID is the "
+                 "peerId of that database's t0 key 2 record, as Telegram Accounts reports it as User "
+                 "ID; Account Name is the username of that peer, else its phone number as stored, "
+                 "else its name; both are blank when the record does not decode. Peer names and "
+                 "media files are looked up across all accounts read. Media files are linked from the postbox/media directory by file name. A "
                  "database that raises an SQLite error is skipped without a log line, and the "
                  "located-at path names only the last database read. In the client's "
                  "TelegramMediaMap record 'bt' is liveBroadcastingTimeout, which this module "
@@ -98,6 +100,8 @@ def telegramMessages(context):
         'Author ID',
         'Action Data',
         'Forward From',
+        'Account ID',
+        'Account Name',
     ]
     report_file_path = 'Unknown'
 
@@ -346,6 +350,28 @@ def telegramMessages(context):
             peerName = 'Unknown'
         un_val = peer.get('un', '')
         return f"{peerName} (@{un_val} {peerId})" if un_val else f"{peerName} ({peerId})"
+
+    def account_of(con_param, cache_param):
+        """The account a Postbox database belongs to: its peer id (t0 key 2, as Telegram Accounts reads it) and a
+        label from its own peer record, the username first, then the phone number as stored, then the name."""
+        try:
+            cur = con_param.cursor()
+            cur.execute('SELECT value FROM t0 WHERE key = 2')
+            row = cur.fetchone()
+            cur.close()
+        except sqlite3.Error:
+            return '', ''
+        root = PostboxDecoder(row[0]).decodeRootObject() if row and row[0] else None
+        peer_id = root.get('peerId') if isinstance(root, dict) else None
+        if not peer_id:
+            return '', ''
+        try:
+            peer = get_peer(peer_id, con_param, cache_param) or {}
+        except sqlite3.Error:
+            peer = {}
+        name = f"{peer.get('fn', '')} {peer.get('ln', '')}".strip() or peer.get('t', '')
+        label = f"@{peer['un']}" if peer.get('un') else peer.get('p') or name or ''
+        return str(peer_id), label
 
     def print_media_info(m): # Renamed from print_media to avoid confusion, returns dict
         text_for_report = ''
@@ -1050,6 +1076,7 @@ def telegramMessages(context):
             db_connection = None
             try:
                 db_connection = open_sqlite_db_readonly(report_file_path)
+                account = account_of(db_connection, peer_cache_global)
 
                 # Iterate over all messages using the helper
                 for idx, msg_content in get_all_messages(db_connection):
@@ -1059,7 +1086,7 @@ def telegramMessages(context):
                             peer_cache_global, media_cache_global,
                             context.get_files_found(), media_index_global
                         )
-                        data_list.append(processed_row)
+                        data_list.append((*processed_row, *account))
 
             except sqlite3.Error:
                 # print(f"SQLite error processing {report_file_path}: {e}")

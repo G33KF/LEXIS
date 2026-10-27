@@ -9,11 +9,15 @@ using AleappReader.Core;
 
 namespace AleappReader.App.ViewModels;
 
-public partial class GalleryItem(MediaRef media, MediaUse? use, bool isChecked = false, Action<GalleryItem>? onCheck = null) : ObservableObject
+public partial class GalleryItem(MediaRef media, IReadOnlyList<MediaUse> uses, bool isChecked = false, Action<GalleryItem>? onCheck = null) : ObservableObject
 {
     public MediaRef Media { get; } = media;
-    /// <summary>The chat message the file came with, when a conversation artifact points to it.</summary>
-    public MediaUse? Use { get; } = use;
+    /// <summary>Every chat message the file was sent or received in, the earliest first.</summary>
+    public IReadOnlyList<MediaUse> Uses { get; } = uses;
+    /// <summary>The messages of other files holding the same bytes (a copy forwarded, saved or received again).</summary>
+    public IReadOnlyList<MediaUse> Copies { get; init; } = [];
+    /// <summary>The earliest chat message the file came with, when a conversation artifact points to it.</summary>
+    public MediaUse? Use => Uses.Count > 0 ? Uses[0] : null;
     /// <summary>The record the file belongs to, in an artifact's thumbnail view.</summary>
     public long RowId { get; init; } = -1;
     [ObservableProperty] private ImageSource? thumbnail;
@@ -28,7 +32,8 @@ public partial class GalleryItem(MediaRef media, MediaUse? use, bool isChecked =
     public string? AppName { get; init; }
     /// <summary>When the message was sent, else when the file was last changed or made.</summary>
     public long? Epoch => Use?.Epoch ?? Media.Modified ?? Media.Created;
-    public string Caption => Use is { } u ? string.Join(" · ", new[] { u.Direction, u.Sender }.Where(x => x != "")) : Media.Artifact;
+    public string Caption => Use is { } u ? string.Join(" · ", new[] { u.Direction, u.Sender, Uses.Count > 1 ? $"{Uses.Count} messages" : "" }.Where(x => x != ""))
+        : Media.Artifact;
     public string Tip => string.Join("\n", new[] { Media.SourcePath, Use is { } u ? $"{u.Artifact.Name} · {u.Chat}" : null,
         Epoch is { } e ? ValueFormatter.Format(e, new ColumnInfo("t", "t", "datetime")) : null }.Where(x => !string.IsNullOrEmpty(x)));
     public bool IsVideo => Media.Kind == "video";
@@ -41,7 +46,7 @@ public partial class GalleryViewModel : ObservableObject
     const int PageSize = 200;
     readonly MainViewModel _main;
     readonly CaseSession _s;
-    List<(MediaRef M, MediaUse? U, string Path, string App, bool Known)> _all = [];
+    List<(MediaRef M, IReadOnlyList<MediaUse> U, string Path, string App, bool Known, IReadOnlyList<MediaUse> C)> _all = [];
 
     public ObservableCollection<GalleryItem> Items { get; } = [];
     public string[] Kinds { get; } = ["all", "image", "video", "audio", "file"];
@@ -64,20 +69,21 @@ public partial class GalleryViewModel : ObservableObject
 
     /// <summary>A file's path on the device, and its app: named when the package or artifact is a known app, else the
     /// package, the artifact or the folder as before.</summary>
-    static (MediaRef, MediaUse?, string, string, bool) Entry(MediaRef m, MediaUse? u)
+    static (MediaRef, IReadOnlyList<MediaUse>, string, string, bool, IReadOnlyList<MediaUse>) Entry(MediaRef m, IReadOnlyList<MediaUse> u)
     {
         var path = EvidenceOrigin.DevicePath(m.SourcePath ?? m.ExtractionPath);
         var pkg = MediaOrigin.Package(path);
-        var fallback = u?.Artifact.Name ?? m.Artifact;
+        var fallback = u.Count > 0 ? u[0].Artifact.Name : m.Artifact;
         var name = MediaOrigin.AppName(pkg) ?? MediaOrigin.AppName(fallback);
-        return (m, u, path, name ?? pkg ?? fallback, name is not null);
+        return (m, u, path, name ?? pkg ?? fallback, name is not null, []);
     }
 
-    bool OfOrigin((MediaRef M, MediaUse? U, string Path, string App, bool Known) e) => Direction switch
+    /// <summary>Sent or Received keeps a file when any of its messages went that way: a picture received and forwarded is both.</summary>
+    bool OfOrigin((MediaRef M, IReadOnlyList<MediaUse> U, string Path, string App, bool Known, IReadOnlyList<MediaUse> C) e) => Direction switch
     {
         Gallery => MediaOrigin.IsGallery(e.Path),
-        SentOrReceived => e.U is not null,
-        Sent or Received => e.U?.Direction.Equals(Direction, StringComparison.OrdinalIgnoreCase) == true,
+        SentOrReceived => e.U.Count > 0,
+        Sent or Received => e.U.Any(u => u.Direction == Direction),
         Cache => MediaOrigin.IsCache(e.Path),
         SystemFiles => MediaOrigin.IsSystem(e.Path),
         _ => true,
@@ -118,13 +124,21 @@ public partial class GalleryViewModel : ObservableObject
         Status = fromExtraction ? "Reading the extraction…" : "";
         _all = await Task.Run(() =>
         {
-            if (fromExtraction) return _s.Extraction is { } x ? x.Media.Select(m => Entry(x.ToMedia(m), null)).ToList() : [];
+            if (fromExtraction) return _s.Extraction is { } x ? x.Media.Select(m => Entry(x.ToMedia(m), [])).ToList() : [];
             using var con = _s.OpenDb();
             var uses = MediaUses.Build(con, _s.Manifest);
-            // one tile per file: a picture used by two records is listed by the report twice; any of its refs gives the message
-            return new MediaResolver(_s).All(con, int.MaxValue).GroupBy(m => m.ExtractionPath ?? m.RefId)
-                .Select(g => Entry(g.First(), g.Select(m => uses.GetValueOrDefault(m.RefId)).Where(u => u is not null).MinBy(u => u!.Epoch ?? long.MaxValue)))
+            // one tile per file: a picture used by two records is listed by the report twice; all its refs give its messages
+            var byDate = Comparer<MediaUse>.Create(MediaUses.Earliest);
+            var all = new MediaResolver(_s).All(con, int.MaxValue).GroupBy(m => m.ExtractionPath ?? m.RefId)
+                .Select(g => Entry(g.First(), g.Select(m => m.RefId).Distinct().SelectMany(id => uses.GetValueOrDefault(id) ?? [])
+                    .DistinctBy(u => (u.Artifact.TableName, u.RowId)).Order(byDate).ToList()))
                 .ToList();
+            // a copy of the same bytes (forwarded, saved, received again) lends its messages to each file's history
+            foreach (var g in MediaUses.SameContent(Enumerable.Range(0, all.Count).Where(i => all[i].Item1.Exists), i => all[i].Item1.Size, i => all[i].Item1.OpenRead()))
+                if (g.Any(i => all[i].Item2.Count > 0))
+                    foreach (var i in g)
+                        all[i] = all[i] with { Item6 = g.Where(j => j != i).SelectMany(j => all[j].Item2).Except(all[i].Item2).Distinct().Order(byDate).ToList() };
+            return all;
         });
         Apps = AppsView(_all.Where(e => e.App != "").DistinctBy(e => e.App).OrderBy(e => !e.Known).ThenBy(e => e.App, StringComparer.OrdinalIgnoreCase)
             .Select(e => new AppChoice(e.App, e.Known ? "Apps" : "Others")));
@@ -145,14 +159,16 @@ public partial class GalleryViewModel : ObservableObject
         var query = SearchQuery.Parse(Filter);
         var (lo, hi) = ValueFormatter.Days(From, To); // the day after a change of summer time has its own offset
         return _all.Where(e => (App == AllApps || e.App == App) && OfOrigin(e))
-            .Select(e => new GalleryItem(e.M, e.U, !_unchecked.Contains(e.M), OnCheck) { AppName = e.App, Tag = TagOf(e.M, e.U) }).Where(i =>
+            .Select(e => new GalleryItem(e.M, e.U, !_unchecked.Contains(e.M), OnCheck) { AppName = e.App, Tag = TagOf(e.M, e.U), Copies = e.C }).Where(i =>
             (Kind == "all" || i.Media.Kind == Kind) &&
             (lo is null && hi is null || i.Epoch is { } ep && ep >= (lo ?? long.MinValue) && ep <= (hi ?? long.MaxValue)) &&
-            (query.IsEmpty || query.Matches([i.Media.Name, i.Media.Artifact, i.Media.SourcePath, i.Use?.Chat, i.Use?.Sender])));
+            (query.IsEmpty || query.Matches([i.Media.Name, i.Media.Artifact, i.Media.SourcePath, .. i.Uses.SelectMany(u => new[] { u.Chat, u.Sender })])));
     }
 
     Dictionary<string, string> _fileTags = [];
     Dictionary<string, Dictionary<long, TagEntry>> _recordTags = [];
+
+    string? TagOf(MediaRef m, IReadOnlyList<MediaUse> uses) => TagOf(m, uses.Count > 0 ? uses[0] : null);
 
     string? TagOf(MediaRef m, MediaUse? u) => _fileTags.GetValueOrDefault(TagStore.FileKey(m.SourcePath ?? m.ExtractionPath ?? m.Name)) ??
         (u is null ? null : (_recordTags.TryGetValue(u.Artifact.TableName, out var t) ? t : _recordTags[u.Artifact.TableName] = _s.Tags.ForTable(u.Artifact.TableName))
@@ -293,11 +309,20 @@ public partial class GalleryViewModel : ObservableObject
     async partial void OnSelectedChanged(GalleryItem? value)
     {
         if (value is null) return;
-        var m = value.Media;
-        // An extraction file is copied out (read-only, temp folder) so the viewer and "Open" work on a copy.
-        if (!m.Exists && m.RefId == "" && _s.Extraction is { } x && await Task.Run(() => x.CopyOut(m.SourcePath!)) is { } copy)
-            m = x.ToMedia(m.SourcePath!, copy);
-        if (Selected == value) _main.Details.ShowMedia(m, value.Use);
+        var m = await Local(value.Media);
+        if (Selected == value) _main.Details.ShowMedia(m, value.Use, value.Uses, value.Copies);
+    }
+
+    /// <summary>An extraction file is copied out (read-only, temp folder) so the viewer and "Open" work on a copy.</summary>
+    async Task<MediaRef> Local(MediaRef m) =>
+        !m.Exists && m.RefId == "" && _s.Extraction is { } x && await Task.Run(() => x.CopyOut(m.SourcePath!)) is { } copy ? x.ToMedia(m.SourcePath!, copy) : m;
+
+    /// <summary>Double-click: a picture, video, audio or PDF in its own window; any other file straight in its program.</summary>
+    public async void Open(GalleryItem item)
+    {
+        var m = await Local(item.Media);
+        if (m.Exists && m.Kind == "file" && !DetailsViewModel.IsPdf(m)) DetailsViewModel.OpenMedia(m);
+        else Views.RecordWindow.ShowMedia(_main, m, item.Use, item.Uses, item.Copies);
     }
 
     [RelayCommand]

@@ -102,24 +102,41 @@ public sealed class SearchQuery
     public enum Mode { AllWords, AnyWord, ExactPhrase, RegularExpression }
 
     /// <summary>The query the advanced search form stands for, in the typed syntax; null for an invalid regular
-    /// expression. Whole words turn each word (or the phrase) into a regex bounded by \b.</summary>
-    public static string? Compose(string words, Mode mode, bool wholeWords, string exclude)
+    /// expression. <paramref name="list"/> adds keywords loaded from a file, each kept whole (a phrase when it has
+    /// spaces, a regex in that mode): all of them with "All of the words", any of them otherwise. Whole words bound
+    /// each word (or the phrase) by \b, on a side only where it starts or ends with a letter of a spaced script.</summary>
+    public static string? Compose(string words, Mode mode, bool wholeWords, string exclude, IReadOnlyList<string>? list = null)
     {
-        static string Atom(string w, bool whole) =>
-            whole ? $"/\\b{Regex.Escape(w)}\\b/" : new SearchAtom(w, false).ToString();
         static string[] Split(string s) => s.Replace("\"", "").Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
-        string main;
+        var atoms = new List<string>();
         if (mode == Mode.RegularExpression)
+            foreach (var p in (string[])[words.Trim(), .. list ?? []])
+            {
+                if (p == "") continue;
+                if (ValidRegex(p) is null) return null;
+                atoms.Add($"/{p}/");
+            }
+        else
         {
-            if (words.Trim() == "") main = "";
-            else if (ValidRegex(words.Trim()) is null) return null;
-            else main = $"/{words.Trim()}/";
+            if (mode != Mode.ExactPhrase) atoms.AddRange(Split(words).Select(w => Atom(w, wholeWords)));
+            else if (string.Join(" ", Split(words)) is { Length: > 0 } p) atoms.Add(Atom(p, wholeWords));
+            atoms.AddRange((list ?? []).Select(k => k.Replace("\"", "").Trim()).Where(k => k != "").Select(k => Atom(k, wholeWords)));
         }
-        else if (mode == Mode.ExactPhrase)
-            main = string.Join(" ", Split(words)) is { Length: > 0 } p ? Atom(p, wholeWords) : "";
-        else main = string.Join(mode == Mode.AnyWord ? " | " : " ", Split(words).Select(w => Atom(w, wholeWords)));
+        var main = string.Join(mode == Mode.AllWords ? " " : " | ", atoms);
         return string.Join(" ", Split(exclude).Select(w => "-" + Atom(w, wholeWords)).Prepend(main).Where(s => s != ""));
     }
+
+    static string Atom(string w, bool whole)
+    {
+        var (left, right) = whole ? (SpacedLetter(w[0]), SpacedLetter(w[^1])) : (false, false);
+        return left || right ? $"/{(left ? "\\b" : "")}{Regex.Escape(w)}{(right ? "\\b" : "")}/" : new SearchAtom(w, false).ToString();
+    }
+
+    /// <summary>A letter or digit of a script that separates words with spaces. Chinese, Japanese, Thai, Lao, Khmer
+    /// and Myanmar do not, so \b next to them never matches inside a sentence: there the keyword matches as written.</summary>
+    static bool SpacedLetter(char c) =>
+        char.IsLetterOrDigit(c) && c is not ((>= '฀' and <= '໿') or (>= 'က' and <= '႟') or (>= 'ក' and <= '៿')
+                                             or (>= '⺀' and <= '鿿') or (>= '豈' and <= '﫿') or (>= 'ｦ' and <= 'ﾟ'));
 
     static string? ValidRegex(string p)
     {
@@ -150,8 +167,11 @@ public sealed class SearchQuery
     {
         if (cols.Count == 0) return "0";
         var p = "@q" + cmd.Parameters.Count;
-        cmd.Parameters.AddWithValue(p, a.Regex ? a.Text : "%" + ArtifactQuery.EscapeLike(a.Text) + "%");
-        var op = a.Regex ? $"REGEXP {p}" : $"LIKE {p} ESCAPE '\\'";
+        // SQLite's LIKE ignores case for A-Z only: text with other cased letters (Cyrillic, Greek, accented) goes through
+        // the case-insensitive REGEXP, so it matches as SearchAtom.Matches does in memory
+        var fold = !a.Regex && a.Text.Any(c => c > 127 && char.ToUpperInvariant(c) != char.ToLowerInvariant(c));
+        cmd.Parameters.AddWithValue(p, a.Regex ? a.Text : fold ? Regex.Escape(a.Text) : "%" + ArtifactQuery.EscapeLike(a.Text) + "%");
+        var op = a.Regex || fold ? $"REGEXP {p}" : $"LIKE {p} ESCAPE '\\'";
         // Datetime cells are epochs: also match their UTC text so "2024-05" finds them.
         return "(" + string.Join(" OR ", cols.Select(c =>
         {

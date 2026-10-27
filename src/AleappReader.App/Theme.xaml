@@ -10,6 +10,8 @@
     <SolidColorBrush x:Key="BorderBrush" Color="#D5DCE5"/>
     <SolidColorBrush x:Key="MutedBrush" Color="#566274"/>
     <SolidColorBrush x:Key="TagBrush" Color="#E8A317"/>
+    <!-- Recovered (deleted) records: a backup or carving brought them back. Distinct from the amber tag. -->
+    <SolidColorBrush x:Key="RecoveredBrush" Color="#C2410C"/>
     <SolidColorBrush x:Key="TagTextBrush" Color="#8A5A00"/>
     <SolidColorBrush x:Key="SentBrush" Color="#1F7AE0"/>
     <SolidColorBrush x:Key="ReceivedBrush" Color="#E9EDF2"/>

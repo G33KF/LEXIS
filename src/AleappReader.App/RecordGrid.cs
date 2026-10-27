@@ -37,6 +37,11 @@ public static class RecordGrid
                     l.SelectedItem = item.DataContext;
             };
             l.PreviewKeyDown += (_, a) => a.Handled |= a.Key == Key.Space && Keyboard.Modifiers == ModifierKeys.None && ToggleChecks(l.DataContext, l.SelectedItems);
+            l.MouseDoubleClick += (_, a) =>
+            {
+                if (l.DataContext is GalleryViewModel gv && a.OriginalSource is DependencyObject o && ItemsControl.ContainerFromElement(l, o) is ListBoxItem { DataContext: GalleryItem g })
+                    gv.Open(g);
+            };
             return;
         }
         if (d is not DataGrid g || e.NewValue is not true) return;

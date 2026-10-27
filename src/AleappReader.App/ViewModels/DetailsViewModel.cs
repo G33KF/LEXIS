@@ -25,14 +25,25 @@ public sealed record Field(string Name, string Value, bool Header = false, strin
         : ["It does not decode as " + Kind + " (damaged or cut short): the value stays as stored."];
 }
 
+/// <summary>One message a file was sent or received in, as the "Sent / received history" lists it.</summary>
+public sealed record MediaHistoryEntry(MediaUse Use, string When, bool Copy)
+{
+    public string What => $"{(Use.Direction == "" ? "In a message" : Use.Direction)} · {Use.Artifact.Name}{(Copy ? " · same content, other file" : "")}";
+    public string Who => (Use.Sent == true ? $"to {Use.Chat}" : Use.Sender != "" && Use.Sender != Use.Chat ? $"from {Use.Sender} · chat {Use.Chat}"
+        : Use.Sent == false ? $"from {Use.Chat}" : $"chat {Use.Chat}") + (Use.Group ? " (group)" : "");
+}
+
 /// <summary>Right pane: every field of the selected record, its media and its tag/note.</summary>
 public partial class DetailsViewModel(MainViewModel main) : ObservableObject
 {
     public ObservableCollection<Field> Fields { get; } = [];
     public ObservableCollection<MediaRef> Media { get; } = [];
+    /// <summary>Every message the file shown was sent or received in, the earliest first (gallery).</summary>
+    public ObservableCollection<MediaHistoryEntry> History { get; } = [];
     /// <summary>The first PDF among the media shown, previewed in the details (the main window shows it).</summary>
-    public MediaRef? Pdf => Media.FirstOrDefault(m => (m.MimeType == "application/pdf"
-        || Path.GetExtension(m.FullPath ?? m.Name).Equals(".pdf", StringComparison.OrdinalIgnoreCase)) && m.Exists);
+    public MediaRef? Pdf => Media.FirstOrDefault(m => IsPdf(m) && m.Exists);
+    public static bool IsPdf(MediaRef m) => m.MimeType == "application/pdf"
+        || Path.GetExtension(m.FullPath ?? m.Name).Equals(".pdf", StringComparison.OrdinalIgnoreCase);
     public IReadOnlyList<string> TagChoices => Settings.Current.Tags;
     public void RefreshTagChoices() => OnPropertyChanged(nameof(TagChoices));
     static string DefaultTag => Settings.Current.Tags.FirstOrDefault() ?? TagStore.DefaultTags[0];
@@ -58,6 +69,12 @@ public partial class DetailsViewModel(MainViewModel main) : ObservableObject
     void OpenSource()
     {
         if (Source is { } x) main.NavigateTo(x.Artifact, null, x.RowId);
+    }
+
+    [RelayCommand]
+    void OpenHistory(MediaHistoryEntry? e)
+    {
+        if (e is not null) main.NavigateTo(e.Use.Artifact, null, e.Use.RowId);
     }
 
     /// <summary>A timeline event: when and what happened first, then the record it comes from.</summary>
@@ -112,6 +129,7 @@ public partial class DetailsViewModel(MainViewModel main) : ObservableObject
         _aiKeys = [];
         Fields.Clear();
         Media.Clear();
+        History.Clear();
         Title = Subtitle = Tag = Note = "";
         TagKey = null;
         _s = null;
@@ -323,21 +341,28 @@ public partial class DetailsViewModel(MainViewModel main) : ObservableObject
         if (_sources.Count > 0) main.ShowInFiles(_sources[0], _s);
     }
 
-    public void ShowMedia(MediaRef m, MediaUse? use = null)
+    /// <summary>A media file; with its <paramref name="history"/> (gallery) every message it went through is listed apart,
+    /// then those of the files holding the same bytes (<paramref name="copies"/>); else the one message it came with heads the fields.</summary>
+    public void ShowMedia(MediaRef m, MediaUse? use = null, IReadOnlyList<MediaUse>? history = null, IReadOnlyList<MediaUse>? copies = null)
     {
         Clear();
         Title = m.Name;
         Subtitle = m.Artifact;
         string Time(long e) => ValueFormatter.Format(e, new ColumnInfo("t", "t", "datetime"));
+        foreach (var (h, copy) in (history ?? []).Select(h => (h, false)).Concat((copies ?? []).Select(h => (h, true))))
+            History.Add(new(h, h.Epoch is { } e ? Time(e) : "No message time", copy));
         if (use is not null)
         {
-            Fields.Add(new Field("Message", "", true));
-            Fields.Add(new Field("App", $"{use.Artifact.Name} ({use.Artifact.Category})"));
-            if (use.Chat != "") Fields.Add(new Field("Chat", use.Chat));
-            if (use.Direction != "") Fields.Add(new Field("Direction", use.Direction));
-            if (use.Sender != "") Fields.Add(new Field("Sender", use.Sender));
-            if (use.Epoch is { } e) Fields.Add(new Field("Message time", Time(e)));
             Source = (use.Artifact, use.RowId);
+            if (History.Count == 0)
+            {
+                Fields.Add(new Field("Message", "", true));
+                Fields.Add(new Field("App", $"{use.Artifact.Name} ({use.Artifact.Category})"));
+                if (use.Chat != "") Fields.Add(new Field("Chat", use.Chat));
+                if (use.Direction != "") Fields.Add(new Field("Direction", use.Direction));
+                if (use.Sender != "") Fields.Add(new Field("Sender", use.Sender));
+                if (use.Epoch is { } e) Fields.Add(new Field("Message time", Time(e)));
+            }
             Fields.Add(new Field("File", "", true));
         }
         if (m.MimeType is not null) Fields.Add(new Field("Type", m.MimeType));
@@ -500,23 +525,41 @@ public partial class DetailsViewModel(MainViewModel main) : ObservableObject
         try { Directory.Delete(SourceCopies, true); } catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
     }
 
+    /// <summary>Programs, scripts and shortcuts: a file from the phone of these types is never started, only shown in Explorer.</summary>
+    static readonly HashSet<string> Runnable = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".exe", ".com", ".scr", ".pif", ".msi", ".msp", ".dll", ".sys", ".cpl", ".bat", ".cmd", ".ps1", ".psm1", ".vbs", ".vbe", ".js", ".jse",
+        ".wsf", ".wsh", ".hta", ".lnk", ".url", ".scf", ".reg", ".inf", ".chm", ".msc", ".jar", ".sh", ".py", ".pyw", ".gadget", ".xll",
+        ".application", ".appref-ms", ".settingcontent-ms", ".library-ms",
+    };
+
     [RelayCommand]
-    static void OpenMedia(MediaRef? m)
+    internal static void OpenMedia(MediaRef? m)
     {
         if (m?.Exists != true) return;
-        // a document or a picture opens in its program; anything else (a program, a shortcut, a script) is only shown in Explorer
+        // a picture, a video or a plain document opens in its program; any other type opens as a read-only temp copy, since
+        // its program may write beside it (lock files); a program, a script or a shortcut is only shown in Explorer
         var file = m.LocalFile();
         var ext = Path.GetExtension(file);
         try
         {
-            if (ShellSafe.Contains(ext) || ExtractionFiles.MediaExtensions.Contains(ext)) Process.Start(new ProcessStartInfo(file) { UseShellExecute = true });
-            else Process.Start("explorer.exe", ["/select,", file]);
+            if (Runnable.Contains(ext)) { Process.Start("explorer.exe", ["/select,", file]); return; }
+            if (!ShellSafe.Contains(ext) && !ExtractionFiles.MediaExtensions.Contains(ext))
+            {
+                var dir = Directory.CreateDirectory(Path.Combine(SourceCopies, Guid.NewGuid().ToString("N")[..12])).FullName;
+                var copy = Path.Combine(dir, Path.GetFileName(file));
+                File.Copy(file, copy);
+                File.SetAttributes(copy, FileAttributes.ReadOnly);
+                file = copy;
+            }
+            Process.Start(new ProcessStartInfo(file) { UseShellExecute = true });
         }
         catch (System.ComponentModel.Win32Exception) { Process.Start("explorer.exe", ["/select,", file]); } // no program for the type
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { Process.Start("explorer.exe", ["/select,", m.LocalFile()]); }
     }
 
     [RelayCommand]
-    static void ShowInFolder(MediaRef? m)
+    internal static void ShowInFolder(MediaRef? m)
     {
         if (m?.Exists == true) Process.Start("explorer.exe", ["/select,", m.LocalFile()]);
     }
