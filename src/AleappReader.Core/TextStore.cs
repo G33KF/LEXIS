@@ -142,6 +142,20 @@ public sealed class TextStore(string path)
         return list;
     }
 
+    /// <summary>The text parts recorded for a file, each with how it was read.</summary>
+    public IReadOnlyList<(string Part, string Method, string Text)> Parts(string file)
+    {
+        if (!File.Exists(path)) return [];
+        using var con = Open();
+        using var cmd = con.CreateCommand();
+        cmd.CommandText = "SELECT part, method, text FROM parts WHERE path=@p ORDER BY id";
+        cmd.Parameters.AddWithValue("@p", file);
+        using var r = cmd.ExecuteReader();
+        var list = new List<(string, string, string)>();
+        while (r.Read()) list.Add((r.GetString(0), r.GetString(1), r.GetString(2)));
+        return list;
+    }
+
     static TextFile ReadFile(SqliteDataReader r, int at) => new(r.GetString(at), r.GetInt64(at + 1), r.GetString(at + 2), r.GetString(at + 3),
         r.GetString(at + 4), r.GetString(at + 5), r.GetInt32(at + 6), r.GetString(at + 7));
 

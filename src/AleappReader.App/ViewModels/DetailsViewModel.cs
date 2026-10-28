@@ -71,6 +71,16 @@ public partial class DetailsViewModel(MainViewModel main) : ObservableObject
         if (Source is { } x) main.NavigateTo(x.Artifact, null, x.RowId);
     }
 
+    /// <summary>One field explained by the AI, with the title and the other fields shown as its context.</summary>
+    public void ExplainField(Field f)
+    {
+        if ((_s ?? main.Session) is not { } s) return;
+        var others = string.Join("\n", Fields.Where(x => x != f && !x.Header && !x.IsAi && x.Value != "").Select(x => $"{x.Name}: {x.Value}"));
+        if (others.Length > 12_000) others = others[..12_000] + "\n…";
+        var about = $"Shown: {Title} · {Subtitle}\n\nThe value to explain:\n{f.Name}: {f.Raw ?? f.Value}\n\nThe other fields shown with it (context only):\n{others}";
+        if (main.OpenAi(s, new AiScope($"the field \"{f.Name}\" of {Title}", [], [], about, [.. _aiKeys.Take(1).Select(k => k.Key)])) is { } vm) _ = vm.ExplainDataCommand.ExecuteAsync(null);
+    }
+
     [RelayCommand]
     void OpenHistory(MediaHistoryEntry? e)
     {
@@ -97,31 +107,11 @@ public partial class DetailsViewModel(MainViewModel main) : ObservableObject
     /// <summary>Changes whenever another item is shown: a late addition checks it before landing.</summary>
     public int Shown => _shown;
 
-    /// <summary>An "AI" section with the latest note of each kind about the item and its media (translation,
-    /// explanation, description, OCR and its translation, transcription…), before the record's own fields.</summary>
-    async Task AddAiAsync()
-    {
-        if (_s is not { } s || _aiKeys.Length == 0) return;
-        var (keys, shown) = (_aiKeys, _shown);
-        var notes = await Task.Run(() =>
-        {
-            try
-            {
-                var store = AiStore.For(s);
-                return keys.SelectMany(k => AiText.Notes(store.Citing(k.Key), k.Key)
-                    .Select(n => new Field(k.Media is null ? n.Name : $"{n.Name} · {k.Media}", n.Text, Ai: n.Label))).ToList();
-            }
-            catch (Exception e) when (e is IOException or UnauthorizedAccessException or Microsoft.Data.Sqlite.SqliteException) { return []; }
-        });
-        if (shown != _shown) return;
-        foreach (var f in Fields.Where(f => f.IsAi || f is { Header: true, Name: "AI" }).ToList()) Fields.Remove(f);
-        if (notes.Count == 0) return;
-        var at = Fields.Select((f, i) => (f, i)).FirstOrDefault(x => x.f is { Header: true, Name: "All fields of the record" or "Source" or "File" }, (null!, Fields.Count)).Item2;
-        foreach (var f in notes.Prepend(new Field("AI", "", true))) Fields.Insert(at++, f);
-    }
+    /// <summary>The item's AI analyses, in the AI Analysis tab.</summary>
+    Task AddAiAsync() => LoadAnalysesAsync();
 
-    /// <summary>After an AI run: the notes of the item shown, as now saved.</summary>
-    public void RefreshAi() => _ = AddAiAsync();
+    /// <summary>After an AI run: the analyses of the item shown, as now saved, and its summary written again when they changed.</summary>
+    public void RefreshAi() => _ = LoadAnalysesAsync(ran: true);
 
     public void Clear()
     {
@@ -137,6 +127,7 @@ public partial class DetailsViewModel(MainViewModel main) : ObservableObject
         (_sources, HasSources) = ([], false);
         IsTagged = false;
         Html = null;
+        ClearTabs();
     }
 
     /// <summary>Shows one artifact row: every column, resolved media, source path and tag.</summary>
@@ -316,6 +307,12 @@ public partial class DetailsViewModel(MainViewModel main) : ObservableObject
         Fields.Add(new Field("Path in the extraction", rel));
         Fields.Add(new Field("Size", $"{size:N0} bytes"));
         Fields.Add(new Field("Read by", readBy.Count == 0 ? "No artifact" : string.Join("\n", readBy.Select(a => $"{a.Name} ({a.Category})"))));
+        if (s.Extraction is { } x)
+        {
+            _aiKeys = [(AiText.Key("media", x.ToMedia(rel).RefId), null)];
+            ShowTexts(s, rel, _aiKeys[0].Key);
+            _ = AddAiAsync();
+        }
         (_sources, _sourcesTitle, HasSources) = ([rel], Title, true);
         _ = AddFileMediaAsync(s, rel);
     }
@@ -382,6 +379,8 @@ public partial class DetailsViewModel(MainViewModel main) : ObservableObject
         Media.Add(m);
         _ = AddMetadataAsync([m]);
         _aiKeys = [(AiText.Key("media", m.RefId), null)];
+        // a file of the whole extraction keeps its text under its path in the extraction
+        if (_s is { } ts && (ExtractionFiles.IsExtraction(m) ? m.SourcePath : m.ExtractionPath) is { Length: > 0 } rel) ShowTexts(ts, rel, _aiKeys[0].Key);
         _ = AddAiAsync();
     }
 

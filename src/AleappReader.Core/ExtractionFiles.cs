@@ -479,9 +479,13 @@ public sealed class ExtractionFiles : IDisposable
         }
     }
 
+    /// <summary>Media ids of extraction files: the prefix and a hash of the path, so each file keeps its own AI results.</summary>
+    public const string RefPrefix = "x-";
+    public static bool IsExtraction(MediaRef m) => m.RefId.StartsWith(RefPrefix, StringComparison.Ordinal);
+
     /// <summary>A gallery/details entry for an extraction file; FullPath is set once it has been copied out.</summary>
     public MediaRef ToMedia(string rel, string? copied = null) =>
-        new("", Path.GetFileName(rel), null, rel, null, copied, "", EvidenceOrigin.DevicePath(Path.GetDirectoryName(rel)));
+        new(RefPrefix + Hash(rel), Path.GetFileName(rel), null, rel, null, copied, "", EvidenceOrigin.DevicePath(Path.GetDirectoryName(rel)));
 
     public void Dispose() => _zip?.Dispose();
 

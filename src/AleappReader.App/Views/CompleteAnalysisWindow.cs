@@ -47,11 +47,14 @@ public sealed class CompleteAnalysisWindow : Window
         _translate = new CheckBox { Content = $"Translate the records into {ai.TranslateTo} first (shown beside each record)", Margin = new(0, 2, 0, 2) };
         _describe = new CheckBox { Content = "Describe the pictures and read their text (OCR) first", Margin = new(0, 2, 0, 2) };
         _transcribe = new CheckBox { Content = "Transcribe the audio first", Margin = new(0, 2, 0, 2) };
+        // a job without a model in AI settings cannot run: its step is shown, off
+        foreach (var (box, ready) in new[] { (_translate, AiState.Instance.Text), (_describe, AiState.Instance.Vision), (_transcribe, AiState.Instance.Audio) })
+            if (!ready) { box.IsEnabled = false; box.ToolTip = "No model for this job: choose one in AI settings"; ToolTipService.SetShowOnDisabled(box, true); }
         _web = new CheckBox { Content = "Web search for the objective's words (shown and confirmed)", Margin = new(0, 2, 0, 2) };
         _claude = new CheckBox
         {
             Content = "Claude CLI explores the whole case through LEXIS's read-only tools (leaves this machine)", Margin = new(0, 2, 0, 2),
-            Visibility = ai.ClaudeAllowed ? Visibility.Visible : Visibility.Collapsed,
+            Visibility = ai.ClaudeExplores ? Visibility.Visible : Visibility.Collapsed,
             ToolTip = "Instead of the text model: Claude reads any record of the case through the MCP tools and writes the report, citing what it read",
         };
 

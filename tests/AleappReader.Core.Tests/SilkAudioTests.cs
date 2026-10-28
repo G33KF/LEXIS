@@ -93,6 +93,15 @@ public class SilkAudioTests
             var other = Path.Combine(dir, "real.amr");
             File.WriteAllBytes(other, "#!AMR\n\0\0"u8.ToArray());
             Assert.Equal((other, (string?)null), SilkAudio.Playable(Ref(other), [cache]));
+
+            // speech to text gets the kept WAV for SILK, the file itself otherwise
+            var (audio, name, silk) = SilkAudio.ForTranscription(Ref(original), [cache]);
+            Assert.Equal(File.ReadAllBytes(wav), audio);
+            Assert.Equal(("msg_x.wav", sha), (name, silk));
+            Assert.Equal(written, File.GetLastWriteTimeUtc(wav));
+            (audio, name, silk) = SilkAudio.ForTranscription(Ref(other), [cache]);
+            Assert.Equal(File.ReadAllBytes(other), audio);
+            Assert.Equal(("real.amr", (string?)null), (name, silk));
         }
         finally { Directory.Delete(dir, true); }
     }

@@ -147,6 +147,15 @@ public static class SilkAudio
         return (wav, sha);
     }
 
+    /// <summary>What speech to text is given for <paramref name="m"/>: the WAV decoded from it when it is SILK (the one
+    /// kept with the case, see <see cref="Playable"/>), named .wav, with the original's SHA-256; else its own bytes and name.</summary>
+    public static (byte[] Audio, string Name, string? SilkSha) ForTranscription(MediaRef m, IReadOnlyList<string> folders)
+    {
+        if (SilkSha(m.OpenRead) is null) return (m.ReadAllBytes(), m.Name, null);
+        var (wav, sha) = Playable(m, folders);
+        return (File.ReadAllBytes(wav), Path.ChangeExtension(m.Name, ".wav"), sha);
+    }
+
     /// <summary>The decoded audio a portable case takes: the WAVs of the case's folders for the originals in
     /// <paramref name="originals"/> (every one when null), and an index.tsv of only those, written to <paramref name="staging"/>.</summary>
     public static List<(string Src, string Rel)> ForExport(CaseSession s, string staging, IEnumerable<string>? originals)

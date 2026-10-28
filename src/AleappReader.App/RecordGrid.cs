@@ -151,7 +151,9 @@ public static class RecordGrid
             Add(menu, $"Check {n} message(s)", () => cv.Check(recs.Select(r => r.RowId), true));
             Add(menu, $"Uncheck {n} message(s)", () => cv.Check(recs.Select(r => r.RowId), false));
         }
-        if (main.SessionOf(recs[0].Artifact) is { } s)
+        if (g.DataContext is ConversationViewModel one && g.SelectedItems.OfType<ConversationItem>().ToList() is [var chat])
+            menu.Items.Add(AiLater(main, one.Session, "Reading the whole chat…", () => one.WholeChat(chat)));
+        else if (main.SessionOf(recs[0].Artifact) is { } s)
         {
             var mine = recs.Where(r => main.SessionOf(r.Artifact) == s).ToList(); // one device per AI run
             var tr = g.DataContext switch { ArtifactViewModel a => a.Translation, ChatViewModel c => c.Translation, _ => null };
@@ -199,17 +201,11 @@ public static class RecordGrid
             menu.Items.Add(TagsMenu(tag => gv.TagFiles(items, tag)));
             Add(menu, $"Check {n} file(s)", () => items.ForEach(i => i.IsChecked = true));
             Add(menu, $"Uncheck {n} file(s)", () => items.ForEach(i => i.IsChecked = false));
-            var ai = new MenuItem { Header = "AI" };
-            ai.Items.Add(new MenuItem { Header = "Reading the files…", IsEnabled = false });
-            menu.Items.Add(AiState.Instance.Enabled ? ai : Off(ai));
-            if (AiState.Instance.Enabled) _ = FillAsync(); // files only in the extraction are copied out first, for the AI to read them
-            async Task FillAsync()
-            {
-                var media = await gv.Readable(items.Select(i => i.Media));
-                var built = AiMenu(main, gv.Session, new AiScope($"{n:N0} selected media files of the gallery", [], media), null);
-                ai.Items.Clear();
-                foreach (var x in built.Items.Cast<object>().ToList()) { built.Items.Remove(x); ai.Items.Add(x); }
-            }
+            if (items.Where(i => i.Media.IsImage).Select(i => i.Media).ToList() is { Count: > 0 } pics)
+                menu.Items.Add(OcrJobs.Menu(e => _ = Ocr(main, gv.Session, () => gv.Readable(pics), e)));
+            // files only in the extraction are copied out first, for the AI to read them
+            menu.Items.Add(AiLater(main, gv.Session, "Reading the files…",
+                async () => new AiScope($"{n:N0} selected media files of the gallery", [], await gv.Readable(items.Select(i => i.Media)))));
             menu.Items.Add(new Separator());
             Add(menu, $"Copy {n} file name(s)", () => Clipboard.SetText(string.Join(Environment.NewLine, items.Select(i => i.Media.SourcePath ?? i.Media.Name))));
         }
@@ -221,6 +217,8 @@ public static class RecordGrid
             menu.Items.Add(TagsMenu(tag => main.SetTag(ids.Select(id => (av.Artifact, id)), tag, true)));
             Add(menu, $"Check {n} record(s)", () => av.Check(ids, true));
             Add(menu, $"Uncheck {n} record(s)", () => av.Check(ids, false));
+            if (s is not null && tiles.Where(t => t.Media.IsImage && t.Media.Exists).Select(t => t.Media).ToList() is { Count: > 0 } pics)
+                menu.Items.Add(OcrJobs.Menu(e => _ = Ocr(main, s, () => Task.FromResult(pics), e)));
             if (s is not null)
                 menu.Items.Add(AiMenu(main, s, new AiScope($"{tiles.Count:N0} selected media files of {av.Artifact.Name}", [], [.. tiles.Select(t => t.Media)]), null));
             menu.Items.Add(new Separator());
@@ -244,23 +242,68 @@ public static class RecordGrid
     {
         var ai = new MenuItem { Header = "AI" };
         if (!AiState.Instance.Enabled) return Off(ai);
-        void Run(string header, Func<AiViewModel, Task> job) => Add(ai, header, () => { if (main.OpenAi(s, scope) is { } vm) _ = job(vm); });
+        var st = AiState.Instance;
+        // a job without a model is listed, disabled, so the examiner sees what AI settings would add
+        void Job(bool ready, string header, Action act)
+        {
+            if (ready) Add(ai, header, act);
+            else ai.Items.Add(new MenuItem { Header = header + " (no model: AI settings)", IsEnabled = false });
+        }
+        void Run(bool ready, string header, Func<AiViewModel, Task> job) => Job(ready, header, () => { if (main.OpenAi(s, scope) is { } vm) _ = job(vm); });
         if (scope.Records.Count > 0)
         {
-            Add(ai, $"Translate into {Settings.Current.Ai.TranslateTo}", () => _ = main.TranslateQuietly(s, scope, shown));
-            Run("Summarize", vm => vm.SummarizeCommand.ExecuteAsync(null));
-            Run("Explain (every technical value)", vm => vm.ExplainCommand.ExecuteAsync(null));
+            // what the artifact holds decides: a cookie is not translated, a single setting not summarized
+            List<ArtifactInfo> arts = [.. scope.Records.Select(r => r.Artifact)];
+            if (arts.Any(MacroCategories.Written))
+                Job(st.Text, $"Translate into {Settings.Current.Ai.TranslateTo}", () => _ = main.TranslateQuietly(s, scope, shown));
+            if (MacroCategories.Summarizable(arts))
+                Run(st.Text, "Summarize", vm => vm.SummarizeCommand.ExecuteAsync(null));
+            Run(st.Text, "Explain (every technical value)", vm => vm.ExplainCommand.ExecuteAsync(null));
         }
         if (scope.Media.Count(m => m.IsImage) is > 0 and var images)
         {
-            Run($"Describe and read the text (OCR) of {images} image(s)", vm => vm.DescribeImagesCommand.ExecuteAsync(null));
-            Run($"Classify {images} image(s)", vm => vm.ClassifyImagesCommand.ExecuteAsync(null));
+            Run(st.Vision, $"Describe and read the text (OCR) of {images} image(s)", vm => vm.DescribeImagesCommand.ExecuteAsync(null));
+            Run(st.Vision, $"Classify {images} image(s)", vm => vm.ClassifyImagesCommand.ExecuteAsync(null));
         }
         if (scope.Media.Count(m => m.Kind == "audio") is > 0 and var audio)
-            Run($"Transcribe {audio} audio file(s)", vm => vm.TranscribeCommand.ExecuteAsync(null));
+            Run(st.Audio, $"Transcribe {audio} audio file(s)", vm => vm.TranscribeCommand.ExecuteAsync(null));
+        if (scope.Media.Count(m => m.Kind == "video") is > 0 and var videos)
+            Run(st.Video, $"Analyze {videos} video{(videos == 1 ? "" : "s")}: frames and audio", vm => vm.AnalyseVideosCommand.ExecuteAsync(null));
         if (ai.Items.Count > 0) ai.Items.Add(new Separator());
         Add(ai, "Open the AI window on them (questions, thematic review)…", () => main.OpenAi(s, scope));
         return ai;
+    }
+
+    /// <summary>OCR of pictures, each kept under its path in the extraction (else its path on the device), from a readable copy.</summary>
+    static async Task Ocr(MainViewModel main, CaseSession s, Func<Task<List<MediaRef>>> readable, OcrJobs.Engine e)
+    {
+        List<MediaRef> media;
+        try { media = await readable(); }
+        catch (Exception x) when (x is System.IO.IOException or UnauthorizedAccessException or System.IO.InvalidDataException) { main.Status = "Cannot read the files: " + x.Message; return; }
+        await OcrJobs.Run(main, s, [.. media.Select(m => (m.ExtractionPath ?? m.SourcePath ?? m.Name, (Func<string?>)(() => m.FullPath)))], e);
+    }
+
+    /// <summary>"AI ▸" whose scope takes reading first (files copied out of the extraction, a whole chat): filled when it is ready.</summary>
+    static MenuItem AiLater(MainViewModel main, CaseSession s, string reading, Func<Task<AiScope>> scope)
+    {
+        var ai = new MenuItem { Header = "AI" };
+        if (!AiState.Instance.Enabled) return Off(ai);
+        ai.Items.Add(new MenuItem { Header = reading, IsEnabled = false });
+        _ = Fill();
+        return ai;
+        async Task Fill()
+        {
+            MenuItem built;
+            try { built = AiMenu(main, s, await scope(), null); }
+            catch (Exception e) when (e is System.IO.IOException or UnauthorizedAccessException or System.IO.InvalidDataException or Microsoft.Data.Sqlite.SqliteException)
+            {
+                ai.Items.Clear();
+                ai.Items.Add(new MenuItem { Header = "Cannot read: " + e.Message, IsEnabled = false });
+                return;
+            }
+            ai.Items.Clear();
+            foreach (var x in built.Items.Cast<object>().ToList()) { built.Items.Remove(x); ai.Items.Add(x); }
+        }
     }
 
     static void Add(ItemsControl menu, string header, Action act, string gesture = "")

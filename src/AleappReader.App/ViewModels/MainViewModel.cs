@@ -8,7 +8,7 @@ using Microsoft.Win32;
 
 namespace AleappReader.App.ViewModels;
 
-public enum NodeKind { Summary, Timeline, Map, Gallery, Tagged, Search, Indicators, Files, Group, Category, Artifact, Chats, ChatApp, ChatAccount,
+public enum NodeKind { Summary, Timeline, Map, Gallery, Documents, Tagged, Search, Indicators, Files, Group, Category, Artifact, Chats, ChatApp, ChatAccount,
                        Device, CoPresence, CommonContacts, Statistics, Case }
 
 /// <summary>One report open in the reader: the only one, or a device of an investigation case, with the name and colour
@@ -319,6 +319,7 @@ public partial class MainViewModel : ObservableObject
                                          : value.Kept ??= new SearchViewModel(this, [DeviceOf(s)!], ""), // this device only
             NodeKind.Indicators => () => value.Kept ??= new IndicatorsViewModel(this, s),
             NodeKind.Files => () => value.Kept ??= new FilesViewModel(this, s),
+            NodeKind.Documents => () => value.Kept ??= new FilesViewModel(this, s, RawFiles.Documents, n => value.CountText = n.ToString("N0")),
             NodeKind.Artifact => () => new ArtifactViewModel(this, s, value.Artifact!, columnFilter: value.Filter),
             NodeKind.ChatApp => () => new ConversationViewModel(this, s, value.Artifact!),
             NodeKind.ChatAccount => () => new ConversationViewModel(this, s, value.Artifact!, value.Account, value.Title),
@@ -828,6 +829,7 @@ public partial class MainViewModel : ObservableObject
         var geo = GeoExtractor.GeoArtifacts(m).Count();
         if (geo > 0) into.Add(new NodeViewModel { Title = "Map", Kind = NodeKind.Map, Glyph = "", CountText = $"{geo} sources" });
         into.Add(new NodeViewModel { Title = "Media Gallery", Kind = NodeKind.Gallery, Glyph = "" });
+        into.Add(new NodeViewModel { Title = "Documents", Kind = NodeKind.Documents, Glyph = "" });
         var tagged = new NodeViewModel { Title = "Tagged Items", Kind = NodeKind.Tagged, Glyph = "" };
         into.Add(tagged);
         into.Add(new NodeViewModel { Title = "Search", Kind = NodeKind.Search, Glyph = "" });

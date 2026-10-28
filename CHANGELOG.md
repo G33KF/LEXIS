@@ -1,5 +1,71 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- **Video analysis with the AI.** Right-click a video (Gallery, artifact tiles, Extraction Files) or the AI window:
+  frames taken by LEXIS's ffmpeg every N % of the duration (default 10 %) or every N seconds, at most 30 by default,
+  each described by the video model (the vision model unless one is set), and the audio track transcribed; the result
+  is a timeline of what is seen and said, with the SHA-256 of each frame sent. Settings in AI settings › Video. LEXIS's
+  ffmpeg now also decodes H.264, HEVC, MPEG-4, H.263, VP8, VP9 and MJPEG (6 MB).
+- **Documents node** beside Media Gallery: the extraction's PDF, Office, OpenDocument, RTF and iWork files, typed from
+  their first bytes when it opens (so one saved without an extension is found too), with the artifacts that read them.
+- **Details in tabs.** *Details*, then *Text Extraction* (text read from the file, part by part, with its method and
+  any AI translation under it, marked out of date when the text changes) and *AI Analysis* (an AI summary of all the
+  item's analyses, written after each one or on *Update*, then every analysis by kind); the two show only when they
+  have content. An analysis can be corrected or excluded by the examiner: the model's text is kept, nothing is deleted.
+- **Explain on a record explains that record**: what it is, then each value it holds and what it means; the result
+  shows in the record's *AI Analysis* tab.
+- **The AI offers what fits the artifact**: Translate only for text people wrote (messages, emails, notes, calendar,
+  posts, searches), Summarize for those, calls, locations, web history or several artifacts together; Explain always.
+- **whisper.cpp setup.** AI settings › whisper.cpp › *Set up* installs whisper.cpp (CPU, OpenBLAS or, with an NVIDIA
+  card, CUDA) from its GitHub releases and the models chosen from Hugging Face, after a confirmation; each file is kept
+  only if its SHA-256 is the published one, and `install.log` records what came from where. It also adds and deletes
+  models. Not bundled with LEXIS. When a step fails it says which and why, and how to install by hand.
+- **Opus, AMR, M4A and MP3 audio transcribed without installing ffmpeg.** LEXIS carries its own ffmpeg (2 MB,
+  decoders only, LGPL, built from FFmpeg 9.0.2 by `tools/ffmpeg/build.sh`) to convert them for whisper.cpp.
+- **Parallel requests.** AI settings › *Parallel requests* (default 1) sends that many requests at once for images,
+  audio, the thematic review, the complete analysis's reading, Explain and questions. Summaries and translations stay
+  in order, each step carrying the one before.
+- **AI on right-click wherever data is shown.** Any field of the details: *Explain with the AI*, the other fields going
+  with it as context. Extraction Files: describe and OCR or classify an image, transcribe audio, or explain any file
+  from its content or hex. Chat list: the AI on the whole chat, read in full, with its media and its data.
+- **AI window by kind of work.** *The data shown* (explain it), *Read the records* (summarise, explain, translate),
+  *Search the records* (question, thematic review), images, audio; the results can be shown one kind at a time.
+- **OCR, offline, with the engine chosen each time.** Right-click a picture or a PDF (Extraction Files, Gallery,
+  Search results) › *Read the text (OCR)*: Tesseract, carried by LEXIS (12 languages, chosen in Settings), or the OCR
+  built into Windows; the AI's *Describe and read the text* stays in the AI menu. A scanned PDF's pages are read from
+  their images, within the size and page limits set in Settings. The text is kept in the case's text base: Search
+  finds it and the file's details show it. Tesseract needs no Visual C++ install: its runtime comes with LEXIS.
+
+### Changed
+- **Engines for each job.** AI settings list Ollama, LM Studio, the Claude CLI and whisper.cpp as engines; each job
+  offers every engine that can do it, with where it runs. Choosing the Claude CLI for a job is the permission (the
+  separate checkbox is gone); *Ask Claude* is available when it does the text job. Transcription defaults to whisper.cpp,
+  and can be any other engine or endpoint; with whisper.cpp chosen, *Set up / models…* sits beside the job.
+- **Audio that cannot be transcribed is said, not skipped silently.** When whisper.cpp is not set up or the model chosen
+  for audio runs chat only, the analysis says so and asks whether to continue without the audio files; the result
+  records them as not transcribed and why.
+- **AI functions follow the jobs that have a model.** Text functions need a text model, image ones a vision model,
+  transcription an audio engine; without one their buttons and menu items are off. AI on with no job set is not saved.
+- **Summaries are summaries, and cover the media.** Overview, subjects, media and people, each point citing all its
+  records; long chats are folded step by step instead of retold. Pictures and audio not read yet are offered to read
+  first; what the AI read in a message's files goes with that message. A chat's summary opens with the chat's own
+  data (name, type and ID, app, device account, participants, the messages summarised), from the case, not the AI.
+
+### Fixed
+- **Gallery: the AI read only the first of several files found in the extraction only**, and cited them all alike;
+  each now has its own id, from its path.
+- **SILK voice messages are transcribed from their decoded WAV** (the one kept in `_reader_audio`), not their raw
+  bytes; the log records the SHA-256 of both.
+- **Gallery › Whole extraction: Sent and Received found nothing**; files now carry the messages that name them, iOS
+  backups included (their domains read as the paths iLEAPP records).
+- **AI corrections and exclusions** now apply in the grid's translations and the chats' media notes too, not only in
+  the details' *AI Analysis* tab; a record no longer shows an attachment's summary as its own.
+- **Video analysis**: a video with no readable duration gets one frame and its audio; the audio of videos over an hour
+  is not sent; the count says how many were analyzed; its temporary frames are deleted with retries.
+- **Documents** is one list of all the documents, with a Name column; the Files toolbar is in labelled rows.
+
 ## 1.2.5
 
 ### Added

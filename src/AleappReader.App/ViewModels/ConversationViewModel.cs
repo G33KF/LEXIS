@@ -196,13 +196,20 @@ public partial class ConversationViewModel : ObservableObject, IColumnFilters
         IReadOnlyList<ConversationItem> shown)
     {
         if (!truncated) return shown;
-        main.Status = "Reading the complete conversations for export…";
+        main.Status = "Reading the complete conversations…";
         var keys = shown.Select(c => (c.Account, c.Key)).ToHashSet();
         return await Task.Run(() =>
         {
             using var con = s.OpenDb();
             return ConversationBuilder.Build(con, s, a, int.MaxValue).Conversations.Where(c => keys.Contains((c.Account, c.Key))).ToList();
         });
+    }
+
+    /// <summary>The whole chat for the AI (read in full when the list holds only part of it): every message, its media, the chat's data.</summary>
+    public async Task<AiScope> WholeChat(ConversationItem c)
+    {
+        var full = (await Complete(_main, _s, _a, _truncated, [c])).FirstOrDefault() ?? c;
+        return ChatViewModel.ScopeOf(full, _a, full.Messages, "");
     }
 
     [RelayCommand]

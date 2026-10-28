@@ -118,13 +118,16 @@ public partial class GalleryViewModel : ObservableObject
         _ = LoadAsync();
     }
 
+    int _load; // a newer load (the source changed again) drops what an older one read
+
     async Task LoadAsync()
     {
+        var my = ++_load;
         var fromExtraction = Source == ExtractionSource;
         Status = fromExtraction ? "Reading the extraction…" : "";
-        _all = await Task.Run(() =>
+        var all = await Task.Run(() =>
         {
-            if (fromExtraction) return _s.Extraction is { } x ? x.Media.Select(m => Entry(x.ToMedia(m), [])).ToList() : [];
+            if (fromExtraction && _s.Extraction is null) return [];
             using var con = _s.OpenDb();
             var uses = MediaUses.Build(con, _s.Manifest);
             // one tile per file: a picture used by two records is listed by the report twice; all its refs give its messages
@@ -133,6 +136,16 @@ public partial class GalleryViewModel : ObservableObject
                 .Select(g => Entry(g.First(), g.Select(m => m.RefId).Distinct().SelectMany(id => uses.GetValueOrDefault(id) ?? [])
                     .DistinctBy(u => (u.Artifact.TableName, u.RowId)).Order(byDate).ToList()))
                 .ToList();
+            if (fromExtraction)
+            {
+                // a file of the extraction keeps the messages of the report's file at the same device path: Sent/Received still apply
+                var linked = all.Where(e => e.Item2.Count > 0 && e.Item3 != "").GroupBy(e => e.Item3, StringComparer.OrdinalIgnoreCase)
+                    .ToDictionary(g => g.Key, g => (IReadOnlyList<MediaUse>)g.SelectMany(e => e.Item2)
+                        .DistinctBy(u => (u.Artifact.TableName, u.RowId)).Order(byDate).ToList(), StringComparer.OrdinalIgnoreCase);
+                var x = _s.Extraction!;
+                return x.Media.Select(m => Entry(x.ToMedia(m), []))
+                    .Select(e => linked.TryGetValue(EvidenceOrigin.RecordedPath(e.Item1.SourcePath), out var u) ? e with { Item2 = u } : e).ToList();
+            }
             // a copy of the same bytes (forwarded, saved, received again) lends its messages to each file's history
             foreach (var g in MediaUses.SameContent(Enumerable.Range(0, all.Count).Where(i => all[i].Item1.Exists), i => all[i].Item1.Size, i => all[i].Item1.OpenRead()))
                 if (g.Any(i => all[i].Item2.Count > 0))
@@ -140,6 +153,8 @@ public partial class GalleryViewModel : ObservableObject
                         all[i] = all[i] with { Item6 = g.Where(j => j != i).SelectMany(j => all[j].Item2).Except(all[i].Item2).Distinct().Order(byDate).ToList() };
             return all;
         });
+        if (my != _load) return;
+        _all = all;
         Apps = AppsView(_all.Where(e => e.App != "").DistinctBy(e => e.App).OrderBy(e => !e.Known).ThenBy(e => e.App, StringComparer.OrdinalIgnoreCase)
             .Select(e => new AppChoice(e.App, e.Known ? "Apps" : "Others")));
         App = AllApps;
@@ -315,7 +330,7 @@ public partial class GalleryViewModel : ObservableObject
 
     /// <summary>An extraction file is copied out (read-only, temp folder) so the viewer and "Open" work on a copy.</summary>
     async Task<MediaRef> Local(MediaRef m) =>
-        !m.Exists && m.RefId == "" && _s.Extraction is { } x && await Task.Run(() => x.CopyOut(m.SourcePath!)) is { } copy ? x.ToMedia(m.SourcePath!, copy) : m;
+        !m.Exists && ExtractionFiles.IsExtraction(m) && _s.Extraction is { } x && await Task.Run(() => x.CopyOut(m.SourcePath!)) is { } copy ? x.ToMedia(m.SourcePath!, copy) : m;
 
     /// <summary>Double-click: a picture, video, audio or PDF in its own window; any other file straight in its program.</summary>
     public async void Open(GalleryItem item)
@@ -374,7 +389,7 @@ public partial class GalleryViewModel : ObservableObject
     {
         var list = media.ToList();
         if (_s.Extraction is not { } x) return list;
-        return await Task.Run(() => list.Select(m => !m.Exists && m.RefId == "" && m.SourcePath is { } p && x.CopyOut(p) is { } copy ? x.ToMedia(p, copy) : m).ToList());
+        return await Task.Run(() => list.Select(m => !m.Exists && ExtractionFiles.IsExtraction(m) && m.SourcePath is { } p && x.CopyOut(p) is { } copy ? x.ToMedia(p, copy) : m).ToList());
     }
 
     [RelayCommand] async Task Ai() { if (await Scope() is { } sc) _main.OpenAi(_s, sc); }

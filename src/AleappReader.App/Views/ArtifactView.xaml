@@ -50,11 +50,11 @@
                             </Button>
                             <Button Style="{StaticResource FlatButton}" Content="Export checked…" Command="{Binding ExportCheckedCommand}"/>
                             <ContentControl Content="{Binding Translation}" ContentTemplate="{StaticResource TranslationPicker}" Focusable="False" Margin="8,0,0,0"/>
-                            <Button Style="{StaticResource FlatButton}" Command="{Binding TranslateCommand}" IsEnabled="{Binding Enabled, Source={x:Static local:AiState.Instance}}" ToolTipService.ShowOnDisabled="True"
+                            <Button Style="{StaticResource FlatButton}" Command="{Binding TranslateCommand}" Visibility="{Binding CanTranslate, Converter={StaticResource Vis}}" IsEnabled="{Binding Text, Source={x:Static local:AiState.Instance}}" ToolTipService.ShowOnDisabled="True"
                                     ToolTip="Translate the checked records in view with the AI and show the translation here, without the AI window">
                                 <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xF2B7;"/><TextBlock Text=" Translate"/></StackPanel>
                             </Button>
-                            <Button Style="{StaticResource FlatButton}" Command="{Binding SummarizeCommand}" IsEnabled="{Binding Enabled, Source={x:Static local:AiState.Instance}}" ToolTipService.ShowOnDisabled="True" ToolTip="Summarize the checked records in view with the AI">
+                            <Button Style="{StaticResource FlatButton}" Command="{Binding SummarizeCommand}" Visibility="{Binding CanSummarize, Converter={StaticResource Vis}}" IsEnabled="{Binding Text, Source={x:Static local:AiState.Instance}}" ToolTipService.ShowOnDisabled="True" ToolTip="Summarize the checked records in view with the AI">
                                 <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE8FD;"/><TextBlock Text=" Summarize"/></StackPanel>
                             </Button>
                         </StackPanel>

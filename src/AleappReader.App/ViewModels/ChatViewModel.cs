@@ -200,10 +200,13 @@ public partial class ChatViewModel : ObservableObject
     /// <summary>How an AI result names this chat in its scope, so the chat's details find its summaries.</summary>
     public static string ScopeTag(ConversationItem c, ArtifactInfo a) => $"of the chat {c.Label} ({a.Name})";
 
-    public AiScope ScopeOf(IReadOnlyList<MessageItem> ms, string what) => new(
-        $"{ms.Count:N0} {what}messages {ScopeTag(Chat, Artifact)}" +
-        (ms.Count == Chat.Messages.Count ? " · the whole chat" : ms.Count > 0 ? $" · {ms[0].Time} – {ms[^1].Time}" : ""),
-        [new AiSelection(Artifact, ms.Select(m => m.RowId).ToList())], ms.SelectMany(m => m.Media).DistinctBy(m => m.RefId).ToList());
+    public AiScope ScopeOf(IReadOnlyList<MessageItem> ms, string what) => ScopeOf(Chat, Artifact, ms, what);
+
+    public static AiScope ScopeOf(ConversationItem chat, ArtifactInfo a, IReadOnlyList<MessageItem> ms, string what) => new(
+        $"{ms.Count:N0} {what}messages {ScopeTag(chat, a)}" +
+        (ms.Count == chat.Messages.Count ? " · the whole chat" : ms.Count > 0 ? $" · {ms[0].Time} – {ms[^1].Time}" : ""),
+        [new AiSelection(a, ms.Select(m => m.RowId).ToList())], ms.SelectMany(m => m.Media).DistinctBy(m => m.RefId).ToList(),
+        AiText.ChatHeader(chat, a, ms));
 
     /// <summary>The checked messages among those shown (filters, search), with their attachments; null, said in the
     /// status bar, when none is.</summary>

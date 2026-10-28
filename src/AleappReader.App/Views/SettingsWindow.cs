@@ -4,7 +4,7 @@ using System.Windows.Input;
 
 namespace AleappReader.App.Views;
 
-/// <summary>The tags offered in menus and their keyboard shortcuts.</summary>
+/// <summary>The case tree, tabs, the tags offered in menus with their keyboard shortcuts, and OCR.</summary>
 public static class SettingsWindow
 {
     /// <summary>True when the settings were saved.</summary>
@@ -43,6 +43,22 @@ public static class SettingsWindow
         single.Checked += (_, _) => grouped.IsChecked = false; // one or the other; neither: a tab for each view
         grouped.Checked += (_, _) => single.IsChecked = false;
         foreach (var t in st.Tags) AddRow(t, st.TagShortcuts.GetValueOrDefault(t) ?? "");
+        // OCR: the languages Tesseract reads, the one Windows reads, and the limits of a file
+        var langs = new WrapPanel { Margin = new Thickness(0, 0, 0, 6) };
+        foreach (var l in Core.TesseractOcr.Languages)
+            langs.Children.Add(new CheckBox { Content = l, IsChecked = st.Ocr.Languages.Contains(l), Margin = new Thickness(0, 0, 10, 4) });
+        var windowsLangs = OcrJobs.WindowsLanguages;
+        var winLang = new ComboBox { ItemsSource = new[] { "" }.Concat(windowsLangs).ToList(), SelectedItem = windowsLangs.Contains(st.Ocr.WindowsLanguage) ? st.Ocr.WindowsLanguage : "",
+            Width = 140, ToolTip = "Empty: the first of your Windows languages it can read" };
+        var maxMb = new TextBox { Text = st.Ocr.MaxMegabytes.ToString(), Width = 60 };
+        var maxPages = new TextBox { Text = st.Ocr.MaxPages.ToString(), Width = 60 };
+        StackPanel Line(params UIElement[] e)
+        {
+            var p = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 6) };
+            foreach (var x in e) p.Children.Add(x);
+            return p;
+        }
+        TextBlock Label(string t) => new() { Text = t, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
 
         var add = new Button { Content = "Add tag", HorizontalAlignment = HorizontalAlignment.Left, Padding = new Thickness(8, 2, 8, 2) };
         add.Click += (_, _) => AddRow("", "");
@@ -66,6 +82,13 @@ public static class SettingsWindow
             TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 10) });
         panel.Children.Add(rows);
         panel.Children.Add(add);
+        panel.Children.Add(new TextBlock { Text = "OCR", FontSize = 15, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 14, 0, 4) });
+        panel.Children.Add(new TextBlock { Text = "Run on request, offline, from the right-click of a picture or PDF. Tesseract (in LEXIS) reads these languages:",
+            TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 4) });
+        panel.Children.Add(langs);
+        panel.Children.Add(Line(Label("Windows OCR language"), winLang,
+            new TextBlock { Text = windowsLangs.Count == 0 ? "  none installed in Windows" : "", Foreground = System.Windows.Media.Brushes.Gray, VerticalAlignment = VerticalAlignment.Center }));
+        panel.Children.Add(Line(Label("Files up to (MB)"), maxMb, Label("   PDF pages up to"), maxPages));
         panel.Children.Add(buttons);
         var w = new Window
         {
@@ -83,6 +106,11 @@ public static class SettingsWindow
             if (clash is not null) { MessageBox.Show(w, $"{clash.Key} is used by more than one tag.", "Settings"); return; }
             st.Tags = [.. pairs.Select(p => p.Tag)];
             st.TagShortcuts = pairs.Where(p => p.Key != "").ToDictionary(p => p.Tag, p => p.Key);
+            if (!int.TryParse(maxMb.Text, out var mb) || mb < 1 || !int.TryParse(maxPages.Text, out var pages) || pages < 1)
+            { MessageBox.Show(w, "The OCR limits are whole numbers from 1.", "Settings"); return; }
+            var chosen = langs.Children.OfType<CheckBox>().Where(c => c.IsChecked == true).Select(c => (string)c.Content).ToList();
+            if (chosen.Count == 0) { MessageBox.Show(w, "Keep at least one OCR language.", "Settings"); return; }
+            (st.Ocr.Languages, st.Ocr.WindowsLanguage, st.Ocr.MaxMegabytes, st.Ocr.MaxPages) = (chosen, winLang.SelectedItem as string ?? "", mb, pages);
             st.GroupByApp = byApp.IsChecked == true;
             (st.SingleNavigationTab, st.NavigationGroupTabs) = (single.IsChecked == true, grouped.IsChecked == true);
             st.Save();

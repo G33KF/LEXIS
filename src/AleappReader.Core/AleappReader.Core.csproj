@@ -20,6 +20,12 @@
   <ItemGroup>
     <!-- SILK SDK decoder (x64), built by tools/silk/build.cmd from kn007/silk-v3-decoder 507be6b; licence notices in NOTICE -->
     <None Include="native/silk.dll" Link="silk.dll" CopyToOutputDirectory="PreserveNewest" />
+    <!-- ffmpeg 9.0.2, decoders only (LGPL), built by tools/ffmpeg/build.sh; written out on first use, see WhisperCpp.BundledFfmpeg -->
+    <EmbeddedResource Include="native/ffmpeg.exe" LogicalName="ffmpeg.exe" />
+    <!-- Tesseract 5.0 + Leptonica 1.82.0 (x64, from the Tesseract 5.2.0 NuGet package) and the Visual C++ runtime they
+         need (app-local, from the Visual Studio redist folder); tessdata_fast 4.1.0 models written out on first use, see Ocr -->
+    <None Include="native/tesseract/*.dll" Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <EmbeddedResource Include="native/tessdata/*.traineddata" LogicalName="tessdata/%(Filename)%(Extension)" />
   </ItemGroup>
 
 </Project>

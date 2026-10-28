@@ -57,3 +57,31 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+ffmpeg (ffmpeg.exe, embedded in LEXIS and written to %LOCALAPPDATA%\AleappReader\ffmpeg
+on first use, to convert Opus, AMR, AAC/M4A, MP3 and other audio for whisper.cpp and to
+take JPEG frames from videos) is FFmpeg 9.0.2, built with its decoders, the JPEG and WAV
+encoders and the scaler only by tools/ffmpeg/build.sh from the source
+of the tag n9.0.2 (https://github.com/FFmpeg/FFmpeg/archive/refs/tags/n9.0.2.tar.gz,
+SHA-256 6e374ed621e48faa40639307dff48ba6fe574a509977956d2cce9669b7cc27e9), with no
+GPL or non-free parts. FFmpeg is Copyright (c) 2000-2026 the FFmpeg developers and is
+licensed under the GNU Lesser General Public License version 2.1 or later
+(tools/ffmpeg/COPYING.LGPLv2.1; https://ffmpeg.org/legal.html). It runs as a separate
+program: an ffmpeg.exe placed beside whisper-cli.exe is used instead for audio. Its H.264
+and HEVC decoders implement formats that may be covered by patents in some countries.
+Tesseract OCR (tesseract50.dll, Tesseract 5.0) and Leptonica (leptonica-1.82.0.dll),
+x64, are taken unchanged from the Tesseract 5.2.0 NuGet package
+(https://www.nuget.org/packages/Tesseract/5.2.0, Charles Weld and contributors).
+Tesseract is Copyright Google Inc. and the Tesseract contributors, licensed under the
+Apache License 2.0 (https://www.apache.org/licenses/LICENSE-2.0). Leptonica is
+Copyright (c) Dan Bloomberg and others, licensed under a BSD 2-clause licence
+(http://www.leptonica.org/about-the-license.html).
+
+The OCR models (*.traineddata: eng, ita, chi_sim, chi_tra, ara, rus, sqi, fra, deu,
+spa, por, ron; embedded in LEXIS and written to %LOCALAPPDATA%\AleappReader\tessdata-4.1.0
+on first use) are tessdata_fast 4.1.0 (https://github.com/tesseract-ocr/tessdata_fast),
+Copyright Google Inc., licensed under the Apache License 2.0.
+
+vcruntime140.dll, vcruntime140_1.dll and msvcp140.dll are the Microsoft Visual C++
+runtime (14.51), distributed with LEXIS app-locally, as Visual Studio's
+redistributable code, so Tesseract runs where that runtime is not installed.

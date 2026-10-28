@@ -1052,7 +1052,7 @@
                         <DataGridTextColumn Header="Span" Binding="{Binding Span}"/>
                         <DataGridTextColumn Header="Positions" Binding="{Binding Positions}"/>
                         <DataGridTextColumn Header="Largest distance" Binding="{Binding Distance}"/>
-                        <DataGridTextColumn Header="Centre" Binding="{Binding Centre}" Width="*"/>
+                        <DataGridTextColumn Header="Center" Binding="{Binding Centre}" Width="*"/>
                     </DataGrid.Columns>
                 </DataGrid>
                 <GridSplitter Grid.Row="1" Height="5" HorizontalAlignment="Stretch" ResizeDirection="Rows" ResizeBehavior="PreviousAndNext" Background="{StaticResource BorderBrush}"/>
@@ -1240,11 +1240,11 @@
                         <Button Style="{StaticResource FlatButton}" Command="{Binding ClearChecksCommand}" ToolTip="Uncheck every file" Margin="0,0,8,0">
                             <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE739;"/><TextBlock Text=" Uncheck all"/></StackPanel>
                         </Button>
-                        <Button Style="{StaticResource FlatButton}" Command="{Binding DescribeCommand}" IsEnabled="{Binding Enabled, Source={x:Static local:AiState.Instance}}" ToolTipService.ShowOnDisabled="True"
+                        <Button Style="{StaticResource FlatButton}" Command="{Binding DescribeCommand}" IsEnabled="{Binding Vision, Source={x:Static local:AiState.Instance}}" ToolTipService.ShowOnDisabled="True"
                                 ToolTip="AI on the checked images: what each shows, and its text read (OCR) and translated">
                             <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE8B9;"/><TextBlock Text=" Describe + OCR"/></StackPanel>
                         </Button>
-                        <Button Style="{StaticResource FlatButton}" Command="{Binding TranscribeCommand}" IsEnabled="{Binding Enabled, Source={x:Static local:AiState.Instance}}" ToolTipService.ShowOnDisabled="True"
+                        <Button Style="{StaticResource FlatButton}" Command="{Binding TranscribeCommand}" IsEnabled="{Binding Audio, Source={x:Static local:AiState.Instance}}" ToolTipService.ShowOnDisabled="True"
                                 ToolTip="AI on the checked audio files (else every audio file the filters keep): speech to text">
                             <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE720;"/><TextBlock Text=" Transcribe"/></StackPanel>
                         </Button>
@@ -1430,46 +1430,73 @@
         <DockPanel>
             <Border Style="{StaticResource ViewHeader}"><ScrollViewer Style="{StaticResource HeaderScroll}">
                 <StackPanel>
-                    <DockPanel>
-                        <TextBlock DockPanel.Dock="Top" Style="{StaticResource ViewTitle}" Text="Extraction Files"/>
-                        <WrapPanel VerticalAlignment="Center">
-                            <TextBox Style="{StaticResource SearchBox}" Text="{Binding Filter, UpdateSourceTrigger=PropertyChanged}" VerticalAlignment="Center"
-                                     ToolTip="Filter by path or type (Enter). /regex/ for a regular expression">
+                    <TextBlock Style="{StaticResource ViewTitle}" Text="{Binding Title}"/>
+                    <!-- three labelled rows: which files are listed, what is searched inside them, what to do with the selected one -->
+                    <Grid Margin="0,2,0,0">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                        <Grid.Resources>
+                            <Style x:Key="RowLabel" TargetType="TextBlock">
+                                <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+                                <Setter Property="VerticalAlignment" Value="Center"/>
+                                <Setter Property="Margin" Value="0,0,10,0"/>
+                            </Style>
+                        </Grid.Resources>
+
+                        <TextBlock Style="{StaticResource RowLabel}" Text="Show"/>
+                        <WrapPanel Grid.Column="1" Margin="0,2">
+                            <TextBlock Text="Name or path" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                            <TextBox Style="{StaticResource SearchBox}" Width="220" Text="{Binding Filter, UpdateSourceTrigger=PropertyChanged}" VerticalAlignment="Center"
+                                     AutomationProperties.Name="Filter by name or path"
+                                     ToolTip="Lists only the files whose path, name or type contains this (Enter). /regex/ for a regular expression">
                                 <TextBox.InputBindings><KeyBinding Key="Enter" Command="{Binding ApplyFilterCommand}"/></TextBox.InputBindings>
                             </TextBox>
-                            <CheckBox Content="Only files read by artifacts" IsChecked="{Binding UsedOnly}" VerticalAlignment="Center" Margin="8,0"
+                            <StackPanel Orientation="Horizontal" Margin="12,0,0,0" Visibility="{Binding AnyKind, Converter={StaticResource Vis}}">
+                                <TextBlock Text="Kind" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                <ComboBox ItemsSource="{Binding Kinds}" SelectedItem="{Binding TypeFilter}" Width="150" VerticalAlignment="Center"
+                                          ToolTip="Show one kind of file only: by its first bytes once Identify types has read them, else by its name"/>
+                            </StackPanel>
+                            <CheckBox Content="Read by artifacts" IsChecked="{Binding UsedOnly}" VerticalAlignment="Center" Margin="12,0,0,0"
                                       ToolTip="Show only the files the LEAPP modules recorded as their sources, with the -wal/-shm/-journal beside them"/>
-                            <CheckBox Content="Only tagged files" IsChecked="{Binding TaggedOnly}" VerticalAlignment="Center" Margin="0,0,8,0"
+                            <CheckBox Content="Tagged" IsChecked="{Binding TaggedOnly}" VerticalAlignment="Center" Margin="12,0,0,0"
                                       ToolTip="Show only the files tagged here (right-click › Tag) or in the gallery"/>
-                            <Button Style="{StaticResource FlatButton}" Content="Identify types" Command="{Binding IdentifyCommand}"
-                                    ToolTip="Type every shown file from its first bytes (magic), whatever its name says"/>
-                            <TextBox Style="{StaticResource SearchBox}" Text="{Binding Keyword, UpdateSourceTrigger=PropertyChanged}" VerticalAlignment="Center" Margin="10,0,0,0"
-                                     ToolTip="Keyword searched inside every shown file, as UTF-8 and UTF-16 text, ignoring case of A-Z (Enter). Empty: show all files again">
+                            <CheckBox Content="Thumbnails" IsChecked="{Binding Thumbnails}" VerticalAlignment="Center" Margin="12,0,0,0"
+                                      ToolTip="The files as tiles, pictures and video frames as thumbnails, 300 a page"/>
+                            <TextBlock Text="Viewer" VerticalAlignment="Center" Margin="12,0,4,0"/>
+                            <ComboBox ItemsSource="{Binding ViewerPlaces}" SelectedItem="{Binding ViewerAt}" Width="140" VerticalAlignment="Center"
+                                      ToolTip="The hex, text and tree viewer: right of the list (drag its edge to resize it), under the details pane, in a window of its own, or hidden"/>
+                        </WrapPanel>
+
+                        <TextBlock Grid.Row="1" Style="{StaticResource RowLabel}" Text="Search inside"/>
+                        <WrapPanel Grid.Row="1" Grid.Column="1" Margin="0,2">
+                            <TextBlock Text="Keyword" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                            <TextBox Style="{StaticResource SearchBox}" Width="220" Text="{Binding Keyword, UpdateSourceTrigger=PropertyChanged}" VerticalAlignment="Center"
+                                     AutomationProperties.Name="Keyword searched inside the files"
+                                     ToolTip="Searched inside every listed file, as UTF-8 and UTF-16 text, ignoring case of A-Z (Enter). Empty: show all files again">
                                 <TextBox.InputBindings><KeyBinding Key="Enter" Command="{Binding SearchCommand}"/></TextBox.InputBindings>
                             </TextBox>
                             <Button Style="{StaticResource FlatButton}" Content="Search contents" Command="{Binding SearchCommand}"/>
                             <Button Style="{StaticResource FlatButton}" Content="Cancel" Command="{Binding CancelCommand}" Visibility="{Binding Running, Converter={StaticResource Vis}}"/>
-                            <Button Style="{StaticResource FlatButton}" Content="Save a copy…" Command="{Binding SaveCopyCommand}"/>
-                            <Button Style="{StaticResource FlatButton}" Content="Open in SQLite reader" Command="{Binding OpenSqliteCommand}"
-                                    ToolTip="Read the selected SQLite database (and its -wal, -journal) from a copy: tables, schema, SQL, recovered records (or double-click it)"/>
-                            <Button Style="{StaticResource FlatButton}" Content="Locate zip…" Command="{Binding LocateCommand}" CommandParameter="zip" Margin="10,2,2,2"
-                                    ToolTip="The extraction zip is somewhere else on this machine: pick it. It is checked against ALEAPP's copies and opened read-only"/>
-                            <Button Style="{StaticResource FlatButton}" Content="Locate folder…" Command="{Binding LocateCommand}" CommandParameter="folder"
-                                    ToolTip="The extraction folder is somewhere else on this machine: pick it. It is checked against ALEAPP's copies and opened read-only"/>
+                            <Button Style="{StaticResource FlatButton}" Content="Identify types" Command="{Binding IdentifyCommand}" Margin="12,2,2,2" Visibility="{Binding AnyKind, Converter={StaticResource Vis}}"
+                                    ToolTip="Type every listed file from its first bytes (magic), whatever its name says"/>
                         </WrapPanel>
-                    </DockPanel>
-                    <WrapPanel Margin="0,4,0,2">
-                        <TextBlock Text="Kind" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                        <ComboBox ItemsSource="{Binding Kinds}" SelectedItem="{Binding TypeFilter}" Width="150" VerticalAlignment="Center"
-                                  ToolTip="Show one kind of file only: by its first bytes once Identify types has read them, else by its name"/>
-                        <CheckBox Content="Thumbnails" IsChecked="{Binding Thumbnails}" VerticalAlignment="Center" Margin="12,0"
-                                  ToolTip="The files as tiles, pictures and video frames as thumbnails, 300 a page"/>
-                        <TextBlock Text="Viewer" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                        <ComboBox ItemsSource="{Binding ViewerPlaces}" SelectedItem="{Binding ViewerAt}" Width="140" VerticalAlignment="Center"
-                                  ToolTip="The hex, text and tree viewer: right of the list (drag its edge to resize it), under the details pane, in a window of its own, or hidden"/>
-                        <Button Style="{StaticResource FlatButton}" Content="Explore archive" Command="{Binding ExploreArchiveCommand}" Margin="12,0,0,0"
-                                ToolTip="Browse the files inside the selected zip (also APK, JAR, Office), tar, tar.gz or gz, in place: nothing is unpacked (or double-click it)"/>
-                    </WrapPanel>
+
+                        <TextBlock Grid.Row="2" Style="{StaticResource RowLabel}" Text="Selected file"/>
+                        <WrapPanel Grid.Row="2" Grid.Column="1" Margin="0,2">
+                            <Button Style="{StaticResource FlatButton}" Content="Save a copy…" Command="{Binding SaveCopyCommand}"/>
+                            <Button Style="{StaticResource FlatButton}" Content="Open in SQLite reader" Command="{Binding OpenSqliteCommand}" Visibility="{Binding AnyKind, Converter={StaticResource Vis}}"
+                                    ToolTip="Read the selected SQLite database (and its -wal, -journal) from a copy: tables, schema, SQL, recovered records (or double-click it)"/>
+                            <Button Style="{StaticResource FlatButton}" Content="Explore archive" Command="{Binding ExploreArchiveCommand}" Visibility="{Binding AnyKind, Converter={StaticResource Vis}}"
+                                    ToolTip="Browse the files inside the selected zip (also APK, JAR, Office), tar, tar.gz or gz, in place: nothing is unpacked (or double-click it)"/>
+                            <Button Style="{StaticResource FlatButton}" Content="Show in its folder" Command="{Binding ShowFolderCommand}"/>
+                        </WrapPanel>
+                    </Grid>
+                    <StackPanel Orientation="Horizontal" Margin="0,4,0,0" Visibility="{Binding Unreachable, Converter={StaticResource Vis}}">
+                        <Button Style="{StaticResource FlatButton}" Content="Locate zip…" Command="{Binding LocateCommand}" CommandParameter="zip"
+                                ToolTip="The extraction zip is somewhere else on this machine: pick it. It is checked against ALEAPP's copies and opened read-only"/>
+                        <Button Style="{StaticResource FlatButton}" Content="Locate folder…" Command="{Binding LocateCommand}" CommandParameter="folder"
+                                ToolTip="The extraction folder is somewhere else on this machine: pick it. It is checked against ALEAPP's copies and opened read-only"/>
+                    </StackPanel>
                     <TextBlock Text="{Binding Info}" TextWrapping="Wrap">
                         <TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
                             <Style.Triggers><DataTrigger Binding="{Binding Unreachable}" Value="True"><Setter Property="Foreground" Value="{StaticResource TagTextBrush}"/><Setter Property="FontWeight" Value="SemiBold"/></DataTrigger></Style.Triggers>
@@ -1508,7 +1535,8 @@
                         </Style.Triggers>
                     </Style>
                 </Grid.Resources>
-                <TreeView ItemsSource="{Binding Folders}" BorderThickness="0" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">
+                <TreeView ItemsSource="{Binding Folders}" BorderThickness="0" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
+                          Visibility="{Binding AnyKind, Converter={StaticResource Vis}}">
                     <TreeView.ItemContainerStyle>
                         <Style TargetType="TreeViewItem">
                             <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
@@ -1526,12 +1554,21 @@
                         </HierarchicalDataTemplate>
                     </TreeView.ItemTemplate>
                 </TreeView>
-                <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Stretch" Background="{StaticResource BorderBrush}"/>
-                <DockPanel Grid.Column="2">
+                <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Stretch" Background="{StaticResource BorderBrush}"
+                              Visibility="{Binding AnyKind, Converter={StaticResource Vis}}"/>
+                <DockPanel>
                     <DockPanel.Style>
                         <Style TargetType="DockPanel">
-                            <Style.Triggers><!-- no viewer on the right: the list takes its place -->
+                            <Setter Property="Grid.Column" Value="2"/>
+                            <Style.Triggers><!-- no viewer on the right: the list takes its place; one kind only (Documents): no folder tree, one flat list -->
                                 <DataTrigger Binding="{Binding ViewerRight}" Value="False"><Setter Property="Grid.ColumnSpan" Value="3"/></DataTrigger>
+                                <DataTrigger Binding="{Binding AnyKind}" Value="False"><Setter Property="Grid.Column" Value="0"/><Setter Property="Grid.ColumnSpan" Value="3"/></DataTrigger>
+                                <MultiDataTrigger>
+                                    <MultiDataTrigger.Conditions>
+                                        <Condition Binding="{Binding AnyKind}" Value="False"/><Condition Binding="{Binding ViewerRight}" Value="False"/>
+                                    </MultiDataTrigger.Conditions>
+                                    <Setter Property="Grid.Column" Value="0"/><Setter Property="Grid.ColumnSpan" Value="5"/>
+                                </MultiDataTrigger>
                             </Style.Triggers>
                         </Style>
                     </DockPanel.Style>
@@ -1556,6 +1593,7 @@
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
+                            <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="200"/>
                             <DataGridTextColumn Header="Path on the device" Binding="{Binding Device}" Width="*" MinWidth="220"/>
                             <DataGridTextColumn Header="Read by" Binding="{Binding UsedBy}" Width="160"/>
                             <DataGridTextColumn Header="Size" Binding="{Binding Size, StringFormat=N0}" Width="90"/>
@@ -1778,6 +1816,17 @@
                     <MouseBinding Gesture="LeftDoubleClick" Command="{Binding OpenCommand}" CommandParameter="{Binding SelectedItem, ElementName=SearchHitList}"/>
                     <KeyBinding Key="Enter" Command="{Binding OpenCommand}" CommandParameter="{Binding SelectedItem, ElementName=SearchHitList}"/>
                 </DataGrid.InputBindings>
+                <DataGrid.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="Open" InputGestureText="Double-click" Command="{Binding OpenCommand}"
+                                  CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                        <Separator/>
+                        <MenuItem Header="Read the text (OCR): Tesseract, in LEXIS" Command="{Binding OcrTesseractCommand}"
+                                  CommandParameter="{Binding PlacementTarget.SelectedItems, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                        <MenuItem Header="Read the text (OCR): Windows OCR" Command="{Binding OcrWindowsCommand}"
+                                  CommandParameter="{Binding PlacementTarget.SelectedItems, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                    </ContextMenu>
+                </DataGrid.ContextMenu>
                 <DataGrid.Columns>
                     <DataGridTextColumn Header="Origin" Binding="{Binding Origin}" Width="95"/>
                     <DataGridTextColumn Header="Category" Binding="{Binding Category}" Width="130"/>
@@ -1884,11 +1933,11 @@
                                   ToolTip="Show only the matching messages, in the bubbles and in the table"/>
                         <TextBlock Text="{Binding MatchText}" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" MinWidth="70"/>
                         <ContentControl Content="{Binding Translation}" ContentTemplate="{StaticResource TranslationPicker}" Focusable="False" Margin="10,0,0,0"/>
-                        <Button Style="{StaticResource FlatButton}" Command="{Binding TranslateCommand}" IsEnabled="{Binding Enabled, Source={x:Static local:AiState.Instance}}" ToolTipService.ShowOnDisabled="True"
+                        <Button Style="{StaticResource FlatButton}" Command="{Binding TranslateCommand}" IsEnabled="{Binding Text, Source={x:Static local:AiState.Instance}}" ToolTipService.ShowOnDisabled="True"
                                 ToolTip="Translate the checked messages shown with the AI, each step with the messages before it as context, and show the translation in the bubbles">
                             <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xF2B7;"/><TextBlock Text=" Translate"/></StackPanel>
                         </Button>
-                        <Button Style="{StaticResource FlatButton}" Command="{Binding SummarizeCommand}" IsEnabled="{Binding Enabled, Source={x:Static local:AiState.Instance}}" ToolTipService.ShowOnDisabled="True" ToolTip="Summarize the checked messages shown with the AI, as a narrative">
+                        <Button Style="{StaticResource FlatButton}" Command="{Binding SummarizeCommand}" IsEnabled="{Binding Text, Source={x:Static local:AiState.Instance}}" ToolTipService.ShowOnDisabled="True" ToolTip="Summarize the checked messages shown with the AI, as a narrative">
                             <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE8FD;"/><TextBlock Text=" Summarize"/></StackPanel>
                         </Button>
                     </StackPanel>

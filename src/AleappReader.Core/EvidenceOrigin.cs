@@ -65,6 +65,34 @@ public static class EvidenceOrigin
         return DeviceRoots.Contains(p.Split('/')[0]) ? "/" + p : p;
     }
 
+    /// <summary>iLEAPP's backup domains and the folders it records their files under (ILEAPP/scripts/search_files.py, domains);
+    /// a key ending in "-" takes the bundle identifier after it.</summary>
+    static readonly Dictionary<string, string> BackupDomains = new()
+    {
+        ["AppDomain-"] = "private/var/mobile/Containers/Data/Application", ["AppDomainGroup-"] = "private/var/mobile/Containers/Shared/AppGroup",
+        ["AppDomainPlugin-"] = "private/var/mobile/Containers/Data/PluginKitPlugin", ["CameraRollDomain"] = "private/var/mobile",
+        ["DatabaseDomain"] = "private/var/db", ["HealthDomain"] = "private/var/mobile", ["HomeDomain"] = "private/var/mobile",
+        ["HomeKitDomain"] = "private/var/mobile", ["InstallDomain"] = "private/var/installd", ["KeyboardDomain"] = "private/var/mobile",
+        ["KeychainDomain"] = "private/var/protected/trustd/private", ["ManagedPreferencesDomain"] = "private/var/Managed Preferences",
+        ["MediaDomain"] = "private/var/mobile", ["MobileDeviceDomain"] = "private/var/MobileDevice", ["NetworkDomain"] = "private/var/networkd",
+        ["ProtectedDomain"] = "private/var/protected", ["RootDomain"] = "private/var/root",
+        ["SysContainerDomain-"] = "private/var/containers/Data/System", ["SysSharedContainerDomain-"] = "private/var/containers/Shared/SystemGroup",
+        ["SystemPreferencesDomain"] = "private/var/preferences", ["TonesDomain"] = "private/var/mobile", ["WirelessDomain"] = "private/var/wireless",
+    };
+
+    /// <summary>The device path as iLEAPP records it: a backup's "CameraRollDomain/Media/x.jpg" is "/private/var/mobile/Media/x.jpg";
+    /// any other path as <see cref="DevicePath"/> gives it.</summary>
+    public static string RecordedPath(string? path)
+    {
+        var p = (path ?? "").Trim().Replace('\\', '/').TrimStart('/');
+        var cut = p.IndexOf('/');
+        var domain = cut < 0 ? p : p[..cut];
+        var dash = domain.IndexOf('-') + 1;
+        var root = BackupDomains.GetValueOrDefault(domain) ??
+                   (dash > 0 && BackupDomains.TryGetValue(domain[..dash], out var r) ? r + "/" + domain[dash..] : null);
+        return DevicePath(root is null ? p : cut < 0 ? root : root + p[cut..]);
+    }
+
     /// <summary>The source files as the manifest records them, one per line.</summary>
     public static string[] RecordedSources(ArtifactInfo a) =>
         (a.SourcePath ?? "").Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);

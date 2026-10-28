@@ -2,6 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:AleappReader.App.ViewModels"
+        xmlns:app="clr-namespace:AleappReader.App"
         Title="AI analysis" Height="760" Width="1180" WindowStartupLocation="CenterOwner" Background="{StaticResource PanelBrush}">
     <DockPanel Margin="14">
         <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8">
@@ -28,29 +29,35 @@
                             <TextBlock Text="  COMPLETE ANALYSIS" FontWeight="Bold" VerticalAlignment="Center"/>
                         </StackPanel>
                     </Button>
-                    <TextBlock Text="Nothing here for the AI: no records, no images or audio it can read, and the Claude CLI is not allowed in AI settings."
+                    <TextBlock Text="Nothing here for the AI: no records, data, images or audio it can read, and the Claude CLI is not allowed in AI settings."
                                Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Visibility="{Binding HasNothing, Converter={StaticResource Vis}}"/>
-                    <StackPanel Visibility="{Binding HasRecords, Converter={StaticResource Vis}}">
-                        <TextBlock Style="{StaticResource SectionHeader}" Text="Records"/>
+                    <StackPanel Visibility="{Binding HasData, Converter={StaticResource Vis}}">
+                        <TextBlock Style="{StaticResource SectionHeader}" Text="The data shown"/>
                         <TextBlock Text="{Binding TextModel, StringFormat=Model: {0}}" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,6"/>
-                        <Button Style="{StaticResource FlatButton}" Content="Summarise" Command="{Binding SummarizeCommand}" HorizontalAlignment="Left"/>
-                        <Button Style="{StaticResource FlatButton}" Content="Explain every technical value" Command="{Binding ExplainCommand}" HorizontalAlignment="Left"
+                        <Button Style="{StaticResource FlatButton}" Content="Explain it (what it is, each value)" Command="{Binding ExplainDataCommand}" IsEnabled="{Binding Text, Source={x:Static app:AiState.Instance}}" HorizontalAlignment="Left"/>
+                    </StackPanel>
+                    <StackPanel Visibility="{Binding HasRecords, Converter={StaticResource Vis}}">
+                        <TextBlock Style="{StaticResource SectionHeader}" Text="Read the records"/>
+                        <TextBlock Text="{Binding TextModel, StringFormat=Model: {0}}" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,6"/>
+                        <Button Style="{StaticResource FlatButton}" Content="Summarize" Command="{Binding SummarizeCommand}" Visibility="{Binding CanSummarize, Converter={StaticResource Vis}}" IsEnabled="{Binding Text, Source={x:Static app:AiState.Instance}}" HorizontalAlignment="Left"/>
+                        <Button Style="{StaticResource FlatButton}" Content="Explain every technical value" Command="{Binding ExplainCommand}" IsEnabled="{Binding Text, Source={x:Static app:AiState.Instance}}" HorizontalAlignment="Left"
                                 ToolTip="What each record is and what each of its values means; shown in each record's details, in the AI section"/>
-                        <TextBlock Text="Question" Margin="0,8,0,2"/>
+                        <DockPanel Margin="0,6,0,0" Visibility="{Binding CanTranslate, Converter={StaticResource Vis}}">
+                            <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Content="Translate" Command="{Binding TranslateCommand}" IsEnabled="{Binding Text, Source={x:Static app:AiState.Instance}}"/>
+                            <TextBlock DockPanel.Dock="Left" Text="Into" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <TextBox Text="{Binding Language, UpdateSourceTrigger=PropertyChanged}" VerticalContentAlignment="Center"/>
+                        </DockPanel>
+                        <TextBlock Style="{StaticResource SectionHeader}" Text="Search the records" Margin="0,12,0,4"/>
+                        <TextBlock Text="Question"/>
                         <TextBox Text="{Binding Question, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" Height="60" VerticalScrollBarVisibility="Auto"/>
                         <DockPanel Margin="0,4,0,0">
                             <CheckBox DockPanel.Dock="Right" Content="Web search" IsChecked="{Binding WebSearch}" VerticalAlignment="Center"
                                       ToolTip="Questions and Explain search the web first. The words searched are shown before they leave (words with digits or @ dropped) and logged; the results are reference, not evidence, and the answer marks what rests on them with (web: address)."/>
-                            <Button Style="{StaticResource FlatButton}" Content="Ask about these records" Command="{Binding AskQuestionCommand}" HorizontalAlignment="Left"/>
-                        </DockPanel>
-                        <DockPanel Margin="0,8,0,0">
-                            <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Content="Translate" Command="{Binding TranslateCommand}"/>
-                            <TextBlock DockPanel.Dock="Left" Text="Into" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                            <TextBox Text="{Binding Language, UpdateSourceTrigger=PropertyChanged}" VerticalContentAlignment="Center"/>
+                            <Button Style="{StaticResource FlatButton}" Content="Ask about these records" Command="{Binding AskQuestionCommand}" IsEnabled="{Binding Text, Source={x:Static app:AiState.Instance}}" HorizontalAlignment="Left"/>
                         </DockPanel>
                         <TextBlock Text="Thematic review" Margin="0,10,0,2"/>
                         <DockPanel>
-                            <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Content="Review" Command="{Binding ThematicReviewCommand}"
+                            <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Content="Review" Command="{Binding ThematicReviewCommand}" IsEnabled="{Binding Text, Source={x:Static app:AiState.Instance}}"
                                     ToolTip="In batches of 30 records; stopped, it resumes where it left off"/>
                             <ComboBox ItemsSource="{Binding Themes}" SelectedItem="{Binding Theme}" DisplayMemberPath="Name"/>
                         </DockPanel>
@@ -59,17 +66,23 @@
                     <StackPanel Visibility="{Binding HasImages, Converter={StaticResource Vis}}" Margin="0,12,0,0">
                         <TextBlock Style="{StaticResource SectionHeader}" Text="Images"/>
                         <TextBlock Text="{Binding VisionModel, StringFormat=Model: {0}}" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,6"/>
-                        <Button Style="{StaticResource FlatButton}" Content="{Binding ImagesText}" Command="{Binding ClassifyImagesCommand}" HorizontalAlignment="Left"
+                        <Button Style="{StaticResource FlatButton}" Content="{Binding ImagesText}" Command="{Binding ClassifyImagesCommand}" IsEnabled="{Binding Vision, Source={x:Static app:AiState.Instance}}" HorizontalAlignment="Left"
                                 ToolTip="JPEG, PNG, GIF and WebP; one category per image with a confidence. Stopped, it resumes"/>
-                        <Button Style="{StaticResource FlatButton}" Content="Describe and read the text (OCR)" Command="{Binding DescribeImagesCommand}" HorizontalAlignment="Left"
+                        <Button Style="{StaticResource FlatButton}" Content="Describe and read the text (OCR)" Command="{Binding DescribeImagesCommand}" IsEnabled="{Binding Vision, Source={x:Static app:AiState.Instance}}" HorizontalAlignment="Left"
                                 ToolTip="What each image shows, its text as written, and that text translated into the answer language. Stopped, it resumes"/>
                     </StackPanel>
                     <TextBlock Text="{Binding SkippedText}" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,4,0,0"
                                Visibility="{Binding SkippedText, Converter={StaticResource Vis}}"/>
+                    <StackPanel Visibility="{Binding HasVideos, Converter={StaticResource Vis}}" Margin="0,12,0,0">
+                        <TextBlock Style="{StaticResource SectionHeader}" Text="Video"/>
+                        <TextBlock Text="{Binding VideoModel, StringFormat=Model: {0}}" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,6"/>
+                        <Button Style="{StaticResource FlatButton}" Content="{Binding VideosText}" Command="{Binding AnalyseVideosCommand}" IsEnabled="{Binding Video, Source={x:Static app:AiState.Instance}}" HorizontalAlignment="Left"
+                                ToolTip="Frames taken as set in AI settings › Video, each described; the audio track transcribed; one timeline per video"/>
+                    </StackPanel>
                     <StackPanel Visibility="{Binding HasAudio, Converter={StaticResource Vis}}" Margin="0,12,0,0">
                         <TextBlock Style="{StaticResource SectionHeader}" Text="Audio"/>
                         <TextBlock Text="{Binding TranscriptionModel, StringFormat=Model: {0}}" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,6"/>
-                        <Button Style="{StaticResource FlatButton}" Content="{Binding AudioText}" Command="{Binding TranscribeCommand}" HorizontalAlignment="Left"/>
+                        <Button Style="{StaticResource FlatButton}" Content="{Binding AudioText}" Command="{Binding TranscribeCommand}" IsEnabled="{Binding Audio, Source={x:Static app:AiState.Instance}}" HorizontalAlignment="Left"/>
                     </StackPanel>
                     <StackPanel Visibility="{Binding ClaudeAllowed, Converter={StaticResource Vis}}" Margin="0,12,0,0">
                         <TextBlock Style="{StaticResource SectionHeader}" Text="Claude CLI"/>
@@ -85,6 +98,8 @@
                 <TabItem Header="Results">
                     <Grid>
                         <Grid.ColumnDefinitions><ColumnDefinition Width="260"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <DockPanel>
+                        <ComboBox DockPanel.Dock="Top" ItemsSource="{Binding Kinds}" SelectedItem="{Binding KindFilter}" Margin="0,0,0,4" ToolTip="Show one kind of result only"/>
                         <ListBox ItemsSource="{Binding Results}" SelectedItem="{Binding Selected}">
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
@@ -95,6 +110,7 @@
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>
+                        </DockPanel>
                         <TextBlock Grid.Column="1" Margin="10,0,0,0" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"
                                    Text="{Binding EmptyText}"
                                    Visibility="{Binding HasSelected, Converter={StaticResource Vis}, ConverterParameter=invert}"/>

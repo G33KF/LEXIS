@@ -11,7 +11,11 @@ using AleappReader.Core;
 namespace AleappReader.App.ViewModels;
 
 /// <summary>What the AI is asked about: records (null ids: every record of the artifact) and media.</summary>
-public sealed record AiScope(string Text, IReadOnlyList<AiSelection> Records, IReadOnlyList<MediaRef> Media);
+/// <summary><paramref name="About"/>: what the records are, from the case data (a chat's name, app, account, participants).</summary>
+/// <summary>What the AI is given; <paramref name="Keys"/>: the item the data shown is about ([table#row], [media#id]), so its
+/// explanation lands in that item's AI Analysis.</summary>
+public sealed record AiScope(string Text, IReadOnlyList<AiSelection> Records, IReadOnlyList<MediaRef> Media, string About = "",
+                             IReadOnlyList<string>? Keys = null);
 
 /// <summary>The AI window of one case: summary, questions, translation and thematic review of records; image
 /// classification and audio transcription; questions to the Claude CLI. Each answer is labelled and kept in the case's
@@ -29,13 +33,19 @@ public partial class AiViewModel : ObservableObject
     public string ScopeText => _scope.Text;
     public string StoreText => "AI base and send log of this case: " + _store.Path;
     public bool HasRecords => _scope.Records.Count > 0;
+    public bool CanTranslate => _scope.Records.Any(x => MacroCategories.Written(x.Artifact));
+    public bool CanSummarize => MacroCategories.Summarizable([.. _scope.Records.Select(x => x.Artifact)]);
     public IReadOnlyList<MediaRef> Images { get; }
     public IReadOnlyList<MediaRef> Audio { get; }
     public bool HasImages => Images.Count > 0;
     public bool HasAudio => Audio.Count > 0;
+    public IReadOnlyList<MediaRef> Videos { get; }
+    public bool HasVideos => Videos.Count > 0;
+    public string VideosText => $"Analyze {Videos.Count:N0} video{(Videos.Count == 1 ? "" : "s")}: frames and audio";
+    public string VideoModel => Describe(Ai.VideoRole);
     public string ImagesText => $"Classify {Images.Count:N0} images";
     public string AudioText => $"Transcribe {Audio.Count:N0} audio files";
-    public bool ClaudeAllowed => Ai.ClaudeAllowed;
+    public bool ClaudeAllowed => Ai.ClaudeExplores;
     public string TextModel => Describe(Ai.Text);
     public string VisionModel => Describe(Ai.Vision);
     public string TranscriptionModel => Describe(Ai.Transcription);
@@ -49,12 +59,19 @@ public partial class AiViewModel : ObservableObject
     public bool Idle => !Busy;
 
     public ObservableCollection<AiResult> Results { get; } = [];
+    const string AllKinds = "All results";
+    /// <summary>The kinds of result in the AI base (summary, explanation, question…), to show one only.</summary>
+    public ObservableCollection<string> Kinds { get; } = [AllKinds];
+    [ObservableProperty] private string kindFilter = AllKinds;
+    partial void OnKindFilterChanged(string value) => Reload();
     public ObservableCollection<AiSend> Sends { get; } = [];
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasSelected), nameof(UnknownText))] private AiResult? selected;
     [ObservableProperty] private AiSend? selectedSend;
     public bool HasSelected => Selected is not null;
     public string EmptyText => Results.Count > 0 ? "Choose a result on the left." : "No AI results for this case yet. Each answer is kept here with its prompt and citations.";
-    public bool HasNothing => !HasRecords && !HasImages && !HasAudio && !ClaudeAllowed;
+    public bool HasNothing => !HasRecords && !HasImages && !HasAudio && !HasVideos && !ClaudeAllowed && !HasData;
+    /// <summary>Data shown without records behind it (a field of the details, a file of the extraction), to explain.</summary>
+    public bool HasData => _scope.About != "" && !HasRecords;
     public string SkippedText => _scope.Media.Count(m => m.IsImage) - Images.Count is > 0 and var k
         ? $"{k:N0} images left out: not copied out of the extraction yet, or not JPEG, PNG, GIF or WebP." : "";
     public const string Caveat = "AI output · review aid, not a finding: check every cited record before relying on it.";
@@ -66,6 +83,7 @@ public partial class AiViewModel : ObservableObject
         (_main, _s, _scope, _store) = (main, s, scope, AiStore.For(s));
         Images = scope.Media.Where(m => m.IsImage && m.Exists && VisionMimes.Contains(Mime(m))).ToList();
         Audio = scope.Media.Where(m => m.Kind == "audio" && m.Exists).ToList();
+        Videos = scope.Media.Where(m => m.Kind == "video" && m.Exists).ToList();
         theme = Themes.FirstOrDefault();
         Reload();
     }
@@ -81,10 +99,20 @@ public partial class AiViewModel : ObservableObject
     void Reload()
     {
         Results.Clear();
-        foreach (var r in _store.Results()) Results.Add(r);
+        var all = _store.Results();
+        foreach (var k in all.Select(r => r.Kind).Distinct().Order()) if (!Kinds.Contains(k)) Kinds.Add(k);
+        foreach (var r in all.Where(r => KindFilter == AllKinds || r.Kind == KindFilter)) Results.Add(r);
         OnPropertyChanged(nameof(EmptyText));
         Sends.Clear();
         foreach (var x in _store.Sends().Reverse()) Sends.Add(x);
+    }
+
+    /// <summary>A new result selected; the kind filter goes back to all when it would hide it.</summary>
+    void Show(AiResult res)
+    {
+        if (KindFilter != AllKinds && res.Kind != KindFilter) KindFilter = AllKinds;
+        Reload();
+        Selected = Results.FirstOrDefault(x => x.Id == res.Id);
     }
 
     /// <summary>The client and model of a job, or null with the reason in the status.</summary>
@@ -95,7 +123,7 @@ public partial class AiViewModel : ObservableObject
     }
 
     /// <summary>A provider outside this machine and your network is named and confirmed before anything is sent.</summary>
-    static bool Confirm(AiProvider p, string what) =>
+    internal static bool Confirm(AiProvider p, string what) =>
         p.Where != "remote" || MessageBox.Show(Application.Current.MainWindow,
             $"{p.Name} ({p.Address}) is not on this machine or your network.\n\n{what} will be sent to it and logged.\n\nSend?",
             "AI · data leaves your network", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) == MessageBoxResult.Yes;
@@ -126,6 +154,8 @@ public partial class AiViewModel : ObservableObject
 
     /// <summary>A complete analysis is running: its steps were confirmed together at its start.</summary>
     bool _started, _stopped;
+    /// <summary>Why the complete analysis went on without the audio, written into its result.</summary>
+    string? _audioLeftOut;
 
     /// <summary>💀 The categories to analyse and the objective are chosen in a small window; the analysis then runs in an
     /// AI window of its own, over every record and media file of those categories.</summary>
@@ -173,7 +203,12 @@ public partial class AiViewModel : ObservableObject
         var steps = new List<string>();
         if (req.Translate) steps.Add($"translate {records:N0} records into {Ai.TranslateTo}");
         if (req.Describe && HasImages) steps.Add($"describe {Images.Count:N0} pictures and read their text");
-        if (req.Transcribe && HasAudio) steps.Add($"transcribe {Audio.Count:N0} audio files");
+        // audio no engine here can transcribe: said now, and the analysis goes on without it only if the examiner agrees
+        var audioWhy = _audioLeftOut = req.Transcribe && HasAudio ? AudioProblem() : null;
+        if (audioWhy is not null && !SkipAudio(audioWhy)) return;
+        var transcribe = req.Transcribe && HasAudio && audioWhy is null;
+        if (transcribe) steps.Add($"transcribe {Audio.Count:N0} audio files");
+        else if (audioWhy is not null) steps.Add($"{Audio.Count:N0} audio files left out, not processed: {audioWhy}");
         steps.Add(req.Claude ? "Claude CLI explores the case and writes the report (leaves this machine)"
                              : $"read {records:N0} records in about {(records + Ai.MaxRecordsPerRequest - 1) / Math.Max(1, Ai.MaxRecordsPerRequest):N0} requests, keep those that bear on the objective, write the report");
         if (MessageBox.Show(Application.Current.MainWindow,
@@ -186,7 +221,7 @@ public partial class AiViewModel : ObservableObject
         {
             if (req.Translate) { Language = Ai.TranslateTo; await Translate(); }
             if (!_stopped && req.Describe && HasImages) await DescribeImages();
-            if (!_stopped && req.Transcribe && HasAudio) await Transcribe();
+            if (!_stopped && transcribe) await Transcribe();
             if (_stopped) return;
             var web = req.Web ? await WebReference("The complete analysis", [WebLookup.Clean(req.Objective)]) : "";
             if (req.Claude)
@@ -217,12 +252,12 @@ public partial class AiViewModel : ObservableObject
                     (step, text) => _store.LogSend(r.Value.Provider, r.Value.Model, "Complete analysis" + step, text),
                     st => Application.Current.Dispatcher.Invoke(() => Status = st), ct, alsoSent: mediaKeys), ct);
                 var res = _store.Save(r.Value.Provider, r.Value.Model, "Complete analysis", "Objective: " + req.Objective,
-                    $"{ScopeText} ({hits.Count(h => h.Known):N0} relevant records of {records:N0}" + (resumed > 0 ? $", {resumed:N0} batches resumed" : "") + ")",
+                    $"{ScopeText} ({hits.Count(h => h.Known):N0} relevant records of {records:N0}" + (resumed > 0 ? $", {resumed:N0} batches resumed" : "") + ")" +
+                    (_audioLeftOut is { } why ? $"; {Audio.Count:N0} audio files not transcribed: {why}" : ""),
                     x.Output, x.Known, x.Unknown, x.Steps == 1 ? x.SendId : 0);
                 Status = (x.Uncited > 0 ? $"{x.Uncited:N0} lines have no source and are marked NO SOURCE. " : "") +
                          (tooLong > 0 ? $"{tooLong:N0} records too long were not read. " : "") + "Done. Review aid, not a finding.";
-                Reload();
-                Selected = Results.FirstOrDefault(y => y.Id == res.Id);
+                Show(res);
             });
         }
         finally { _started = false; }
@@ -232,19 +267,49 @@ public partial class AiViewModel : ObservableObject
     /// ("[media#id] (kind) text"), within <paramref name="budget"/> characters; and their keys.</summary>
     (string Text, List<string> Keys) MediaAnalyses(int budget)
     {
-        var keys = _scope.Media.Select(m => AiText.Key("media", m.RefId)).ToHashSet();
         var sb = new StringBuilder();
         var used = new List<string>();
+        foreach (var (k, said) in MediaRead())
+        {
+            var line = $"{k} {said}";
+            if (sb.Length + line.Length > budget) break; // ponytail: newest first until full, no relevance pass
+            sb.AppendLine(line);
+            used.Add(k);
+        }
+        return (sb.ToString().TrimEnd(), used);
+    }
+
+    /// <summary>By [media#id], newest first, what the AI already read in each of the scope's files: "(kind) text".</summary>
+    List<(string Key, string Said)> MediaRead()
+    {
+        var keys = _scope.Media.Select(m => AiText.Key("media", m.RefId)).ToHashSet();
+        var list = new List<(string, string)>();
         foreach (var x in _store.MediaResults())
             foreach (var k in x.Cited.Where(keys.Contains))
+                if (keys.Remove(k)) // the newest of each file only
+                    list.Add((k, $"({x.Kind.Replace(" item", "")}) {x.Output.Replace(k, "").Replace('\n', ' ').Trim()}"));
+        return list;
+    }
+
+    /// <summary>By record key, what the AI read in the files the record points to: it goes with the record as one more field.</summary>
+    Dictionary<string, string> AttachmentNotes(IReadOnlyDictionary<string, string> read)
+    {
+        var notes = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (read.Count == 0) return notes;
+        using var con = _s.OpenDb();
+        var resolver = new MediaResolver(_s);
+        foreach (var sel in _scope.Records.Where(x => x.Artifact.Columns.Any(c => c.IsMedia)))
+            try
             {
-                if (!keys.Remove(k)) continue; // the newest of each file only
-                var line = $"{k} ({x.Kind.Replace(" item", "")}) {x.Output.Replace(k, "").Replace('\n', ' ').Trim()}";
-                if (sb.Length + line.Length > budget) return (sb.ToString(), used); // ponytail: newest first until full, no relevance pass
-                sb.AppendLine(line);
-                used.Add(k);
+                var cols = ArtifactQuery.ExistingColumns(con, sel.Artifact);
+                var idx = Enumerable.Range(0, cols.Count).Where(i => cols[i].IsMedia).ToList();
+                foreach (var row in ArtifactQuery.All(con, sel.Artifact, sel.Filter, sel.Ids, sel.ColumnFilters))
+                    if (idx.SelectMany(i => resolver.Resolve(con, row.Values[i])).Select(m => read.GetValueOrDefault(AiText.Key("media", m.RefId)))
+                           .OfType<string>().Distinct().ToList() is { Count: > 0 } said)
+                        notes[AiText.Key(sel.Artifact.TableName, row.RowId)] = string.Join(" | ", said);
             }
-        return (sb.ToString().TrimEnd(), used);
+            catch (Microsoft.Data.Sqlite.SqliteException) { } // table missing from a partial case
+        return notes;
     }
 
     [RelayCommand]
@@ -258,7 +323,8 @@ public partial class AiViewModel : ObservableObject
     /// settings (fewer when the model's context is smaller). <paramref name="rolling"/>: each step sends the answer so far
     /// with the next records and gets it back updated (summary, question); else each step is answered on its own and the
     /// parts are joined (translation).</summary>
-    Task Ask(string kind, Func<string, string> prompt, bool rolling = true, int carry = 0, bool allColumns = false) => Run(async ct =>
+    Task Ask(string kind, Func<string, string> prompt, bool rolling = true, int carry = 0, bool allColumns = false,
+             IReadOnlyDictionary<string, string>? notes = null, string head = "") => Run(async ct =>
     {
         if (Role(Ai.Text, "text") is not { } r) return;
         if (!Confirm(r.Provider, ScopeText)) return;
@@ -275,18 +341,49 @@ public partial class AiViewModel : ObservableObject
                 "AI · " + kind, MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
         var x = await Task.Run(() => AiSteps.Run(_s, r.Client, r.Model, system, pending, prompt, rolling, max, context,
             (step, text) => _store.LogSend(r.Provider, r.Model, kind + step, text),
-            st => Application.Current.Dispatcher.Invoke(() => Status = st), ct, carry, allColumns), ct);
+            st => Application.Current.Dispatcher.Invoke(() => Status = st), ct, carry, allColumns, parallel: Ai.ParallelRequests, notes: notes), ct);
         if (x.Steps == 0) { Status = "No record fits one request of this model."; return; }
         var scope = ScopeText + (x.Steps > 1 ? $" ({x.Sent.Count:N0} records in {x.Steps} steps of at most {max})" : "") +
                     (x.TooLong > 0 ? $" ({x.TooLong:N0} records too long for the model, not sent)" : "");
-        var res = _store.Save(r.Provider, r.Model, kind, AiText.PromptOf(x.LastUser), scope, x.Output, x.Known, x.Unknown, x.Steps == 1 ? x.SendId : 0);
+        var res = _store.Save(r.Provider, r.Model, kind, AiText.PromptOf(x.LastUser), scope, head == "" ? x.Output : head + "\n\n" + x.Output,
+                              // one record sent: the answer is about it, cited or not, and shows in its details
+                              x.Known.Count == 0 && x.Sent.Count == 1 ? [.. x.Sent] : x.Known, x.Unknown, x.Steps == 1 ? x.SendId : 0);
         Status = (x.Uncited > 0 ? $"{x.Uncited:N0} lines have no source and are marked NO SOURCE. " : "") +
                  (x.TooLong > 0 ? $"{x.TooLong:N0} records too long for the model were not sent. " : "") + "Done.";
-        Reload();
-        Selected = Results.FirstOrDefault(x => x.Id == res.Id);
+        Show(res);
     });
 
-    [RelayCommand] Task Summarize() => Ask("Summary", t => AiText.Summarize(t, Ai.AnswerLanguage));
+    /// <summary>A summary of the records with what their pictures and audio show: files the AI has not read yet are read
+    /// first when the examiner agrees and a model is set for them; each record then carries what was read in its files.</summary>
+    [RelayCommand]
+    async Task Summarize()
+    {
+        if (!Ai.Enabled) { Status = "AI is off in AI settings."; return; }
+        var read = MediaRead().ToDictionary(x => x.Key, x => x.Said);
+        bool Unread(MediaRef m) => !read.ContainsKey(AiText.Key("media", m.RefId));
+        var images = Ai.Ready(Ai.Vision) ? Images.Count(Unread) : 0;
+        var audio = AudioProblem() is null ? Audio.Count(Unread) : 0;
+        if (images + audio > 0)
+        {
+            var what = string.Join(" and ", new[] { images > 0 ? $"{images:N0} pictures" : "", audio > 0 ? $"{audio:N0} audio files" : "" }.Where(w => w != ""));
+            var a = MessageBox.Show(Application.Current.MainWindow,
+                $"{what} of these records have not been read by the AI yet.\n\nRead them first, so the summary tells what they show or say?\n\n" +
+                "Yes: read them, then summarise.   No: summarise the text and the files already read.",
+                "AI · summary", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+            if (a == MessageBoxResult.Cancel) return;
+            if (a == MessageBoxResult.Yes)
+            {
+                _stopped = false;
+                if (images > 0) await DescribeImages();
+                if (!_stopped && audio > 0) await Transcribe();
+                if (_stopped) return;
+                read = MediaRead().ToDictionary(x => x.Key, x => x.Said);
+            }
+        }
+        var notes = await Task.Run(() => AttachmentNotes(read));
+        await Ask("Summary", t => AiText.Summarize(t, Ai.AnswerLanguage, _scope.About), notes: notes,
+                  head: _scope.About == "" ? "" : "From the case data (not the AI):\n" + _scope.About);
+    }
 
     /// <summary>Every column of each record, technical ones included, explained; shown in each record's details. With the
     /// web lookup on, what the data format means is first searched online (format words only, shown and confirmed).</summary>
@@ -301,6 +398,24 @@ public partial class AiViewModel : ObservableObject
         })) : "";
         await Ask("Explanation", t => AiText.Explain(t, Ai.AnswerLanguage, web), rolling: false, allColumns: true);
     }
+
+    /// <summary>Data shown that is not a record (the scope's <see cref="AiScope.About"/>: a file of the extraction, a
+    /// field with its item) explained in one request. Nothing to cite: the result says what was sent.</summary>
+    [RelayCommand]
+    Task ExplainData() => Run(async ct =>
+    {
+        if (_scope.About == "") { Status = "Nothing to explain."; return; }
+        if (Role(Ai.Text, "text") is not { } r) return;
+        if (!Confirm(r.Provider, ScopeText)) return;
+        var prompt = AiText.ExplainData(_scope.About, Ai.AnswerLanguage);
+        var context = await r.Client.ContextOf(r.Model, ct);
+        var id = _store.LogSend(r.Provider, r.Model, "Explanation", prompt);
+        Status = $"Waiting for {r.Model}…";
+        var output = await r.Client.Chat(r.Model, AiText.SystemIn(Ai.AnswerLanguage), prompt, null, ct, context);
+        var res = _store.Save(r.Provider, r.Model, "Explanation", AiText.PromptOf(prompt), ScopeText, output, _scope.Keys ?? [], [], id);
+        Status = "Done. Review aid, not a finding.";
+        Show(res);
+    });
 
     /// <summary>Questions and Explain may search the web first (shown and confirmed each time).</summary>
     [ObservableProperty] private bool webSearch;
@@ -343,6 +458,25 @@ public partial class AiViewModel : ObservableObject
 
     static string Hash(string s) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(s)))[..12];
 
+    /// <summary>Each item through <paramref name="job"/>, at most the parallel requests of AI settings at once. Started on
+    /// the UI thread, every job comes back to it after each await: only the requests overlap, the store, the status and
+    /// the lists are touched by one thread. The first failure stops the others and is the one thrown.</summary>
+    static async Task Each<T>(IEnumerable<T> items, CancellationToken ct, Func<T, CancellationToken, Task> job)
+    {
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        using var gate = new SemaphoreSlim(Math.Max(1, Ai.ParallelRequests));
+        var all = Task.WhenAll(items.Select(async x =>
+        {
+            await gate.WaitAsync(stop.Token);
+            try { await job(x, stop.Token); }
+            catch { stop.Cancel(); throw; }
+            finally { gate.Release(); }
+        }).ToList());
+        try { await all; }
+        catch when (all.Exception?.InnerExceptions.FirstOrDefault(e => e is not OperationCanceledException) is { } first)
+        { System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw(first); }
+    }
+
     /// <summary>The records in batches, each marked done once answered, so a stopped review resumes (a batch is known by
     /// its exact rows); a batch over the size limit is halved. Then one result with every candidate of this run's batches.</summary>
     [RelayCommand]
@@ -366,8 +500,7 @@ public partial class AiViewModel : ObservableObject
                               [.. all.Where(h => h.Known).Select(h => h.Cite)], [.. all.Where(h => !h.Known).Select(h => h.Cite)], 0);
         Status = $"{all.Count(h => h.Known):N0} candidates to check" + (resumed > 0 ? $" ({resumed:N0} batches resumed from an earlier run)" : "") +
                  (tooLong > 0 ? $"; {tooLong:N0} records too long, not reviewed" : "") + ". Review aid, not a finding.";
-        Reload();
-        Selected = Results.FirstOrDefault(x => x.Id == res.Id);
+        Show(res);
     });
 
     /// <summary>The records in scope in batches of at most the records per request set in AI settings.</summary>
@@ -384,32 +517,37 @@ public partial class AiViewModel : ObservableObject
     {
         var prefix = $"theme|{Hash(name + "\n" + indicators)}|{r.Provider.Name}|{r.Model}|";
         var runKeys = new HashSet<string>();
-        int n = 0, resumed = 0, tooLong = 0;
-        while (batches.TryDequeue(out var b))
+        int n = 0, resumed = 0, tooLong = 0, total = batches.Count;
+        // in rounds: a batch too long comes back as two halves for the next round
+        while (batches.Count > 0)
         {
-            ct.ThrowIfCancellationRequested();
-            var (a, ids) = b;
-            var key = $"{prefix}{a.TableName}|{Hash(string.Join(",", ids))}";
-            n++;
-            if (_store.IsDone(key)) { resumed++; runKeys.Add(key); continue; }
-            Status = $"Batch {n:N0} of {n + batches.Count:N0} · {a.Name}";
-            var (text, keys, omitted) = await Task.Run(() => AiText.Records(_s, [new AiSelection(a, ids)],
-                AiText.Budget(context, AiText.Theme(name, indicators, "", Ai.AnswerLanguage).Length + 2_000), ct), ct);
-            if (omitted > 0)
+            var round = batches.ToList();
+            batches.Clear();
+            await Each(round, ct, async (b, ct) =>
             {
-                if (ids.Length > 1) { batches.Enqueue((a, ids[..(ids.Length / 2)])); batches.Enqueue((a, ids[(ids.Length / 2)..])); }
-                else tooLong++;
-                continue;
-            }
-            runKeys.Add(key);
-            if (keys.Count == 0) { _store.MarkDone(key); continue; }
-            var user = AiText.Theme(name, indicators, text, Ai.AnswerLanguage);
-            var sendId = _store.LogSend(r.Provider, r.Model, "Thematic review: " + name, user);
-            var output = await r.Client.Chat(r.Model, AiText.SystemIn(Ai.AnswerLanguage), user, null, ct, context);
-            var hits = AiText.ParseTheme(output, keys);
-            _store.Save(r.Provider, r.Model, "Thematic review item", AiText.PromptOf(user), key, output,
-                        [.. hits.Where(h => h.Known).Select(h => h.Cite).Distinct()], [.. hits.Where(h => !h.Known).Select(h => h.Cite).Distinct()], sendId);
-            _store.MarkDone(key);
+                var (a, ids) = b;
+                var key = $"{prefix}{a.TableName}|{Hash(string.Join(",", ids))}";
+                n++;
+                if (_store.IsDone(key)) { resumed++; runKeys.Add(key); return; }
+                Status = $"Batch {n:N0} of {total:N0} · {a.Name}";
+                var (text, keys, omitted) = await Task.Run(() => AiText.Records(_s, [new AiSelection(a, ids)],
+                    AiText.Budget(context, AiText.Theme(name, indicators, "", Ai.AnswerLanguage).Length + 2_000), ct), ct);
+                if (omitted > 0)
+                {
+                    if (ids.Length > 1) { batches.Enqueue((a, ids[..(ids.Length / 2)])); batches.Enqueue((a, ids[(ids.Length / 2)..])); total++; }
+                    else tooLong++;
+                    return;
+                }
+                runKeys.Add(key);
+                if (keys.Count == 0) { _store.MarkDone(key); return; }
+                var user = AiText.Theme(name, indicators, text, Ai.AnswerLanguage);
+                var sendId = _store.LogSend(r.Provider, r.Model, "Thematic review: " + name, user);
+                var output = await r.Client.Chat(r.Model, AiText.SystemIn(Ai.AnswerLanguage), user, null, ct, context);
+                var hits = AiText.ParseTheme(output, keys);
+                _store.Save(r.Provider, r.Model, "Thematic review item", AiText.PromptOf(user), key, output,
+                            [.. hits.Where(h => h.Known).Select(h => h.Cite).Distinct()], [.. hits.Where(h => !h.Known).Select(h => h.Cite).Distinct()], sendId);
+                _store.MarkDone(key);
+            });
         }
         var items = _store.Results("Thematic review item").Where(x => runKeys.Contains(x.Scope)).ToList();
         return ([.. items.SelectMany(x => AiText.ParseTheme(x.Output, x.Cited.ToHashSet())).DistinctBy(h => h.Cite)], resumed, tooLong);
@@ -429,15 +567,14 @@ public partial class AiViewModel : ObservableObject
         var prefix = $"vision|{r.Provider.Name}|{r.Model}|{tag}|";
         var context = await r.Client.ContextOf(r.Model, ct);
         int n = 0;
-        foreach (var m in Images)
+        await Each(Images, ct, async (m, ct) =>
         {
-            ct.ThrowIfCancellationRequested();
             n++;
             var key = prefix + m.RefId;
-            if (_store.IsDone(key)) continue;
+            if (_store.IsDone(key)) return;
             Status = $"Image {n:N0} of {Images.Count:N0}";
             var bytes = await Task.Run(m.ReadAllBytes, ct);
-            if (bytes.Length > 20_000_000) { _store.MarkDone(key); continue; }
+            if (bytes.Length > 20_000_000) { _store.MarkDone(key); return; }
             var img = new AiImage(m.Name, Mime(m), bytes);
             var sendId = _store.LogSend(r.Provider, r.Model, kind, prompt + "\n" + img.Describe());
             var output = await r.Client.Chat(r.Model, "You describe images for a forensic examiner. Only what is visible.", prompt, [img], ct, context);
@@ -445,49 +582,172 @@ public partial class AiViewModel : ObservableObject
             _store.Save(r.Provider, r.Model, kind + " item", prompt, key, oneLine ? $"{head}: {output.Replace('\n', ' ')}" : $"{head}\n{output.Trim()}",
                         [AiText.Key("media", m.RefId)], [], sendId);
             _store.MarkDone(key);
-        }
+        });
         var refs = Images.Select(m => prefix + m.RefId).ToHashSet();
         var items = _store.Results(kind + " item").Where(x => refs.Contains(x.Scope)).OrderBy(x => x.Output).ToList();
         var res = _store.Save(r.Provider, r.Model, kind, prompt, $"{items.Count:N0} images · {ScopeText}",
                               string.Join(oneLine ? "\n" : "\n\n", items.Select(x => x.Output)), [.. items.SelectMany(x => x.Cited)], [], 0);
         Status = $"{items.Count:N0} images {(oneLine ? "classified" : "described")}. Review aid, not a finding.";
-        Reload();
-        Selected = Results.FirstOrDefault(x => x.Id == res.Id);
+        Show(res);
     });
+
+    static readonly TimeSpan MaxVideoAudio = TimeSpan.FromHours(1); // ponytail: one request per video; chunk the audio if longer videos matter
+
+    /// <summary>Each video read by LEXIS's ffmpeg: frames spaced as set in AI settings, each described by the video model,
+    /// and its audio track transcribed; one result per video, a timeline by time, with the frames sent and their SHA-256.
+    /// The frames and the audio are written to a temporary folder, deleted after; the video is only read.</summary>
+    [RelayCommand]
+    Task AnalyseVideos() => Run(async ct =>
+    {
+        if (Role(Ai.VideoRole, "vision (or video)") is not { } r) return;
+        if (WhisperCpp.BundledFfmpeg is not { } ff) { Status = "LEXIS's ffmpeg could not be written to this computer."; return; }
+        var speech = Ai.VideoTranscribe && AudioProblem() is null ? Role(Ai.Transcription, "transcription") : null;
+        if (!Confirm(r.Provider, $"Frames of {Videos.Count:N0} videos")) return;
+        if (speech is { } sp && sp.Provider.Where == "remote" && !Confirm(sp.Provider, $"The audio of {Videos.Count:N0} videos")) speech = null;
+        var context = await r.Client.ContextOf(r.Model, ct);
+        var every = Ai.VideoByPercent ? $"every {Ai.VideoPercent} %" : $"every {Ai.VideoSeconds} s";
+        int n = 0, done = 0;
+        AiResult? last = null;
+        foreach (var m in Videos)
+        {
+            n++;
+            var at = $"Video {n:N0} of {Videos.Count:N0}";
+            var work = Directory.CreateTempSubdirectory("lexis-video-");
+            try
+            {
+                Status = at + ": reading it";
+                var file = await Task.Run(m.LocalFile, ct);
+                // "Duration: N/A" (a recording never finalised, much WebM): one frame at its start, and its audio
+                var d = await VideoFrames.DurationOf(ff, file, ct) ?? TimeSpan.Zero;
+                var (times, capped) = VideoFrames.Times(d, Ai.VideoByPercent ? Ai.VideoPercent : null, Ai.VideoSeconds, Ai.VideoMaxFrames);
+                var frames = await VideoFrames.Extract(ff, file, times, work.FullName, ct);
+                if (frames.Count == 0 && speech is null) { Status = $"{m.Name}: ffmpeg could not take a frame from it."; continue; } // with audio: transcribed alone
+                var seen = new List<(TimeSpan, string)>();
+                var sent = new List<string>();
+                long sendId = 0;
+                foreach (var (t, jpg) in frames)
+                {
+                    Status = $"{at}: frame {seen.Count + 1} of {frames.Count}";
+                    var bytes = await File.ReadAllBytesAsync(jpg, ct);
+                    var img = new AiImage($"{m.Name} at {VideoFrames.Clock(t)}", "image/jpeg", bytes);
+                    var prompt = VideoFrames.Prompt(t, Ai.AnswerLanguage);
+                    sendId = _store.LogSend(r.Provider, r.Model, "Video frame", prompt + "\n" + img.Describe());
+                    seen.Add((t, await r.Client.Chat(r.Model, "You describe video frames for a forensic examiner. Only what is visible.", prompt, [img], ct, context)));
+                    sent.Add($"{VideoFrames.Clock(t)} sha256 {Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant()}");
+                }
+                IReadOnlyList<(TimeSpan, string)> said = [];
+                var heard = "";
+                if (speech is not null && d > MaxVideoAudio)
+                    heard = $"\n\nAudio not transcribed: the video is longer than {MaxVideoAudio.TotalMinutes:N0} minutes; transcribe its audio on its own.";
+                else if (speech is { } s)
+                {
+                    Status = at + ": transcribing its audio";
+                    try
+                    {
+                        var wav = Path.Combine(work.FullName, "audio.wav");
+                        await WhisperCpp.ToWav(ff, file, wav, ct);
+                        var bytes = await File.ReadAllBytesAsync(wav, ct);
+                        _store.LogSend(s.Provider, s.Model, "Transcription",
+                            $"audio track of {m.Name} as WAV ({bytes.Length:N0} bytes, sha256 {Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant()})");
+                        var tr = await s.Client.Transcribe(s.Model, "audio.wav", bytes, ct);
+                        said = tr.Segments.Count > 0 ? tr.Segments : tr.Text == "" ? [] : [(TimeSpan.Zero, tr.Text)];
+                        heard = tr.Text == "" ? "\n\nAudio: no speech recognised." : tr.Language is { } l ? $"\n\nLanguage of the speech: {l}" : "";
+                    }
+                    catch (AiException e) { heard = $"\n\nAudio not transcribed: {e.Message}"; }
+                }
+                var key = AiText.Key("media", m.RefId);
+                var output = $"{key} {m.Name}\n{VideoFrames.Timeline(seen, said)}{heard}\n\n" +
+                             $"Frames sent ({frames.Count} of {times.Count}{(capped ? $", at most {Ai.VideoMaxFrames}, picked evenly" : "")}):\n{string.Join("\n", sent)}";
+                last = _store.Save(r.Provider, r.Model, "Video analysis", VideoFrames.Prompt(frames.Count > 0 ? frames[0].At : TimeSpan.Zero, Ai.AnswerLanguage),
+                                   $"{m.Name} · {frames.Count} frames {every} · {VideoFrames.Clock(d)}", output, [key], [], frames.Count == 1 ? sendId : 0);
+                done++;
+            }
+            finally
+            {
+                // the frames and the audio are copies of evidence: retried, ffmpeg or an antivirus may still hold them a moment
+                for (var i = 0; i < 5 && work.Exists; i++)
+                {
+                    try { work.Delete(true); }
+                    catch (Exception e) when (e is IOException or UnauthorizedAccessException) { await Task.Delay(200, CancellationToken.None); }
+                    work.Refresh();
+                }
+            }
+        }
+        if (last is null) return;
+        Status = $"{done:N0} of {n:N0} videos analyzed. Review aid, not a finding.";
+        Show(last);
+    });
+
+    /// <summary>Why the audio cannot be transcribed with the engine chosen for it, or null when it can be tried.</summary>
+    static string? AudioProblem()
+    {
+        var (p, model) = (Ai.ProviderOf(Ai.Transcription), Ai.Transcription.Model);
+        if (Ai.Transcription.Provider == AiSettings.WhisperName)
+            return p is null ? "Whisper (whisper.cpp) is not set up: AI settings › Engines › whisper.cpp › Set up."
+                 : !File.Exists(p.Address) ? $"Whisper (whisper.cpp) is not configured: {p.Address} is not there."
+                 : model == "" ? "Whisper (whisper.cpp) has no model chosen in AI settings." : null;
+        if (p is null || model == "") return "No engine is chosen for audio in AI settings.";
+        return p.Kind is AiKind.Ollama or AiKind.ClaudeCli || p.Name == AiSettingsViewModel.LmStudioName
+            ? $"The model chosen for audio ({model} on {p.Name}) does not process audio: it runs chat models only." : null;
+    }
+
+    /// <summary>Asked when the audio cannot be transcribed: go on without it, or stop.</summary>
+    bool SkipAudio(string why) => MessageBox.Show(Application.Current.MainWindow,
+        $"{why}\n\nContinue without the {Audio.Count:N0} audio files? They will not be processed.",
+        "AI · audio", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) == MessageBoxResult.Yes;
 
     [RelayCommand]
     Task Transcribe() => Run(async ct =>
     {
-        if (Role(Ai.Transcription, "transcription") is not { } r || r.Provider.Kind == AiKind.Ollama || r.Provider.Name == AiSettingsViewModel.LmStudioName)
+        var why = AudioProblem();
+        if ((why is null ? Role(Ai.Transcription, "transcription") : null) is not { } r)
         {
-            // a chat server cannot transcribe, whatever model it has loaded: offer whisper.cpp instead
+            why ??= "No engine is chosen for audio in AI settings.";
+            if (_started) { if (!SkipAudio(why)) _stopped = true; _audioLeftOut = why; Status = $"{Audio.Count:N0} audio files not transcribed: {why}"; return; }
             var a = MessageBox.Show(Application.Current.MainWindow,
-                (Ai.ProviderOf(Ai.Transcription) is null ? "Transcription needs a speech-to-text engine: none is chosen yet." : AiClient.NoTranscription) + "\n\n" +
-                "Whisper (whisper.cpp) runs on this machine: download whisper-cli (the Windows zip of a release) and a ggml model " +
-                "(e.g. ggml-small.bin), put them in one folder, then give whisper-cli.exe in AI settings › Transcription.\n\n" +
+                why + "\n\nWhisper (whisper.cpp) runs on this machine: set it up under AI settings › Engines › whisper.cpp.\n\n" +
                 "Yes: open AI settings.   No: open the whisper.cpp download page.",
                 "Transcription", MessageBoxButton.YesNoCancel, MessageBoxImage.Information);
             if (a == MessageBoxResult.Yes) _main.OpenAiSettingsCommand.Execute(null);
             else if (a == MessageBoxResult.No) Process.Start(new ProcessStartInfo(WhisperCpp.Downloads) { UseShellExecute = true });
-            Status = "Transcription needs whisper.cpp or a speech-to-text server.";
+            Status = "Transcription: " + why;
             return;
         }
         if (!Confirm(r.Provider, $"{Audio.Count:N0} audio files")) return;
+        var folders = SilkAudio.Folders(_s);
         int n = 0;
-        foreach (var m in Audio)
+        string? noTranscription = null;
+        try
         {
-            ct.ThrowIfCancellationRequested();
-            n++;
-            var key = $"transcribe|{r.Provider.Name}|{r.Model}|{m.RefId}";
-            if (_store.IsDone(key)) continue;
-            Status = $"Audio {n:N0} of {Audio.Count:N0}";
-            var bytes = await Task.Run(m.ReadAllBytes, ct);
-            var sendId = _store.LogSend(r.Provider, r.Model, "Transcription",
-                $"audio {m.Name} ({bytes.Length:N0} bytes, sha256 {Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant()})");
-            var (text, lang) = await r.Client.Transcribe(r.Model, m.Name, bytes, ct);
-            _store.Save(r.Provider, r.Model, "Transcription", "Speech to text", $"{m.Name} {AiText.Key("media", m.RefId)}",
-                        (text == "" ? "(no speech recognised)" : text) + (lang is null ? "" : $"\n\nLanguage: {lang}"), [AiText.Key("media", m.RefId)], [], sendId);
-            _store.MarkDone(key);
+            await Each(Audio, ct, async (m, ct) =>
+            {
+                n++;
+                var key = $"transcribe|{r.Provider.Name}|{r.Model}|{m.RefId}";
+                if (_store.IsDone(key)) return;
+                Status = $"Audio {n:N0} of {Audio.Count:N0}";
+                // SILK (WeChat, QQ) goes as the WAV kept with the case: no engine reads SILK itself
+                var (bytes, name, silk) = await Task.Run(() => SilkAudio.ForTranscription(m, m.AudioFolders ?? folders), ct);
+                var sendId = _store.LogSend(r.Provider, r.Model, "Transcription",
+                    $"audio {name} ({bytes.Length:N0} bytes, sha256 {Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant()})" +
+                    (silk is null ? "" : $", decoded from SILK {m.Name} (sha256 {silk}) by {SilkAudio.Decoder}"));
+                string text; string? lang;
+                try { (text, lang) = await r.Client.Transcribe(r.Model, name, bytes, ct); }
+                catch (AiException e) when (_started && e.Message == AiClient.NoTranscription)
+                {
+                    noTranscription = e.Message;
+                    throw new OperationCanceledException(); // the others stop: asked once below
+                }
+                _store.Save(r.Provider, r.Model, "Transcription", "Speech to text", $"{m.Name} {AiText.Key("media", m.RefId)}",
+                            (text == "" ? "(no speech recognised)" : text) + (lang is null ? "" : $"\n\nLanguage: {lang}"), [AiText.Key("media", m.RefId)], [], sendId);
+                _store.MarkDone(key);
+            });
+        }
+        catch (OperationCanceledException) when (noTranscription is { } left)
+        {
+            if (!SkipAudio(left)) _stopped = true;
+            _audioLeftOut = left;
+            Status = $"Audio not transcribed: {left}";
+            return;
         }
         Status = "Done.";
     });
@@ -503,7 +763,7 @@ public partial class AiViewModel : ObservableObject
 
     async Task ClaudeExplore(string kind, string task, CancellationToken ct)
     {
-        if (!Ai.ClaudeAllowed) { Status = "The Claude CLI is not allowed in AI settings."; return; }
+        if (!Ai.ClaudeExplores) { Status = "Choose the Claude CLI for the text job in AI settings."; return; }
         if (Environment.ProcessPath is not { } self) { Status = "Cannot find this program's path for the MCP server."; return; }
         var claude = new AiProvider("Claude CLI", AiKind.ClaudeCli, Ai.ClaudePath);
         var device = _main.DeviceOf(_s)?.Label;
@@ -525,8 +785,7 @@ public partial class AiViewModel : ObservableObject
         var res = _store.Save(claude, "claude", kind, AiText.PromptOf(task), ScopeText, output,
                               [.. cites.Where(read.Contains)], [.. cites.Where(c => !read.Contains(c))], sendId);
         Status = "Done.";
-        Reload();
-        Selected = Results.FirstOrDefault(x => x.Id == res.Id);
+        Show(res);
     }
 
     /// <summary>Opens a cited record (or shows a cited media file in the details).</summary>

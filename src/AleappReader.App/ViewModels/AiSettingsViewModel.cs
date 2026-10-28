@@ -9,8 +9,8 @@ namespace AleappReader.App.ViewModels;
 
 public partial class AiProviderRow : ObservableObject
 {
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(WhereText), nameof(IsLocal))] private string name = "";
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(WhereText), nameof(IsLocal))] private AiKind kind = AiKind.OpenAi;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(WhereText), nameof(IsLocal), nameof(CanAudio))] private string name = "";
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(WhereText), nameof(IsLocal), nameof(CanText), nameof(CanAudio))] private AiKind kind = AiKind.OpenAi;
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(WhereText), nameof(IsLocal))] private string address = "";
     [ObservableProperty] private string status = "";
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(KeyText))] private string? protectedKey;
@@ -23,6 +23,11 @@ public partial class AiProviderRow : ObservableObject
     public bool IsLocal => Provider.IsLocal;
     public bool IsRemote => Provider.Where == "remote";
     public string KeyText => string.IsNullOrEmpty(ProtectedKey) ? "no key" : "key stored, encrypted";
+    /// <summary>Chat models: text and images. whisper.cpp only transcribes.</summary>
+    public bool CanText => Kind != AiKind.WhisperCpp;
+    /// <summary>Offered for audio: whisper.cpp or any model server (the user's choice; one that runs chat models only is
+    /// warned about when the audio is sent, see AiViewModel.AudioProblem). Not the Claude CLI, which takes no audio.</summary>
+    public bool CanAudio => Kind != AiKind.ClaudeCli;
 
     public AiProviderSetting ToSetting()
     {
@@ -56,11 +61,15 @@ public partial class AiRoleRow(string title, ObservableCollection<AiProviderRow>
 {
     public string Title { get; } = title;
     public bool IsTranscription { get; init; }
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(Models))] private string provider = "";
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(Models), nameof(IsWhisper))] private string provider = "";
+    /// <summary>whisper.cpp does this job: its setup and models are offered beside it.</summary>
+    public bool IsWhisper => IsTranscription && Provider == AiSettings.WhisperName;
     [ObservableProperty] private string model = "";
     [ObservableProperty] private string status = "";
     public IEnumerable<AiModel> Models => providers.FirstOrDefault(p => p.Name == Provider)?.Models ?? [];
-    public void RefreshModels() => OnPropertyChanged(nameof(Models));
+    /// <summary>Every engine and endpoint that can do this job, wherever it runs.</summary>
+    public IEnumerable<AiProviderRow> Choices => providers.Where(p => IsTranscription ? p.CanAudio : p.CanText);
+    public void RefreshModels() { OnPropertyChanged(nameof(Models)); OnPropertyChanged(nameof(Choices)); }
     public AiRole ToRole() => new() { Provider = Provider, Model = Model.Trim() };
 }
 
@@ -78,14 +87,13 @@ public partial class AiSettingsViewModel : ObservableObject
     public AiKindChoice[] Kinds { get; } = [new(AiKind.OpenAi, "OpenAI-compatible"), new(AiKind.Ollama, "Ollama API")];
     /// <summary>Every server: the two local engines and the other endpoints.</summary>
     public ObservableCollection<AiProviderRow> Providers { get; } = [];
-    /// <summary>The local engines to choose from: Ollama and LM Studio, each keeping its own address.</summary>
+    /// <summary>The engines to set up: Ollama and LM Studio (each keeping its own address), the Claude CLI and whisper.cpp.</summary>
     public ObservableCollection<AiProviderRow> Engines { get; } = [];
     public ObservableCollection<AiProviderRow> Endpoints { get; } = [];
     public ObservableCollection<AiRoleRow> Roles { get; } = [];
     public ObservableCollection<AiThemeRow> Themes { get; } = [];
-    /// <summary>The servers a job can use: the local engine chosen and the other endpoints.</summary>
-    public IEnumerable<string> ProviderNames => Endpoints.Select(p => p.Name).Prepend(Engine?.Name ?? "")
-        .Append(ClaudeAllowed ? AiSettings.ClaudeName : "").Append(WhisperPath.Trim() != "" ? AiSettings.WhisperName : "").Where(n => n != "");
+
+    void RefreshRoles() { foreach (var r in Roles) r.RefreshModels(); }
 
     /// <summary>whisper.cpp on this machine, for transcription: listed with the models beside it, never stored among the servers.</summary>
     readonly AiProviderRow _whisper = new() { Name = AiSettings.WhisperName, Kind = AiKind.WhisperCpp };
@@ -96,7 +104,6 @@ public partial class AiSettingsViewModel : ObservableObject
     {
         _whisper.Address = value.Trim();
         if (value.Trim() != "") _ = Detect(_whisper);
-        OnPropertyChanged(nameof(ProviderNames));
     }
 
     [RelayCommand]
@@ -108,6 +115,16 @@ public partial class AiSettingsViewModel : ObservableObject
         if (Roles[2].Provider is "" or OllamaName or LmStudioName) (Roles[2].Provider, Roles[2].Model) = (AiSettings.WhisperName, "");
     }
 
+    /// <summary>Installs whisper.cpp or manages its models; what it sets up becomes the transcription job's engine.</summary>
+    [RelayCommand]
+    async Task SetUpWhisper()
+    {
+        if (Views.WhisperSetupWindow.Run(WhisperPath) is not { } r) return;
+        WhisperPath = r.Exe;
+        await Detect(_whisper);
+        (Roles[2].Provider, Roles[2].Model) = (AiSettings.WhisperName, r.Model ?? "");
+    }
+
     [RelayCommand]
     void OpenWhisperDownloads(string? which) =>
         System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(which == "models" ? WhisperCpp.ModelDownloads : WhisperCpp.Downloads) { UseShellExecute = true });
@@ -117,29 +134,24 @@ public partial class AiSettingsViewModel : ObservableObject
     readonly AiProviderRow _claude = new() { Name = AiSettings.ClaudeName, Kind = AiKind.ClaudeCli };
     public AiProviderRow ClaudeRow => _claude;
 
-    partial void OnClaudeAllowedChanged(bool value)
-    {
-        if (value) _ = Detect(_claude);
-        else foreach (var r in Roles.Where(r => r.Provider == AiSettings.ClaudeName)) (r.Provider, r.Model) = (Engine?.Name ?? "", "");
-        OnPropertyChanged(nameof(ProviderNames));
-    }
-
     partial void OnClaudePathChanged(string value) => _claude.Address = value.Trim();
     [ObservableProperty] private bool enabled;
-    [ObservableProperty] private AiProviderRow? engine;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(EngineIsServer), nameof(EngineIsClaude), nameof(EngineIsWhisper))] private AiProviderRow? engine;
+    public bool EngineIsServer => Engine?.Kind is AiKind.Ollama or AiKind.OpenAi;
+    public bool EngineIsClaude => Engine?.Kind == AiKind.ClaudeCli;
+    public bool EngineIsWhisper => Engine?.Kind == AiKind.WhisperCpp;
     [ObservableProperty] private AiProviderRow? selectedProvider;
 
-    // the jobs on the engine left move to the one chosen; its models are listed at once
+    // the engine shown is the one being set up: its models are listed at once; jobs keep their own choice (a job with
+    // none takes it when it can do that job)
     partial void OnEngineChanged(AiProviderRow? oldValue, AiProviderRow? newValue)
     {
         if (newValue is null) return;
-        foreach (var r in Roles.Where(r => r.Provider == oldValue?.Name || r.Provider == "")) (r.Provider, r.Model) = (newValue.Name, "");
-        OnPropertyChanged(nameof(ProviderNames));
+        foreach (var r in Roles.Where(r => r.Provider == "" && (r.IsTranscription ? newValue.CanAudio : newValue.CanText))) (r.Provider, r.Model) = (newValue.Name, "");
         _ = Detect(newValue);
     }
     [ObservableProperty] private AiThemeRow? selectedTheme;
     [ObservableProperty] private string claudePath;
-    [ObservableProperty] private bool claudeAllowed;
     [ObservableProperty] private bool explainWebLookup;
     [ObservableProperty] private string webSearchUrl = WebLookup.DefaultUrl;
     [ObservableProperty] private bool mcpAllowed;
@@ -148,6 +160,13 @@ public partial class AiSettingsViewModel : ObservableObject
     [ObservableProperty] private string answerLanguage;
     [ObservableProperty] private string visionCategories;
     [ObservableProperty] private int maxRecordsPerRequest;
+    [ObservableProperty] private int parallelRequests;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(VideoBySeconds))] private bool videoByPercent;
+    public bool VideoBySeconds { get => !VideoByPercent; set => VideoByPercent = !value; }
+    [ObservableProperty] private int videoPercent;
+    [ObservableProperty] private int videoSeconds;
+    [ObservableProperty] private int videoMaxFrames;
+    [ObservableProperty] private bool videoTranscribe;
     [ObservableProperty] private string message = "";
     public event Action? Done;
 
@@ -207,18 +226,28 @@ public partial class AiSettingsViewModel : ObservableObject
         foreach (var p in s.Providers) Add(new AiProviderRow { Name = p.Name, Kind = p.Kind, Address = p.Address, ProtectedKey = p.ProtectedKey });
         if (Engines.All(e => e.Name != OllamaName)) Add(new AiProviderRow { Name = OllamaName, Kind = AiKind.Ollama, Address = "http://localhost:11434" });
         if (Engines.All(e => e.Name != LmStudioName)) Add(new AiProviderRow { Name = LmStudioName, Kind = AiKind.OpenAi, Address = "http://localhost:1234/v1" });
+        _claude.Address = s.ClaudePath;
+        foreach (var p in new[] { _claude, _whisper }) // engines too, but not stored among the servers: Save leaves them out
+        {
+            Providers.Add(p);
+            Engines.Add(p);
+            p.Use += (row, m, job) => (Roles[job].Provider, Roles[job].Model, Roles[job].Status) = (row.Name, m.Id, "");
+        }
         engine = Engines.FirstOrDefault(e => e.Name == s.LocalEngine) ?? Engines.FirstOrDefault(e => e.Name == s.Text.Provider) ?? Engines[0];
         Roles.Add(new AiRoleRow("Text (summary, questions, translation, thematic review)", Providers) { Provider = s.Text.Provider, Model = s.Text.Model });
         Roles.Add(new AiRoleRow("Vision (image classification)", Providers) { Provider = s.Vision.Provider, Model = s.Vision.Model });
-        Roles.Add(new AiRoleRow("Transcription (audio)", Providers) { Provider = s.Transcription.Provider, Model = s.Transcription.Model, IsTranscription = true });
+        // a chat server cannot transcribe whatever model it lists: such a choice from an older LEXIS goes to whisper.cpp
+        var audio = Providers.FirstOrDefault(p => p.Name == s.Transcription.Provider) is { CanAudio: true } ? s.Transcription : new AiRole { Provider = AiSettings.WhisperName };
+        Roles.Add(new AiRoleRow("Transcription (audio)", Providers) { Provider = audio.Provider, Model = audio.Model, IsTranscription = true });
+        Roles.Add(new AiRoleRow("Video frames (empty: the vision model)", Providers) { Provider = s.Video.Provider, Model = s.Video.Model });
+        (videoByPercent, videoPercent, videoSeconds, videoMaxFrames, videoTranscribe) =
+            (s.VideoByPercent, s.VideoPercent, s.VideoSeconds, s.VideoMaxFrames, s.VideoTranscribe);
         foreach (var t in s.Themes) Themes.Add(new AiThemeRow { Name = t.Name, Indicators = t.Indicators });
-        (claudePath, claudeAllowed, mcpAllowed, translateTo, answerLanguage, visionCategories, maxRecordsPerRequest) =
-            (s.ClaudePath, s.ClaudeAllowed, s.McpAllowed, s.TranslateTo, s.AnswerLanguage, s.VisionCategories, s.MaxRecordsPerRequest);
+        parallelRequests = s.ParallelRequests;
+        (claudePath, mcpAllowed, translateTo, answerLanguage, visionCategories, maxRecordsPerRequest) =
+            (s.ClaudePath, s.McpAllowed, s.TranslateTo, s.AnswerLanguage, s.VisionCategories, s.MaxRecordsPerRequest);
         (explainWebLookup, webSearchUrl) = (s.ExplainWebLookup, s.WebSearchUrl);
-        _claude.Address = claudePath;
-        Providers.Add(_claude); // for the roles' model lists only: Engines and Endpoints do not hold it, Save leaves it out
-        if (claudeAllowed) _ = Detect(_claude);
-        Providers.Add(_whisper); // like the Claude CLI: for the transcription models, not saved as a server
+        _ = Detect(_claude); // its model list: nothing is sent
         WhisperPath = s.WhisperPath;
         SelectedTheme = Themes.FirstOrDefault();
     }
@@ -229,7 +258,7 @@ public partial class AiSettingsViewModel : ObservableObject
         var row = new AiProviderRow { Name = $"Endpoint {Endpoints.Count + 1}", Kind = AiKind.OpenAi, Address = "https://" };
         Add(row);
         SelectedProvider = row;
-        OnPropertyChanged(nameof(ProviderNames));
+        RefreshRoles();
     }
 
     void Add(AiProviderRow row)
@@ -239,8 +268,9 @@ public partial class AiSettingsViewModel : ObservableObject
         row.Renamed += (old, now) =>
         {
             foreach (var r in Roles.Where(r => r.Provider == old)) r.Provider = now;
-            OnPropertyChanged(nameof(ProviderNames));
+            RefreshRoles();
         };
+        row.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(AiProviderRow.Kind)) RefreshRoles(); };
         row.Use += (p, m, job) => (Roles[job].Provider, Roles[job].Model, Roles[job].Status) = (p.Name, m.Id, "");
         row.AddressChanged += p => _ = Detect(p);
     }
@@ -260,7 +290,7 @@ public partial class AiSettingsViewModel : ObservableObject
         Providers.Remove(p);
         Endpoints.Remove(p);
         foreach (var r in Roles.Where(r => r.Provider == p.Name)) (r.Provider, r.Model) = ("", "");
-        OnPropertyChanged(nameof(ProviderNames));
+        RefreshRoles();
     }
 
     /// <summary>Connects and lists the server's models: the test that the address (and key) work.</summary>
@@ -268,6 +298,7 @@ public partial class AiSettingsViewModel : ObservableObject
     async Task Detect(AiProviderRow? row)
     {
         if (row is null) return;
+        if (row.Kind == AiKind.WhisperCpp && row.Address.Trim() == "") { row.Status = "Not set up yet: give whisper-cli.exe."; return; }
         row.Status = "Connecting…";
         try
         {
@@ -276,9 +307,8 @@ public partial class AiSettingsViewModel : ObservableObject
             row.Models.Clear();
             foreach (var m in models) row.Models.Add(m);
             row.Status = models.Count == 0 ? "Connected, no models" : $"Connected · {models.Count} models" +
-                (row.Kind == AiKind.Ollama ? $", {models.Count(m => m.Vision == true)} with vision" : row.Kind == AiKind.WhisperCpp ? " for transcription" : " (vision not reported by this server)");
-            foreach (var r in Roles) r.RefreshModels();
-            OnPropertyChanged(nameof(ProviderNames));
+                (row.Kind == AiKind.Ollama ? $", {models.Count(m => m.Vision == true)} with vision" : row.Kind == AiKind.WhisperCpp ? " for transcription" : row.Kind == AiKind.ClaudeCli ? "" : " (vision not reported by this server)");
+            RefreshRoles();
         }
         catch (Exception e) when (e is AiException or OperationCanceledException or InvalidOperationException or UriFormatException)
         {
@@ -318,19 +348,24 @@ public partial class AiSettingsViewModel : ObservableObject
         { Message = $"{bad.Name}: the address must start with http:// or https://"; return; }
         if (!WebSearchUrl.Trim().StartsWith("https://", StringComparison.OrdinalIgnoreCase) || !WebSearchUrl.Contains("{q}"))
         { Message = "Web search address: https://, with {q} where the search words go."; return; }
+        if (Enabled && Roles.All(r => r.Provider == "" || r.Model.Trim() == ""))
+        { Message = "AI is on but no job has a model: choose one for text, images or audio, or turn AI off."; return; }
         var ai = Settings.Current.Ai;
         ai.Enabled = Enabled;
         ai.LocalEngine = Engine?.Name ?? "";
         ai.Providers = [.. servers.Select(p => p.ToSetting())];
-        (ai.Text, ai.Vision, ai.Transcription) = (Roles[0].ToRole(), Roles[1].ToRole(), Roles[2].ToRole());
+        (ai.Text, ai.Vision, ai.Transcription, ai.Video) = (Roles[0].ToRole(), Roles[1].ToRole(), Roles[2].ToRole(), Roles[3].ToRole());
+        (ai.VideoByPercent, ai.VideoPercent, ai.VideoSeconds, ai.VideoMaxFrames, ai.VideoTranscribe) =
+            (VideoByPercent, Math.Clamp(VideoPercent, 1, 50), Math.Clamp(VideoSeconds, 1, 3600), Math.Clamp(VideoMaxFrames, 1, 200), VideoTranscribe);
         ai.ClaudePath = ClaudePath.Trim() is { Length: > 0 } c ? c : "claude";
-        ai.ClaudeAllowed = ClaudeAllowed;
+        ai.ClaudeAllowed = Roles.Any(r => r.Provider == AiSettings.ClaudeName);
         ai.WhisperPath = WhisperPath.Trim();
         (ai.ExplainWebLookup, ai.WebSearchUrl) = (ExplainWebLookup, WebSearchUrl.Trim());
         ai.McpAllowed = McpAllowed;
         ai.TranslateTo = TranslateTo.Trim() is { Length: > 0 } l ? l : "English";
         ai.AnswerLanguage = AnswerLanguage.Trim() is { Length: > 0 } al ? al : "English";
         ai.MaxRecordsPerRequest = Math.Clamp(MaxRecordsPerRequest, 1, 1000);
+        ai.ParallelRequests = Math.Clamp(ParallelRequests, 1, 64);
         ai.VisionCategories = VisionCategories.Trim();
         ai.Themes = [.. Themes.Where(t => t.Name.Trim() != "").Select(t => new AiTheme { Name = t.Name.Trim(), Indicators = t.Indicators.Trim() })];
         Settings.Current.Save(ai: true);

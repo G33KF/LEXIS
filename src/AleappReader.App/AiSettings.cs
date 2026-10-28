@@ -32,15 +32,22 @@ public sealed class AiProviderSetting
     public AiClient Client() => new(Provider, Key());
 }
 
-/// <summary>Whether AI is on, for the AI buttons and menus to bind to
-/// ({Binding Enabled, Source={x:Static local:AiState.Instance}}): off, they are disabled. An instance, not a static
-/// property: WPF's binding to a static property threw "Value cannot be null (key)" when the main window opened.</summary>
+/// <summary>Whether AI is on, and which jobs have a model, for the AI buttons and menus to bind to
+/// ({Binding Text, Source={x:Static local:AiState.Instance}}): a job without a model leaves its buttons disabled. An
+/// instance, not a static property: WPF's binding to a static property threw "Value cannot be null (key)" when the main window opened.</summary>
 public sealed class AiState : System.ComponentModel.INotifyPropertyChanged
 {
     public static AiState Instance { get; } = new();
     public bool Enabled => Settings.Current.Ai.Enabled;
+    /// <summary>Translate, summarise, explain, questions.</summary>
+    public bool Text => Settings.Current.Ai.Ready(Settings.Current.Ai.Text);
+    /// <summary>Describe, classify and read (OCR) images.</summary>
+    public bool Vision => Settings.Current.Ai.Ready(Settings.Current.Ai.Vision);
+    public bool Audio => Settings.Current.Ai.Ready(Settings.Current.Ai.Transcription);
+    /// <summary>Analyse videos: frames to the video model (the vision model when none is set).</summary>
+    public bool Video => Settings.Current.Ai.Ready(Settings.Current.Ai.VideoRole);
     public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
-    public static void Changed() => Instance.PropertyChanged?.Invoke(Instance, new(nameof(Enabled)));
+    public static void Changed() => Instance.PropertyChanged?.Invoke(Instance, new(""));
 }
 
 /// <summary>Which provider and model does a job (text, vision, transcription).</summary>
@@ -69,10 +76,24 @@ public sealed class AiSettings
     public string LocalEngine { get; set; } = "";
     public AiRole Text { get; set; } = new();
     public AiRole Vision { get; set; } = new();
-    public AiRole Transcription { get; set; } = new();
+    /// <summary>The model the frames of a video go to; empty: the vision model's.</summary>
+    public AiRole Video { get; set; } = new();
+    [JsonIgnore] public AiRole VideoRole => Video.Provider != "" && Video.Model.Trim() != "" ? Video : Vision;
+    /// <summary>A frame every <see cref="VideoPercent"/> % of the duration, else every <see cref="VideoSeconds"/> s; at most <see cref="VideoMaxFrames"/>.</summary>
+    public bool VideoByPercent { get; set; } = true;
+    public int VideoPercent { get; set; } = 10;
+    public int VideoSeconds { get; set; } = 5;
+    public int VideoMaxFrames { get; set; } = 30;
+    /// <summary>The video's audio track is transcribed too, when audio has an engine.</summary>
+    public bool VideoTranscribe { get; set; } = true;
+    /// <summary>whisper.cpp unless another speech-to-text server is chosen.</summary>
+    public AiRole Transcription { get; set; } = new() { Provider = WhisperName };
     /// <summary>The Claude CLI executable; it runs only when allowed here and confirmed at each run.</summary>
     public string ClaudePath { get; set; } = "claude";
+    /// <summary>A job uses the Claude CLI (set on Save from the jobs): choosing it is the permission.</summary>
     public bool ClaudeAllowed { get; set; }
+    /// <summary>"Ask Claude" and the complete analysis's exploration: when the Claude CLI does the text job.</summary>
+    [JsonIgnore] public bool ClaudeExplores => ClaudeAllowed && Text.Provider == ClaudeName;
     /// <summary>whisper.cpp's whisper-cli.exe: transcription on this machine. Empty until the examiner gives it.</summary>
     public string WhisperPath { get; set; } = "";
     /// <summary>The MCP server inside LEXIS is on: other programs (LM Studio, Claude Desktop…) read the case open in
@@ -91,6 +112,9 @@ public sealed class AiSettings
     public string AnswerLanguage { get; set; } = "English";
     /// <summary>Most records (messages) sent in one request; a summary over more goes in steps carrying the summary so far.</summary>
     public int MaxRecordsPerRequest { get; set; } = 20;
+    /// <summary>Requests sent to the model at once, for the jobs whose requests are independent (images, audio, the
+    /// thematic review, Explain, questions). 1: one after the other.</summary>
+    public int ParallelRequests { get; set; } = 1;
     public string VisionCategories { get; set; } =
         "weapons, drugs, identity documents, cash or payment cards, screenshots, vehicles, people, documents, other";
     public List<AiTheme> Themes { get; set; } =
@@ -117,4 +141,7 @@ public sealed class AiSettings
         WhisperName => WhisperPath != "" ? new AiProviderSetting { Name = WhisperName, Kind = AiKind.WhisperCpp, Address = WhisperPath } : null,
         _ => Providers.FirstOrDefault(p => p.Name == r.Provider),
     };
+
+    /// <summary>AI is on and the job has an engine and a model: its functions are offered.</summary>
+    public bool Ready(AiRole r) => Enabled && ProviderOf(r) is not null && r.Model.Trim() != "";
 }

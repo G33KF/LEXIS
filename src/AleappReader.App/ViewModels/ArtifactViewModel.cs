@@ -47,10 +47,11 @@ public partial class TranslationView(CaseSession s, ArtifactInfo a) : Observable
         try
         {
             var store = AiStore.For(s);
-            ByRow = await Task.Run(() => AiText.Translations(store.Results("Translation"))
+            // excluded or corrected by the examiner (details › AI Analysis): shown as left there
+            ByRow = await Task.Run(() => AiText.Translations(AiText.AsRevised(store, store.Results("Translation").ToList()))
                 .Select(kv => (kv.Value, Id: kv.Key.StartsWith(prefix, StringComparison.Ordinal) && long.TryParse(kv.Key[prefix.Length..^1], out var id) ? id : -1))
                 .Where(x => x.Id >= 0).ToDictionary(x => x.Id, x => x.Value));
-            ByMedia = await Task.Run(() => store.MediaResults().SelectMany(r => r.Cited.Where(k => k.StartsWith("[media#", StringComparison.Ordinal)).Select(k => (k, r)))
+            ByMedia = await Task.Run(() => AiText.AsRevised(store, store.MediaResults().ToList()).SelectMany(r => r.Cited.Where(k => k.StartsWith("[media#", StringComparison.Ordinal)).Select(k => (k, r)))
                 .GroupBy(x => x.k).ToDictionary(g => g.Key[7..^1], g => string.Join("\n", AiText.Notes(g.Select(x => x.r), g.Key).Select(n => $"{n.Name}: {n.Text}"))));
         }
         catch (Microsoft.Data.Sqlite.SqliteException) { } // AI base unreadable: no translations shown
@@ -77,6 +78,8 @@ public partial class ArtifactViewModel : ObservableObject, IRefreshable, IDispos
     public string SourceLine => EvidenceOrigin.Sources(Artifact) is { Count: > 0 } s ? s[0] + (s.Count > 1 ? $" (+{s.Count - 1} more)" : "") : "";
     public string SourcesTip => EvidenceOrigin.Join(EvidenceOrigin.Sources(Artifact), 40);
     public bool HasConversation => Artifact.Conversation is not null;
+    public bool CanTranslate => MacroCategories.Written(Artifact);
+    public bool CanSummarize => MacroCategories.Summarizable([Artifact]);
     public bool HasGeo => GeoExtractor.GeoPairs(Artifact).Count > 0;
 
     [ObservableProperty] private VirtualRows<GridRow>? rows;

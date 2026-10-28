@@ -29,6 +29,8 @@ public sealed class Settings
 
     /// <summary>AI providers, roles and prompts; AI stays off until enabled.</summary>
     public AiSettings Ai { get; set; } = new();
+    /// <summary>OCR, run on request: the Tesseract languages, the Windows OCR language and the limits of a file read.</summary>
+    public OcrSettings Ocr { get; set; } = new();
 
     public static Settings Current { get; } = Load();
 
@@ -63,4 +65,13 @@ public sealed class Settings
         if (RecentCases.Count > 10) RecentCases.RemoveRange(10, RecentCases.Count - 10);
         Save();
     }
+}
+
+public sealed class OcrSettings
+{
+    public List<string> Languages { get; set; } = ["eng", "ita"];
+    /// <summary>A language Windows can read (e.g. it-IT); empty: the first of the user's languages it can.</summary>
+    public string WindowsLanguage { get; set; } = "";
+    public int MaxMegabytes { get; set; } = 20;
+    public int MaxPages { get; set; } = 200;
 }

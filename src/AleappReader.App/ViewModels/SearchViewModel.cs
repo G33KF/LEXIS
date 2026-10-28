@@ -286,6 +286,19 @@ public partial class SearchViewModel : ObservableObject, IColumnFilters
         else Views.RecordWindow.ShowMedia(_main, m, null);
     }
 
+    /// <summary>OCR of the selected files of the extraction (scanned PDFs, pictures; the others are left as read).</summary>
+    [RelayCommand] Task OcrTesseract(System.Collections.IList? rows) => Ocr(rows, OcrJobs.Engine.Tesseract);
+    [RelayCommand] Task OcrWindows(System.Collections.IList? rows) => Ocr(rows, OcrJobs.Engine.Windows);
+
+    async Task Ocr(System.Collections.IList? rows, OcrJobs.Engine engine)
+    {
+        var files = rows?.OfType<SearchRow>().Where(r => r.Origin is SearchRow.FileContent or SearchRow.NeedsOcr).DistinctBy(r => (r.Device, r.Path)).ToList() ?? [];
+        if (files.Count == 0) { Info = "Select files of the extraction first (scanned PDFs, pictures)."; return; }
+        foreach (var g in files.GroupBy(r => r.Device))
+            if ((_devices.FirstOrDefault(d => d.Label == g.Key) ?? _devices[0]).Session is { Extraction: { } x } s)
+                await OcrJobs.Run(_main, s, [.. g.Select(r => (r.Path, (Func<string?>)(() => x.CopyOut(r.Path))))], engine);
+    }
+
     // the advanced form: composed into the typed syntax, so the search box and history show what ran
     public static IReadOnlyList<string> Modes { get; } = ["All of the words", "Any of the words", "The exact phrase", "Regular expression"];
     public bool AdvOpen => Term == "";

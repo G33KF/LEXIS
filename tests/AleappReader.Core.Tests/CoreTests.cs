@@ -349,6 +349,10 @@ public class CoreTests : IDisposable
         File.WriteAllBytes(Path.Combine(dl, "scan.pdf"), Pdf(false));
 
         using var x = ExtractionFiles.Open(dir)!;
+        // each extraction file has its own media id: the AI keeps each file's results and done marks apart
+        Assert.NotEqual(x.ToMedia("sdcard/Download/report.pdf").RefId, x.ToMedia("sdcard/Download/scan.pdf").RefId);
+        Assert.Equal(x.ToMedia("sdcard/Download/scan.pdf").RefId, x.ToMedia("sdcard/Download/scan.pdf", "copy").RefId);
+        Assert.True(ExtractionFiles.IsExtraction(x.ToMedia("sdcard/Download/scan.pdf")));
         var store = new TextStore(Path.Combine(_c.Root, "content-text.db"));
         Assert.Equal(6, ContentIndex.Build(store, x, ContentIndex.Kinds));
         Assert.Equal(["data/data/com.example.chat/databases/msgstore | messages #1", "data/data/com.example.chat/prefs.plist | ",
@@ -926,6 +930,15 @@ public class CoreTests : IDisposable
     [InlineData("", "")]
     public void Source_paths_are_shown_as_paths_on_the_device(string recorded, string device) =>
         Assert.Equal(device, EvidenceOrigin.DevicePath(recorded));
+
+    [Theory]
+    [InlineData("CameraRollDomain/Media/DCIM/100APPLE/IMG_1.JPG", "/private/var/mobile/Media/DCIM/100APPLE/IMG_1.JPG")]
+    [InlineData("AppDomain-net.whatsapp.WhatsApp/Documents/a.jpg", "/private/var/mobile/Containers/Data/Application/net.whatsapp.WhatsApp/Documents/a.jpg")]
+    [InlineData("AppDomainGroup-group.net.whatsapp/Message/Media/b.jpg", "/private/var/mobile/Containers/Shared/AppGroup/group.net.whatsapp/Message/Media/b.jpg")]
+    [InlineData("Dump/data/media/0/DCIM/a.jpg", "/data/media/0/DCIM/a.jpg")]          // not a backup: as DevicePath
+    [InlineData("UnknownDomain/x.jpg", "UnknownDomain/x.jpg")]
+    public void A_backup_file_is_matched_at_the_path_iLEAPP_records(string inBackup, string recorded) =>
+        Assert.Equal(recorded, EvidenceOrigin.RecordedPath(inBackup));
 
     [Fact]
     public void Source_export_copies_the_extraction_file_and_its_wal_verified_and_falls_back_to_the_working_copy()

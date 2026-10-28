@@ -189,13 +189,13 @@ public sealed class AiClient(AiProvider provider, string? apiKey)
 
     public const string NoTranscription =
         "This server does not transcribe audio: it has no /audio/transcriptions endpoint. LM Studio and Ollama run chat models only, " +
-        "so a Whisper model loaded in them cannot be used for speech. Use whisper.cpp on this machine (AI settings › Transcription with " +
-        "whisper.cpp: give whisper-cli.exe and a ggml model), or a speech server with that endpoint (speaches, LocalAI, " +
+        "so a Whisper model loaded in them cannot be used for speech. Use whisper.cpp on this machine (AI settings › Engines › whisper.cpp: " +
+        "Set up, or give whisper-cli.exe and a ggml model), or a speech server with that endpoint (speaches, LocalAI, " +
         "whisper-server --inference-path /v1/audio/transcriptions).";
 
     /// <summary>Speech to text on an OpenAI-compatible /audio/transcriptions endpoint (whisper.cpp server, speaches,
     /// LocalAI…), with the language when the server reports it.</summary>
-    public async Task<(string Text, string? Language)> Transcribe(string model, string fileName, byte[] audio, CancellationToken ct = default)
+    public async Task<Transcript> Transcribe(string model, string fileName, byte[] audio, CancellationToken ct = default)
     {
         if (provider.Kind == AiKind.ClaudeCli) throw new AiException("The Claude CLI does not transcribe audio: choose a speech-to-text server for transcription.");
         if (provider.Kind == AiKind.WhisperCpp) return await WhisperCpp.Transcribe(provider.Address, model, fileName, audio, ct);
@@ -205,7 +205,8 @@ public sealed class AiClient(AiProvider provider, string? apiKey)
         catch (AiException) { j = await Send(Req(HttpMethod.Post, Base + "/audio/transcriptions", Form("json")), ct); } // server without verbose_json
         if (j["text"] is null && j["error"] is { } err) // an error answered as 200 is not "no speech"
             throw new AiException(NoSpeechEndpoint(err.ToJsonString()) ? NoTranscription : "The server answered: " + Short(err.ToJsonString()));
-        return (((string?)j["text"] ?? "").Trim(), (string?)j["language"]);
+        return new(((string?)j["text"] ?? "").Trim(), (string?)j["language"],
+                   [.. (j["segments"] as JsonArray ?? []).Select(x => (TimeSpan.FromSeconds((double?)x?["start"] ?? 0), ((string?)x?["text"] ?? "").Trim())).Where(x => x.Item2 != "")]);
 
         MultipartFormDataContent Form(string format) => new()
         {
@@ -264,6 +265,7 @@ public sealed class AiStore(string path)
             CREATE TABLE IF NOT EXISTS results(id INTEGER PRIMARY KEY, at INTEGER, kind TEXT, provider TEXT, location TEXT, model TEXT,
               prompt TEXT, scope TEXT, output TEXT, cited TEXT, unknown TEXT, send_id INTEGER);
             CREATE TABLE IF NOT EXISTS done(key TEXT PRIMARY KEY, at INTEGER);
+            CREATE TABLE IF NOT EXISTS revisions(id INTEGER PRIMARY KEY, result_id INTEGER, at INTEGER, action TEXT, text TEXT);
             """;
         cmd.ExecuteNonQuery();
         return con;
@@ -336,6 +338,34 @@ public sealed class AiStore(string path)
         return [.. list.Where(x => x.Cited.Contains(key))];
     }
 
+    public const string Edit = "edit", Exclude = "exclude", Restore = "restore";
+
+    /// <summary>An examiner's change to a result (<see cref="Edit"/>, <see cref="Exclude"/>, <see cref="Restore"/>), appended:
+    /// the model's output is never changed or removed.</summary>
+    public void Revise(long resultId, string action, string text = "")
+    {
+        using var con = Open();
+        Insert(con, "INSERT INTO revisions(result_id,at,action,text) VALUES(@p0,@p1,@p2,@p3)", resultId, Now, action, text);
+    }
+
+    /// <summary>The changes to each of these results that has any: its latest edit, whether it is excluded now, every change.</summary>
+    public IReadOnlyDictionary<long, AiRevision> Revisions(IReadOnlyCollection<long> ids)
+    {
+        var by = new Dictionary<long, List<(DateTimeOffset At, string Action, string Text)>>();
+        if (ids.Count == 0 || !File.Exists(path)) return new Dictionary<long, AiRevision>();
+        using var con = Open();
+        using var cmd = con.CreateCommand();
+        // ids are the store's own integers: joined, not user text
+        cmd.CommandText = $"SELECT result_id,at,action,text FROM revisions WHERE result_id IN ({string.Join(",", ids)}) ORDER BY id";
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+        {
+            if (!by.TryGetValue(r.GetInt64(0), out var l)) by[r.GetInt64(0)] = l = [];
+            l.Add((DateTimeOffset.FromUnixTimeMilliseconds(r.GetInt64(1)), r.GetString(2), r.GetString(3)));
+        }
+        return by.ToDictionary(kv => kv.Key, kv => AiRevision.Of(kv.Key, kv.Value));
+    }
+
     public IReadOnlyList<AiSend> Sends()
     {
         if (!File.Exists(path)) return [];
@@ -368,6 +398,37 @@ public sealed class AiStore(string path)
 }
 
 public sealed record ThemeHit(string Cite, string Reason, bool Known);
+
+/// <summary>Speech to text: the whole text, its language when told, and its segments with their start (empty when the
+/// engine gives none).</summary>
+public sealed record Transcript(string Text, string? Language, IReadOnlyList<(TimeSpan At, string Text)> Segments)
+{
+    public void Deconstruct(out string text, out string? language) => (text, language) = (Text, Language);
+}
+
+/// <summary>The examiner's changes to one AI result: the text as corrected (null: never), whether it is excluded now, every change.</summary>
+public sealed record AiRevision(long ResultId, string? Text, DateTimeOffset? EditedAt, bool Excluded, DateTimeOffset? ExcludedAt,
+                                IReadOnlyList<(DateTimeOffset At, string Action, string Text)> History)
+{
+    public DateTimeOffset Last => History[^1].At;
+
+    public static AiRevision Of(long id, IReadOnlyList<(DateTimeOffset At, string Action, string Text)> h)
+    {
+        var edit = h.LastOrDefault(x => x.Action == AiStore.Edit);
+        var ex = h.LastOrDefault(x => x.Action is AiStore.Exclude or AiStore.Restore);
+        return new(id, edit.Action is null ? null : edit.Text, edit.Action is null ? null : edit.At,
+                   ex.Action == AiStore.Exclude, ex.Action == AiStore.Exclude ? ex.At : null, h);
+    }
+}
+
+/// <summary>One analysis of one item: the result, its kind (without " item"), what it says about the item, and the examiner's changes.</summary>
+public sealed record ItemAnalysis(AiResult Result, string Kind, string Text, AiRevision? Revision)
+{
+    public bool Excluded => Revision?.Excluded == true;
+    public bool Revised => Revision?.Text is not null;
+    /// <summary>The examiner's correction when there is one, else the model's text.</summary>
+    public string Shown => Revision?.Text ?? Text;
+}
 
 /// <summary>One thing the AI said about a record or file: what (Translation, Description…), the text, and its provenance.</summary>
 public sealed record AiNote(string Name, string Text, string Label);
@@ -425,7 +486,8 @@ public static partial class AiText
     /// <summary>The records as text within a character budget; the keys sent and how many records did not fit (reading
     /// stops at the budget, the rest is only counted).</summary>
     public static (string Text, HashSet<string> Keys, long Omitted) Records(CaseSession s, IEnumerable<AiSelection> selection,
-        int budget = 60_000, CancellationToken ct = default, int maxRecords = int.MaxValue, bool allColumns = false)
+        int budget = 60_000, CancellationToken ct = default, int maxRecords = int.MaxValue, bool allColumns = false,
+        IReadOnlyDictionary<string, string>? notes = null)
     {
         var sb = new StringBuilder();
         var keys = new HashSet<string>(StringComparer.Ordinal);
@@ -443,7 +505,7 @@ public static partial class AiText
                 foreach (var r in ArtifactQuery.All(con, a, sel.Filter, sel.Ids, sel.ColumnFilters))
                 {
                     ct.ThrowIfCancellationRequested();
-                    var line = Line(a, cols, r, tech);
+                    var line = Line(a, cols, r, tech, notes?.GetValueOrDefault(Key(a.TableName, r.RowId)));
                     if (sb.Length + line.Length > budget || keys.Count >= maxRecords) { omitted += Count(con, sel) - sent; break; }
                     sb.AppendLine(line);
                     keys.Add(Key(a.TableName, r.RowId));
@@ -476,15 +538,20 @@ public static partial class AiText
     static readonly JsonSerializerOptions JsonLine = new() { Encoder = global::System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
     /// <summary>One record as one line of JSON: its key, the artifact, then each column that has a value, by its name.
-    /// Text in any script stays as written (no \u escapes), so the model reads Chinese as Chinese.</summary>
-    public static string Line(ArtifactInfo a, IReadOnlyList<ColumnInfo> cols, RecordRow r, IReadOnlySet<string>? skip = null)
+    /// Text in any script stays as written (no \u escapes), so the model reads Chinese as Chinese. <paramref name="note"/>:
+    /// what the AI read in the record's attachments, as one more field.</summary>
+    public static string Line(ArtifactInfo a, IReadOnlyList<ColumnInfo> cols, RecordRow r, IReadOnlySet<string>? skip = null, string? note = null)
     {
         var o = new JsonObject { ["key"] = Key(a.TableName, r.RowId), ["artifact"] = a.Name };
         for (var i = 0; i < cols.Count; i++)
             if (ValueFormatter.Format(r.Values[i], cols[i]) is { Length: > 0 } v && skip?.Contains(cols[i].Sql) != true && !o.ContainsKey(cols[i].Display))
                 o[cols[i].Display] = v;
+        if (note is { Length: > 0 }) o[AttachmentField] = note;
         return o.ToJsonString(JsonLine);
     }
+
+    /// <summary>The field of a record holding what the AI read in its attachments (pictures described, audio transcribed).</summary>
+    public const string AttachmentField = "attachment as read by the AI (not verified)";
 
     /// <summary>The citations in an answer: those among the records sent, and the others.</summary>
     public static (List<string> Known, List<string> Unknown) Check(string output, IReadOnlySet<string> sent)
@@ -526,13 +593,37 @@ public static partial class AiText
         string.Join("\n", output.Split('\n').Select(l => l.Trim() is var t && !NotStatement(t) && !Cites(t, sent).Any(c => sent.Contains(c.Cite))
             ? "⚠ NO SOURCE · " + l : l));
 
-    public static string Summarize(string records, string language) => WithRecords(
-        "Task: summarise the records below for the examiner as a narrative: tell what happens, do not copy the messages.\nFormat:\n" +
-        "- short paragraphs in time order, each telling one exchange in your own words: when, who asks or says what, how the other " +
-        "answers and how it ends, e.g. \"On 12 March Anna asks Marco for the money [get_chat#12]; Marco answers in three messages that he " +
-        "cannot pay [get_chat#13, get_chat#14, get_chat#15]; they argue about it and in the end agree to meet on Friday [get_chat#21].\"\n" +
-        "- every sentence ends with the keys of the records it rests on, in square brackets\n" +
-        "- then a line \"People:\" and one bullet per person, number or account with the keys of the records where it appears\n" +
+    /// <summary>What a chat summary is about, from the case itself: the chat, the app, the device's account, who writes,
+    /// and which of its messages are summarised. Heads the result and goes to the model with every step.</summary>
+    public static string ChatHeader(ConversationItem c, ArtifactInfo a, IReadOnlyList<MessageItem> ms)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine($"Chat: {c.Label} · {c.Type} · ID {c.Key}");
+        sb.AppendLine($"App: {a.Name} ({a.Category})");
+        if (c.Owner != "") sb.AppendLine($"Device account (the user's side): {c.Owner}");
+        sb.AppendLine("Participants:");
+        foreach (var p in c.Participants)
+            sb.AppendLine($"- {p.Display}{(p.IsOwner ? " (device account)" : "")}: {p.Messages:N0} messages" + (p.First != "" ? $", {p.First} → {p.Last}" : ""));
+        var sent = ms.Count(m => m.IsSent);
+        var times = ms.Select(m => m.Time).Where(t => t != "").ToList();
+        sb.Append($"Messages summarised: {ms.Count:N0} of {c.Messages.Count:N0} ({sent:N0} sent, {ms.Count - sent:N0} received)" +
+                  (times.Count > 0 ? $", {times[0]} → {times[^1]}" : "") + $", {ms.Count(m => m.Media.Count > 0):N0} with media");
+        return sb.ToString();
+    }
+
+    public static string Summarize(string records, string language, string about = "") => WithRecords(
+        (about == "" ? "" : "ABOUT THE RECORDS, from the case data (not records, not to cite):\n" + about + "\nEND OF ABOUT\n\n") +
+        "Task: summarise the records below (often the messages of one chat) for the examiner. A summary, not a retelling: do not " +
+        "copy or list the messages one by one; group them by subject. It must be complete: every record belongs to some point, and " +
+        "several records on one subject make one point that cites them all. A record's \"" + AttachmentField + "\" field tells what " +
+        "its picture, video or audio shows or says: use it like the text of the message.\n" +
+        "Format, these headings in this order:\n" +
+        "Overview:\n- two to four sentences: who talks with whom (named as ABOUT names them, when given), over which dates, what about, how it ends; each with the keys it rests on\n" +
+        "Subjects:\n- one bullet per subject, in time order: the dates, what is said, asked, sent or agreed and by whom, in your own " +
+        "words, then the keys of all its records, e.g. \"12-14 March: Anna asks Marco to pay back the money; he says he cannot; they " +
+        "agree to meet on Friday [get_chat#12, get_chat#13, get_chat#21]\"\n" +
+        "Media:\n- one bullet per picture, video, audio or file sent: who sends it, what it shows or says, its key; " + NotInRecords + " if none\n" +
+        "People:\n- one bullet per person, number or account: who it is in this conversation, with the keys where it appears\n" +
         "Only what the records show; no guesses about motives, no advice, no closing remarks. " + EveryLine, records, language);
 
     /// <summary>Characters of records one request can carry: the model's context less room for the answer (a quarter,
@@ -547,7 +638,8 @@ public static partial class AiText
     {
         var tail = firstPrompt.Split(RecordsEnd) is [_, .., var t] ? t : "";
         return PromptOf(firstPrompt) + "\n\nThe answer below covers the earlier records. Update it with the records that follow it: " +
-               "keep every point of it with its record keys exactly as they are, add or correct what the new records show, with their keys. " +
+               "keep every record key it cites; fold what the new records show into the point on the same subject, adding their keys, " +
+               "or add a new point; correct what they contradict. Keep it as condensed as it is: one point per subject, nothing repeated. " +
                "Answer with the whole updated answer, in the same format, nothing else. " + EveryLine +
                "\n\nANSWER SO FAR\n" + soFar + RecordsHead + records + RecordsEnd + tail;
     }
@@ -581,17 +673,97 @@ public static partial class AiText
 
     /// <summary>Each record explained for the examiner: what it is and what its technical values mean.</summary>
     public static string Explain(string records, string language, string web = "") => WithRecords(
-        "Task: explain each record below to a forensic examiner: what kind of record it is, then what each technical value means " +
-        "(timestamps and their format or epoch, identifiers, flags, status and type codes, paths, hashes, sizes), as far as the record " +
-        "and general knowledge of the app's data format show; say when a meaning is not certain.\n" +
+        "Task: explain each record below to a forensic examiner: this record and its own values, not the app or the artifact in " +
+        "general. First what the record is; then, for every field of it that has a value, in the record's order, the field, its " +
+        "value as written and what that value means here (timestamps: their format or epoch and the date and time they read; " +
+        "identifiers, flags, status and type codes, paths, hashes, sizes: what this value says), as far as the record and general " +
+        "knowledge of the app's data format show; say when a meaning is not certain. Empty fields are left out.\n" +
         WebBlock(web) +
         "Format: one line per point, each starting with the key of its record in square brackets, the record's points together, e.g.\n" +
-        "[get_chat#12] What it is: a received WhatsApp message\n[get_chat#12] key_remote_jid: the chat's identifier, here a group\n" +
+        "[get_chat#12] What it is: a WhatsApp message received in a group chat\n" +
+        "[get_chat#12] key_remote_jid = 120363…@g.us → the chat's identifier; @g.us marks a group\n" +
+        "[get_chat#12] timestamp = 1700000000000 → Unix time in milliseconds: 2023-11-14 22:13:20 UTC\n" +
         "Nothing else.", records, language);
+
+    /// <summary>Data shown on screen that is not a record of the report (a file of the extraction, a field), explained.</summary>
+    public static string ExplainData(string data, string language) => WithRecords(
+        "Task: explain the data below, shown to a forensic examiner, to that examiner: what it is, then what each technical value " +
+        "means (timestamps and their format or epoch, identifiers, flags, status and type codes, paths, offsets, magic bytes, " +
+        "hashes, sizes), as far as the data and general knowledge of the app's or the format's data show; say when a meaning is " +
+        "not certain. Short headed sections, no advice, nothing about what the data proves.", data, language);
+
+    public const string ItemSummary = "Item summary", TextTranslation = "Text translation";
+
+    /// <summary>Every analysis citing the item (its <paramref name="keys"/>: the record and its media), newest first, one per
+    /// result; item summaries, and runs over many items that only list this one among others, are not its analyses.</summary>
+    public static List<ItemAnalysis> Analyses(AiStore store, IReadOnlyList<string> keys)
+    {
+        var rs = keys.SelectMany(k => store.Citing(k).Select(r => (Key: k, R: r))).DistinctBy(x => x.R.Id).OrderByDescending(x => x.R.Id)
+            .Where(x => x.R.Kind is not (ItemSummary or "Image description" or "Image classification")
+                        && (x.R.Kind is not ("Summary" or "Question" or "Claude CLI" or "Complete analysis") || x.R.Cited.Count == 1)).ToList();
+        var rev = store.Revisions([.. rs.Select(x => x.R.Id)]);
+        return [.. rs.Select(x => (x.Key, x.R, Kind: x.R.Kind.EndsWith(" item", StringComparison.Ordinal) ? x.R.Kind[..^5] : x.R.Kind))
+            .Select(x => new ItemAnalysis(x.R, x.Kind == TextTranslation ? "Translation" : x.Kind,
+                x.Kind == TextTranslation ? $"{x.R.Scope.Split(" · sha256:")[0]}\n{x.R.Output.Trim()}"
+                : x.Kind == "Translation" ? Translations([x.R]).GetValueOrDefault(x.Key) ?? ""
+                : x.R.Cited.Count == 1 ? OneItem(x.R.Output, x.Key) : Block(x.R.Output, x.Key),
+                rev.GetValueOrDefault(x.R.Id)))
+            .Where(a => a.Text != "")];
+    }
+
+    /// <summary>"from #3,#5 · &lt;latest change&gt;": the analyses a summary is written from and the latest change it saw; a summary
+    /// whose scope no longer reads so is stale.</summary>
+    public static string SummaryScope(IEnumerable<ItemAnalysis> analyses)
+    {
+        var all = analyses.ToList();
+        return "from " + string.Join(",", all.Where(a => !a.Excluded).Select(a => "#" + a.Result.Id)) + " · " +
+               all.Select(a => a.Revision?.Last ?? a.Result.At).DefaultIfEmpty(DateTimeOffset.MinValue).Max().ToString("O", CultureInfo.InvariantCulture);
+    }
+
+    public static bool IsStale(AiResult summary, IEnumerable<ItemAnalysis> now) => summary.Scope != SummaryScope(now);
+
+    /// <summary>The request for an item's summary: what the item is, then each analysis with its id, kind, model and date.</summary>
+    public static string ItemSummaryPrompt(string item, IEnumerable<ItemAnalysis> used, string language) =>
+        $"Write in {language} a short descriptive summary of what the analyses below found about one item of a forensic extraction. " +
+        "Say only what they say, nothing more; after each statement name the analysis it comes from as [#id]; where they disagree, say so. " +
+        "No advice, nothing about what it proves.\n\n" +
+        $"THE ITEM\n{item}\n\nTHE ANALYSES\n" +
+        string.Join("\n\n", used.Select(a => $"[#{a.Result.Id}] {a.Kind} · {a.Result.Model} · {ValueFormatter.FormatTime(a.Result.At)}" +
+                                              (a.Revised ? " · corrected by the examiner" : "") + $"\n{a.Shown}"));
+
+    /// <summary>The scope of a part's translation: the part and the SHA-256 of the text it translated.</summary>
+    public static string PartScope(string part, string text) =>
+        $"{part} · sha256:{Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text)))}";
+
+    public static string TranslateText(string text, string language) =>
+        $"Translate into {language} the text below, read from a file of a forensic extraction. Keep its lines; add nothing, explain " +
+        $"nothing; write [unreadable] where it cannot be read. Only the translation.\n\n{text}";
+
+    /// <summary>The latest translation of each part, and whether it was made from another text than the part holds now.</summary>
+    public static Dictionary<string, (AiResult Result, bool Stale)> PartTranslations(AiStore store, string key, IEnumerable<(string Part, string Text)> parts)
+    {
+        var all = store.Citing(key).Where(r => r.Kind == TextTranslation).ToList();
+        var d = new Dictionary<string, (AiResult, bool)>();
+        foreach (var (part, text) in parts)
+            if (all.FirstOrDefault(r => r.Scope.StartsWith(part + " · sha256:", StringComparison.Ordinal)) is { } r)
+                d[part] = (r, r.Scope != PartScope(part, text));
+        return d;
+    }
 
     /// <summary>What the AI said about one record or media file (<paramref name="key"/>), the latest of each kind:
     /// its translation, explanation, description with the text read in it (OCR) and translated, classification,
     /// transcription, thematic hit. Summaries and answers over many records are not one record's notes.</summary>
+    /// <summary>The results as the examiner left them, for the grid and the chats: an excluded one dropped, a corrected one about
+    /// a single item reading the correction (on one line, as the translations and notes read it).</summary>
+    public static IEnumerable<AiResult> AsRevised(AiStore store, IReadOnlyCollection<AiResult> rs)
+    {
+        var rev = store.Revisions([.. rs.Select(r => r.Id)]);
+        foreach (var r in rs)
+            if (rev.GetValueOrDefault(r.Id) is not { } v) yield return r;
+            else if (!v.Excluded)
+                yield return v.Text is { } t && r.Cited.Count == 1 ? r with { Output = $"{r.Cited[0]}: {string.Join(" ", t.Split('\n', StringSplitOptions.TrimEntries))}" } : r;
+    }
+
     public static List<AiNote> Notes(IEnumerable<AiResult> citingNewestFirst, string key)
     {
         var notes = new List<AiNote>();
@@ -602,7 +774,7 @@ public static partial class AiText
             if (kind is "Summary" or "Question" or "Claude CLI" or "Complete analysis" || seen.Contains(kind) || !r.Cited.Contains(key)
                 || r.Kind is "Image description" or "Image classification") continue; // the run over many images: its items say it one by one
             var text = kind == "Translation" ? Translations([r]).GetValueOrDefault(key) ?? ""
-                : r.Cited.Count == 1 ? Body(r.Output, key) : Block(r.Output, key);
+                : r.Cited.Count == 1 ? OneItem(r.Output, key) : Block(r.Output, key);
             if (text == "") continue;
             seen.Add(kind);
             if (kind == "Image description")
@@ -617,6 +789,11 @@ public static partial class AiText
         }
         return notes;
     }
+
+    /// <summary>A one-item answer: its lines led by the key, without it, when there are several (an explanation), else the
+    /// answer without its head.</summary>
+    static string OneItem(string output, string key) =>
+        output.Split('\n').Count(l => l.TrimStart('-', '*', ' ', '\t').StartsWith(key, StringComparison.Ordinal)) > 1 ? Block(output, key) : Body(output, key);
 
     /// <summary>A one-item answer without its "[media#id] name" head (the head line, or "head: " on one line).</summary>
     static string Body(string output, string key)
@@ -707,11 +884,13 @@ public static class AiSteps
     /// step sends the answer so far with the next records and gets the whole answer back updated; else each step is
     /// answered on its own and the parts are joined. Every line must cite a record sent: a step whose answer has lines
     /// without one is asked again once; what still has none is marked NO SOURCE. <paramref name="log"/> records each
-    /// request (purpose, text) and returns its id.
+    /// request (purpose, text) and returns its id. Parts answered on their own with nothing carried are cut first and
+    /// sent <paramref name="parallel"/> at a time. <paramref name="notes"/>: by record key, what the AI read in its attachments.
     /// </summary>
     public static async Task<AiStepped> Run(CaseSession s, AiClient client, string model, string system, IReadOnlyList<AiSelection> records,
         Func<string, string> prompt, bool rolling, int max, int? context, Func<string, string, long> log, Action<string>? status = null,
-        CancellationToken ct = default, int carry = 0, bool allColumns = false, IEnumerable<string>? alsoSent = null)
+        CancellationToken ct = default, int carry = 0, bool allColumns = false, IEnumerable<string>? alsoSent = null, int parallel = 1,
+        IReadOnlyDictionary<string, string>? notes = null)
     {
         max = Math.Max(1, max);
         var pending = records.ToList();
@@ -720,37 +899,62 @@ public static class AiSteps
         long sendId = 0, tooLong = 0;
         int uncited = 0, step = 0;
         string user = "", soFar = "", earlier = "";
+        var cut = !rolling && carry == 0 && parallel > 1;
+        var parts = new List<(string Text, HashSet<string> Keys)>();
+
+        async Task<(string Output, long Id)> Send(string u, HashSet<string> valid, string label, CancellationToken token)
+        {
+            var id = log(label, u);
+            status?.Invoke($"Waiting for {model}…{label}");
+            var output = await client.Chat(model, system, u, null, token, context);
+            if (AiText.Uncited(output, valid) is { Count: > 0 } free)
+            {
+                status?.Invoke($"{free.Count:N0} lines without a source: asking {model} again…{label}");
+                var again = AiText.CiteAgain(u, output, free);
+                id = log(label + " (sources asked again)", again);
+                output = await client.Chat(model, system, again, null, token, context);
+            }
+            return (output, id);
+        }
+
         while (pending.Count > 0)
         {
             ct.ThrowIfCancellationRequested();
             var overhead = system.Length + prompt("").Length + soFar.Length + earlier.Length + 600;
-            var (text, keys, left) = AiText.Records(s, pending, AiText.Budget(context, overhead), ct, max, allColumns);
+            var (text, keys, left) = AiText.Records(s, pending, AiText.Budget(context, overhead), ct, max, allColumns, notes);
             if (keys.Count == 0) { tooLong = left; break; } // a record longer than the model's context
             step++;
             sent.UnionWith(keys);
-            user = rolling && step > 1 ? AiText.Continue(prompt(""), soFar, text) : AiText.After(earlier, prompt(text));
-            var label = step > 1 || left > 0 ? $" step {step} of ~{step + (left + max - 1) / max}" : "";
-            sendId = log(label, user);
-            status?.Invoke($"Waiting for {model}…{label}");
-            var valid = rolling ? sent : keys; // an answer carried over keeps the keys of earlier steps
-            var output = await client.Chat(model, system, user, null, ct, context);
-            if (AiText.Uncited(output, valid) is { Count: > 0 } free)
-            {
-                status?.Invoke($"{free.Count:N0} lines without a source: asking {model} again…{label}");
-                var again = AiText.CiteAgain(user, output, free);
-                sendId = log(label + " (sources asked again)", again);
-                output = await client.Chat(model, system, again, null, ct, context);
-            }
-            if (rolling) soFar = output;
+            if (cut) parts.Add((text, keys));
             else
             {
-                if (carry > 0) earlier = AiText.Tail(text, carry) + "\n" + AiText.Tail(output, carry);
-                uncited += AiText.Uncited(output, keys).Count;
-                outputs.Add(AiText.MarkUncited(output, keys));
+                user = rolling && step > 1 ? AiText.Continue(prompt(""), soFar, text) : AiText.After(earlier, prompt(text));
+                var label = step > 1 || left > 0 ? $" step {step} of ~{step + (left + max - 1) / max}" : "";
+                // an answer carried over keeps the keys of earlier steps
+                (var output, sendId) = await Send(user, rolling ? sent : keys, label, ct);
+                if (rolling) soFar = output;
+                else
+                {
+                    if (carry > 0) earlier = AiText.Tail(text, carry) + "\n" + AiText.Tail(output, carry);
+                    uncited += AiText.Uncited(output, keys).Count;
+                    outputs.Add(AiText.MarkUncited(output, keys));
+                }
             }
             if (left == 0) break;
             pending = [.. pending.Select(x => new AiSelection(x.Artifact,
                 AiText.RowIds(s, x).Where(id => !sent.Contains(AiText.Key(x.Artifact.TableName, id))).ToList())).Where(x => x.Ids!.Count > 0)];
+        }
+        if (parts.Count > 0)
+        {
+            var answers = new (string Output, long Id)[parts.Count];
+            await Parallel.ForEachAsync(Enumerable.Range(0, parts.Count), new ParallelOptions { MaxDegreeOfParallelism = parallel, CancellationToken = ct },
+                async (i, token) => answers[i] = await Send(prompt(parts[i].Text), parts[i].Keys, parts.Count > 1 ? $" step {i + 1} of {parts.Count}" : "", token));
+            for (var i = 0; i < parts.Count; i++)
+            {
+                uncited += AiText.Uncited(answers[i].Output, parts[i].Keys).Count;
+                outputs.Add(AiText.MarkUncited(answers[i].Output, parts[i].Keys));
+            }
+            (user, sendId) = (prompt(parts[^1].Text), answers[^1].Id);
         }
         if (rolling && step > 0) { uncited = AiText.Uncited(soFar, sent).Count; outputs.Add(AiText.MarkUncited(soFar, sent)); }
         // parts that found nothing say nothing; when none found anything, that is the answer
@@ -828,7 +1032,8 @@ public sealed class McpServer(CaseSession s, AiStore log, string run = "")
             ["protocolVersion"] = (string?)p?["protocolVersion"] ?? "2025-06-18",
             ["capabilities"] = new JsonObject { ["tools"] = new JsonObject() },
             ["serverInfo"] = new JsonObject { ["name"] = "lexis", ["version"] = "1.0" },
-            ["instructions"] = "Read-only access to one forensic case. Cite records as [table#row] exactly as the tools print them.",
+            ["instructions"] = "Read-only access to one forensic case. Never ask the user which table holds something: call list_artifacts first and pick it yourself. " +
+                               "Cite records as [table#row] exactly as the tools print them.",
         },
         "ping" => new JsonObject(),
         "tools/list" => new JsonObject { ["tools"] = Tools() },
@@ -846,7 +1051,8 @@ public sealed class McpServer(CaseSession s, AiStore log, string run = "")
 
     static JsonArray Tools() =>
     [
-        Tool("list_artifacts", "The case's artifacts: name, table and record count.", []),
+        Tool("list_artifacts", "Start here, before asking the user anything. Every kind of data in the case is an artifact: chats and messages of each app " +
+            "(WhatsApp, WeChat, Telegram…), calls, contacts, locations, browser history and so on. Lists them all: name, table and record count.", []),
         Tool("describe_table", "The structure of one artifact, without its data: columns with their types, the source path, and the chat layout if it is one.",
             new JsonObject { ["table"] = Prop("string", "Table, as list_artifacts prints it") }, "table"),
         Tool("search", "Records holding the words of the query (AND; quotes for a phrase; OR between alternatives), across every artifact.",
@@ -1056,7 +1262,7 @@ public static class WhisperCpp
     public const string ModelDownloads = "https://huggingface.co/ggerganov/whisper.cpp/tree/main";
     static readonly string[] Readable = [".wav", ".mp3", ".flac", ".ogg"]; // what whisper-cli reads itself
 
-    static IEnumerable<string> ModelFolders(string exe)
+    public static IEnumerable<string> ModelFolders(string exe)
     {
         var dir = Path.GetDirectoryName(exe) ?? "";
         return new[] { dir, Path.Combine(dir, "models"), Path.Combine(dir, "..", "models") }.Where(Directory.Exists);
@@ -1070,11 +1276,39 @@ public static class WhisperCpp
         return list.Count > 0 ? list : throw new AiException($"No ggml-*.bin model beside whisper-cli or in a models folder. Download one (e.g. ggml-small.bin) from {ModelDownloads}");
     }
 
-    /// <summary>ffmpeg beside whisper-cli, else on PATH.</summary>
+    /// <summary>ffmpeg beside whisper-cli, else LEXIS's own, else on PATH.</summary>
     static string? Ffmpeg(string exe) =>
-        Path.Combine(Path.GetDirectoryName(exe) ?? "", "ffmpeg.exe") is var near && File.Exists(near) ? near : ClaudeCli.Resolve("ffmpeg");
+        Path.Combine(Path.GetDirectoryName(exe) ?? "", "ffmpeg.exe") is var near && File.Exists(near) ? near : BundledFfmpeg ?? ClaudeCli.Resolve("ffmpeg");
 
-    public static async Task<(string Text, string? Language)> Transcribe(string exe, string model, string fileName, byte[] audio, CancellationToken ct)
+    /// <summary>LEXIS's own ffmpeg (decoders only, built by tools/ffmpeg/build.sh), embedded in it: written once to
+    /// %LOCALAPPDATA%\AleappReader\ffmpeg\&lt;SHA-256&gt;\ and used only while it still has that SHA-256. Null when it cannot be written.</summary>
+    public static string? BundledFfmpeg => Bundled.Value;
+
+    static readonly Lazy<string?> Bundled = new(() =>
+    {
+        using var s = typeof(WhisperCpp).Assembly.GetManifestResourceStream("ffmpeg.exe");
+        if (s is null) return null;
+        var bytes = new byte[s.Length];
+        s.ReadExactly(bytes);
+        var sha = Convert.ToHexStringLower(SHA256.HashData(bytes));
+        var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AleappReader", "ffmpeg", sha[..16], "ffmpeg.exe");
+        try
+        {
+            if (File.Exists(path) && Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(path))) == sha) return path;
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            var temp = path + $".{Environment.ProcessId}.tmp";
+            File.WriteAllBytes(temp, bytes);
+            File.Move(temp, path, true);
+            return path;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return null; }
+    });
+
+    /// <summary>Converts <paramref name="input"/> with <paramref name="ffmpeg"/> into the 16 kHz mono WAV whisper.cpp reads.</summary>
+    public static Task ToWav(string ffmpeg, string input, string wav, CancellationToken ct) =>
+        Exec(ffmpeg, ["-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-i", input, "-ar", "16000", "-ac", "1", wav], Path.GetDirectoryName(wav)!, "ffmpeg", ct);
+
+    public static async Task<Transcript> Transcribe(string exe, string model, string fileName, byte[] audio, CancellationToken ct)
     {
         if (!File.Exists(exe)) throw new AiException($"whisper-cli not found: {exe}");
         var modelPath = Path.IsPathRooted(model) ? model : ModelFolders(exe).Select(d => Path.Combine(d, model)).FirstOrDefault(File.Exists)
@@ -1087,17 +1321,18 @@ public static class WhisperCpp
             await File.WriteAllBytesAsync(input, audio, ct);
             if (!Readable.Contains(ext))
             {
-                var ff = Ffmpeg(exe) ?? throw new AiException($"whisper.cpp does not read {ext} audio: put ffmpeg.exe beside whisper-cli (or on PATH) to convert it.");
+                var ff = Ffmpeg(exe) ?? throw new AiException($"whisper.cpp does not read {ext} audio and ffmpeg could not be written to this computer: put ffmpeg.exe beside whisper-cli (or on PATH).");
                 var wav = Path.Combine(work.FullName, "audio.wav");
-                await Exec(ff, ["-nostdin", "-hide_banner", "-loglevel", "error", "-i", input, "-ar", "16000", "-ac", "1", wav], work.FullName, "ffmpeg", ct);
+                await ToWav(ff, input, wav, ct);
                 input = wav;
             }
             var output = Path.Combine(work.FullName, "out");
             await Exec(exe, ["-m", modelPath, "-f", input, "-l", "auto", "-oj", "-of", output, "-np",
                              "-t", Math.Clamp(Environment.ProcessorCount - 1, 1, 8).ToString(CultureInfo.InvariantCulture)], work.FullName, "whisper-cli", ct);
             var j = JsonNode.Parse(await File.ReadAllTextAsync(output + ".json", ct));
-            var text = string.Join(" ", (j?["transcription"] as JsonArray ?? []).Select(s => ((string?)s?["text"] ?? "").Trim()).Where(s => s != ""));
-            return (text, (string?)j?["result"]?["language"]);
+            List<(TimeSpan At, string Text)> segs = [.. (j?["transcription"] as JsonArray ?? [])
+                .Select(s => (TimeSpan.FromMilliseconds((double?)s?["offsets"]?["from"] ?? 0), ((string?)s?["text"] ?? "").Trim())).Where(s => s.Item2 != "")];
+            return new(string.Join(" ", segs.Select(s => s.Text)), (string?)j?["result"]?["language"], segs);
         }
         catch (Exception e) when (e is IOException or JsonException) { throw new AiException("whisper.cpp: " + e.Message); }
         finally
@@ -1106,7 +1341,21 @@ public static class WhisperCpp
         }
     }
 
-    static async Task Exec(string exe, IEnumerable<string> args, string dir, string what, CancellationToken ct)
+    /// <summary>What a program prints on its error stream, whatever its exit code.</summary>
+    internal static async Task<string> Run(string exe, IEnumerable<string> args, string dir, CancellationToken ct)
+    {
+        var psi = new ProcessStartInfo(exe) { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = dir, RedirectStandardOutput = true, RedirectStandardError = true };
+        foreach (var a in args) psi.ArgumentList.Add(a);
+        using var p = Process.Start(psi) ?? throw new AiException($"{Path.GetFileName(exe)} did not start");
+        using var kill = ct.Register(() => { try { p.Kill(true); } catch (InvalidOperationException) { } });
+        var stdout = p.StandardOutput.ReadToEndAsync(CancellationToken.None);
+        var stderr = p.StandardError.ReadToEndAsync(CancellationToken.None);
+        await p.WaitForExitAsync(ct);
+        await stdout;
+        return await stderr;
+    }
+
+    internal static async Task Exec(string exe, IEnumerable<string> args, string dir, string what, CancellationToken ct)
     {
         var psi = new ProcessStartInfo(exe) { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = dir, RedirectStandardOutput = true, RedirectStandardError = true };
         foreach (var a in args) psi.ArgumentList.Add(a);

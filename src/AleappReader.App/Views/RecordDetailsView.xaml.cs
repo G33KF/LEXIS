@@ -16,6 +16,7 @@ public partial class RecordDetailsView : UserControl
     static AleappReader.Core.PlistNode? NodeOf(object sender) => (sender as MenuItem)?.DataContext as AleappReader.Core.PlistNode;
     void CopyPath(object sender, RoutedEventArgs e) { if (NodeOf(sender) is { } n) Clipboard.SetText(n.Path); }
     void CopyValue(object sender, RoutedEventArgs e) { if (NodeOf(sender) is { } n) Clipboard.SetText(n.Value); }
+    void ExplainField(object sender, RoutedEventArgs e) { if ((sender as MenuItem)?.DataContext is Field f) _vm?.ExplainField(f); }
 
     /// <summary>False in the media window, whose viewer shows the file: the fields only.</summary>
     public bool Preview { get; init; } = true;

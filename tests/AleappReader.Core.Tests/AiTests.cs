@@ -150,6 +150,40 @@ public sealed class AiTests : IDisposable
     }
 
     [Fact]
+    public void A_record_carries_what_the_ai_read_in_its_attachments_and_the_summary_asks_for_them()
+    {
+        using var s = CaseSession.Open(_c.Report);
+        var chat = s.Manifest.Artifacts.Single(a => a.TableName == "get_chat");
+        var (text, _, _) = AiText.Records(s, [new AiSelection(chat, [1L, 3L])], notes: new Dictionary<string, string> { ["[get_chat#3]"] = "(Image description) a red car" });
+        var lines = text.Split('\n');
+        Assert.Null(JsonNode.Parse(lines[0])![AiText.AttachmentField]);
+        Assert.Equal("(Image description) a red car", (string?)JsonNode.Parse(lines[1])![AiText.AttachmentField]);
+        var p = AiText.Summarize(text, "English");
+        Assert.Contains("Media:", p);
+        Assert.Contains(AiText.AttachmentField, p);
+        Assert.DoesNotContain("keep every point", AiText.Continue(p, "- x [get_chat#1]", "{}"));
+    }
+
+    [Fact]
+    public void A_chat_summary_says_which_chat_it_is_about()
+    {
+        var c = new ConversationItem { Key = "123@g.us", Label = "Family", Account = "+391110000001", AccountName = "Owner A" };
+        c.Messages.AddRange([
+            new MessageItem { RowId = 1, Raw = [], IsSent = true, Time = "2025-03-01 10:00" },
+            new MessageItem { RowId = 2, Raw = [], Sender = "Anna", SenderId = "+392220000002", Time = "2025-03-02 11:00" },
+            new MessageItem { RowId = 3, Raw = [], Sender = "Anna", SenderId = "+392220000002", Time = "2025-03-05 09:00" }]);
+        var a = new ArtifactInfo { Name = "WhatsApp - Messages", TableName = "wa", Category = "WhatsApp", Columns = [] };
+        var head = AiText.ChatHeader(c, a, c.Messages[1..]);
+        Assert.Contains("Chat: Family · Group · ID 123@g.us", head);
+        Assert.Contains("App: WhatsApp - Messages (WhatsApp)", head);
+        Assert.Contains("Device account (the user's side): Owner A (+391110000001)", head);
+        Assert.Contains("- Anna (+392220000002): 2 messages", head);
+        Assert.Contains("Messages summarised: 2 of 3 (0 sent, 2 received), 2025-03-02 11:00 → 2025-03-05 09:00", head);
+        var p = AiText.Summarize("{}", "English", head);
+        Assert.Contains("Chat: Family", AiText.PromptOf(p)); // carried to every step of a long chat
+    }
+
+    [Fact]
     public void Records_beyond_the_budget_are_counted_not_sent()
     {
         using var s = CaseSession.Open(_c.Report);
@@ -390,5 +424,54 @@ public sealed class AiTests : IDisposable
             await Assert.ThrowsAsync<AiException>(() => client.Chat("ggml-tiny.bin", "s", "u"));
         }
         finally { dir.Delete(true); }
+    }
+
+    [Theory]
+    [InlineData(1, 1)]
+    [InlineData(2, 2)]
+    public async Task Independent_steps_go_at_most_parallel_at_once_and_keep_their_order(int parallel, int peak)
+    {
+        using var s = CaseSession.Open(_c.Report);
+        var chat = s.Manifest.Artifacts.Single(a => a.TableName == "get_chat");
+        var l = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+        l.Start();
+        var port = ((System.Net.IPEndPoint)l.LocalEndpoint).Port;
+        l.Stop();
+        using var http = new System.Net.HttpListener { Prefixes = { $"http://127.0.0.1:{port}/" } };
+        http.Start();
+        int now = 0, most = 0;
+        // a model that answers each record of the request after a pause, citing it
+        _ = Task.Run(async () =>
+        {
+            while (http.IsListening)
+            {
+                System.Net.HttpListenerContext ctx;
+                try { ctx = await http.GetContextAsync(); } catch (Exception e) when (e is System.Net.HttpListenerException or ObjectDisposedException) { return; }
+                _ = Task.Run(async () =>
+                {
+                    var body = await new StreamReader(ctx.Request.InputStream).ReadToEndAsync();
+                    var n = Interlocked.Increment(ref now);
+                    lock (http) most = Math.Max(most, n);
+                    await Task.Delay(200);
+                    Interlocked.Decrement(ref now);
+                    var cites = System.Text.RegularExpressions.Regex.Matches(body, @"\[get_chat#\d+\]").Select(m => m.Value).Distinct();
+                    var reply = new JsonObject { ["choices"] = new JsonArray(new JsonObject { ["message"] = new JsonObject { ["content"] = string.Join("\n", cites.Select(c => $"{c} seen")) } }) };
+                    var bytes = System.Text.Encoding.UTF8.GetBytes(reply.ToJsonString());
+                    ctx.Response.ContentType = "application/json";
+                    await ctx.Response.OutputStream.WriteAsync(bytes);
+                    ctx.Response.Close();
+                });
+            }
+        });
+        var client = new AiClient(new AiProvider("fake", AiKind.OpenAi, $"http://127.0.0.1:{port}"), null);
+        var x = await AiSteps.Run(s, client, "m", "sys", [new AiSelection(chat)], t => "Answer.\n" + t, rolling: false, max: 1, null, (_, _) => 0, parallel: parallel);
+
+        Assert.Equal(peak, most);
+        Assert.True(x.Steps >= 3, $"{x.Steps} steps");
+        Assert.Equal(0, x.Uncited);
+        var parts = x.Output.Split("Part ").Skip(1).ToList();
+        Assert.Equal(x.Steps, parts.Count);
+        var first = parts.Select(p => int.Parse(System.Text.RegularExpressions.Regex.Match(p, @"#(\d+)\]").Groups[1].Value)).ToList();
+        Assert.Equal(first.Order(), first); // the parts in the order of the records, whichever answer came first
     }
 }

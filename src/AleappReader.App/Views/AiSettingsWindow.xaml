@@ -28,10 +28,13 @@
                         <DataTemplate>
                             <DockPanel Margin="0,1">
                                 <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Content="Use for audio" Margin="4,0,0,0"
+                                        Visibility="{Binding DataContext.CanAudio, RelativeSource={RelativeSource AncestorType=ItemsControl}, Converter={StaticResource Vis}}"
                                         Command="{Binding DataContext.UseForTranscriptionCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding}"/>
                                 <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Content="Use for images" Margin="4,0,0,0"
+                                        Visibility="{Binding DataContext.CanText, RelativeSource={RelativeSource AncestorType=ItemsControl}, Converter={StaticResource Vis}}"
                                         Command="{Binding DataContext.UseForVisionCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding}"/>
                                 <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Content="Use for text" Margin="4,0,0,0"
+                                        Visibility="{Binding DataContext.CanText, RelativeSource={RelativeSource AncestorType=ItemsControl}, Converter={StaticResource Vis}}"
                                         Command="{Binding DataContext.UseForTextCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding}"/>
                                 <TextBlock Text="{Binding Display}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                             </DockPanel>
@@ -54,29 +57,55 @@
                            Text="Off until you turn it on. Every send is logged per case with the provider, the model and what was sent. AI answers are labelled with model, date and prompt, cite the records they come from, and never change the evidence, the tags or the notes."/>
                 <CheckBox Content="Use AI" IsChecked="{Binding Enabled}" FontWeight="SemiBold" Margin="0,0,0,12"/>
 
-                <TextBlock Style="{StaticResource SectionHeader}" Text="Local engine" Margin="0,0,0,4"/>
+                <TextBlock Style="{StaticResource SectionHeader}" Text="Engines" Margin="0,0,0,4"/>
                 <TextBlock TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,6"
-                           Text="The model server on this computer (or on your network). Its models are listed as soon as it answers: choose one for each job below."/>
+                           Text="Set up each engine here: Ollama and LM Studio (model servers on this computer or your network), the Claude CLI (what it reads leaves this machine for Anthropic: every run asks first and is logged), whisper.cpp (audio only, on this computer). Every engine can then be chosen for the jobs it can do, below."/>
                 <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="3" Padding="8" Margin="0,0,0,6">
                     <StackPanel>
                         <Grid>
                             <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                            <ComboBox ItemsSource="{Binding Engines}" SelectedItem="{Binding Engine}" DisplayMemberPath="Name" ToolTip="Ollama or LM Studio"/>
+                            <ComboBox ItemsSource="{Binding Engines}" SelectedItem="{Binding Engine}" DisplayMemberPath="Name" ToolTip="The engine to set up"/>
                             <TextBox Grid.Column="1" Margin="6,0" DataContext="{Binding Engine}" Text="{Binding Address, UpdateSourceTrigger=LostFocus}" VerticalContentAlignment="Center"
+                                     Visibility="{Binding DataContext.EngineIsServer, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource Vis}}"
                                      ToolTip="Address of the engine; its models are listed again when you leave the box"/>
                             <Button Grid.Column="2" Style="{StaticResource FlatButton}" Content="Connect" Command="{Binding DetectCommand}" CommandParameter="{Binding Engine}"
-                                    ToolTip="Connects and lists its models (nothing of a case is sent)"/>
+                                    Visibility="{Binding EngineIsServer, Converter={StaticResource Vis}}" ToolTip="Connects and lists its models (nothing of a case is sent)"/>
+                            <TextBox Grid.Column="1" Margin="6,0" Text="{Binding ClaudePath, UpdateSourceTrigger=PropertyChanged}" VerticalContentAlignment="Center"
+                                     Visibility="{Binding EngineIsClaude, Converter={StaticResource Vis}}" ToolTip="claude, or the full path of claude.exe or claude.cmd"/>
+                            <Button Grid.Column="2" Style="{StaticResource FlatButton}" Content="Check" Command="{Binding CheckClaudeCommand}"
+                                    Visibility="{Binding EngineIsClaude, Converter={StaticResource Vis}}"/>
+                            <TextBox Grid.Column="1" Margin="6,0" Text="{Binding WhisperPath, UpdateSourceTrigger=LostFocus}" VerticalContentAlignment="Center"
+                                     Visibility="{Binding EngineIsWhisper, Converter={StaticResource Vis}}" ToolTip="whisper-cli.exe; the ggml-*.bin models beside it or in a models folder are listed"/>
+                            <Button Grid.Column="2" Style="{StaticResource FlatButton}" Content="Browse…" Command="{Binding BrowseWhisperCommand}"
+                                    Visibility="{Binding EngineIsWhisper, Converter={StaticResource Vis}}"/>
                         </Grid>
+                        <StackPanel Visibility="{Binding EngineIsClaude, Converter={StaticResource Vis}}" Margin="0,4,0,0">
+                            <TextBlock Text="{Binding ClaudeStatus}" Foreground="{StaticResource MutedBrush}"/>
+                            <TextBlock TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}"
+                                       Text="Choosing the Claude CLI for a job below allows it. With it on the text job, the AI window's &quot;Ask Claude&quot; and the complete analysis can also let it explore the case through LEXIS's read-only tools. What Claude reads leaves this machine for Anthropic: each run asks first, and every send is logged."/>
+                        </StackPanel>
+                        <StackPanel Visibility="{Binding EngineIsWhisper, Converter={StaticResource Vis}}" Margin="0,4,0,0">
+                            <TextBlock TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}"
+                                       Text="LM Studio and Ollama run chat models: they cannot transcribe audio, even with a Whisper model loaded. whisper.cpp does it on this computer, nothing leaves it. Set up installs it with the models you choose (each checked against its published SHA-256), adds or deletes models; or give the whisper-cli.exe you have. LEXIS converts Opus, AMR, M4A and MP3 audio for it with its own ffmpeg."/>
+                            <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                <Button Style="{StaticResource FlatButton}" Content="Set up whisper.cpp / models…" Command="{Binding SetUpWhisperCommand}" Margin="0,0,6,0" FontWeight="SemiBold"
+                                        ToolTip="Downloads whisper.cpp and its models after you confirm, or adds and deletes models"/>
+                                <Button Style="{StaticResource FlatButton}" Content="Download page (whisper.cpp)" Command="{Binding OpenWhisperDownloadsCommand}" Margin="0,0,6,0"
+                                        ToolTip="Opens the whisper.cpp releases in your browser"/>
+                                <Button Style="{StaticResource FlatButton}" Content="Download page (models)" Command="{Binding OpenWhisperDownloadsCommand}" CommandParameter="models"
+                                        ToolTip="Opens the ggml Whisper models in your browser"/>
+                            </StackPanel>
+                        </StackPanel>
                         <ContentControl Content="{Binding Engine}" ContentTemplate="{StaticResource ServerModels}"/>
                     </StackPanel>
                 </Border>
 
                 <DockPanel Margin="0,10,0,4">
                     <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Content="Add endpoint" Command="{Binding AddProviderCommand}"/>
-                    <TextBlock Style="{StaticResource SectionHeader}" Text="Other endpoints"/>
+                    <TextBlock Style="{StaticResource SectionHeader}" Text="Other endpoints (optional)"/>
                 </DockPanel>
                 <TextBlock TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,4"
-                           Text="Any other server: OpenAI-compatible (llama.cpp, vLLM, a cloud API) or another Ollama. Its API key is stored encrypted for your Windows account (DPAPI)."/>
+                           Text="Only for a server not listed above: OpenAI-compatible (llama.cpp, vLLM, a cloud API with speech to text) or another Ollama. Not needed for the engines above. Its API key is stored encrypted for your Windows account (DPAPI)."/>
                 <ItemsControl ItemsSource="{Binding Endpoints}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
@@ -112,9 +141,20 @@
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
                             <Grid Margin="0,0,0,6">
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="300"/><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="300"/><ColumnDefinition Width="220"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                <Button Grid.Column="3" Style="{StaticResource FlatButton}" Content="Set up / models…" Margin="6,0,0,0"
+                                        Visibility="{Binding IsWhisper, Converter={StaticResource Vis}}"
+                                        Command="{Binding DataContext.SetUpWhisperCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                        ToolTip="Installs whisper.cpp, downloads more models or deletes them"/>
                                 <TextBlock Text="{Binding Title}" VerticalAlignment="Center" TextWrapping="Wrap"/>
-                                <ComboBox Grid.Column="1" Margin="6,0" ItemsSource="{Binding DataContext.ProviderNames, RelativeSource={RelativeSource AncestorType=Window}}" SelectedItem="{Binding Provider}"/>
+                                <ComboBox Grid.Column="1" Margin="6,0" ItemsSource="{Binding Choices}" SelectedValuePath="Name" SelectedValue="{Binding Provider}"
+                                          ToolTip="Any engine or endpoint that can do this job; where it runs is shown beside its name">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock><Run Text="{Binding Name, Mode=OneWay}"/><Run Text=" · " Foreground="{StaticResource MutedBrush}"/><Run Text="{Binding WhereText, Mode=OneWay}" Foreground="{StaticResource MutedBrush}"/></TextBlock>
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
                                 <ComboBox Grid.Column="2" IsEditable="True" ItemsSource="{Binding Models}" Text="{Binding Model, UpdateSourceTrigger=PropertyChanged}"
                                           TextSearch.TextPath="Id" ToolTip="A model of the server, from its list, or typed">
                                     <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Display}"/></DataTemplate></ComboBox.ItemTemplate>
@@ -125,11 +165,15 @@
                 </ItemsControl>
                 <Grid Margin="0,4,0,0">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="300"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                    <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
                     <TextBlock Grid.Row="3" Text="Records per request (most)" VerticalAlignment="Center"/>
                     <TextBox Grid.Row="3" Grid.Column="1" Margin="6,4,0,0" Width="80" HorizontalAlignment="Left" VerticalContentAlignment="Center"
                              Text="{Binding MaxRecordsPerRequest, UpdateSourceTrigger=PropertyChanged}"
                              ToolTip="Messages or records sent in one request. A summary over more goes in steps: each step sends the summary so far with the next records. Fewer is safer for small models; the model's context can lower it further."/>
+                    <TextBlock Grid.Row="4" Text="Parallel requests" VerticalAlignment="Center"/>
+                    <TextBox Grid.Row="4" Grid.Column="1" Margin="6,4,0,0" Width="80" HorizontalAlignment="Left" VerticalContentAlignment="Center"
+                             Text="{Binding ParallelRequests, UpdateSourceTrigger=PropertyChanged}"
+                             ToolTip="Requests sent to the model at once (1: one after the other). For images, audio, the thematic review, Explain and questions; summaries and translations go in order, each step carrying the one before. More only if the server runs them in parallel (LM Studio: Max concurrent predictions; Ollama: OLLAMA_NUM_PARALLEL)."/>
                     <TextBlock Text="Answer in" VerticalAlignment="Center"/>
                     <TextBox Grid.Column="1" Margin="6,0,0,4" Text="{Binding AnswerLanguage, UpdateSourceTrigger=PropertyChanged}" VerticalContentAlignment="Center"
                              ToolTip="Language of summaries, answers and reasons; the records' own words are quoted as they are"/>
@@ -140,6 +184,26 @@
                              ToolTip="Comma-separated; the vision model picks one per image, with a confidence"/>
                 </Grid>
 
+                <TextBlock Style="{StaticResource SectionHeader}" Text="Video" Margin="0,14,0,4"/>
+                <TextBlock TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,4"
+                           Text="A video is analysed from frames taken by LEXIS's ffmpeg, each described by the video model above (the vision model when it is empty), and from its audio track transcribed. Each frame is taken in the middle of its stretch."/>
+                <WrapPanel>
+                    <RadioButton Content="A frame every" IsChecked="{Binding VideoByPercent}" VerticalAlignment="Center" GroupName="videoStep"/>
+                    <TextBox Width="50" Margin="6,0" Text="{Binding VideoPercent, UpdateSourceTrigger=PropertyChanged}" VerticalContentAlignment="Center" ToolTip="1 to 50"/>
+                    <TextBlock Text="% of the duration" VerticalAlignment="Center" Margin="0,0,16,0"/>
+                    <RadioButton Content="every" IsChecked="{Binding VideoBySeconds}" VerticalAlignment="Center" GroupName="videoStep"/>
+                    <TextBox Width="60" Margin="6,0" Text="{Binding VideoSeconds, UpdateSourceTrigger=PropertyChanged}" VerticalContentAlignment="Center" ToolTip="1 to 3600"/>
+                    <TextBlock Text="seconds" VerticalAlignment="Center"/>
+                </WrapPanel>
+                <WrapPanel Margin="0,4,0,0">
+                    <TextBlock Text="At most" VerticalAlignment="Center"/>
+                    <TextBox Width="50" Margin="6,0" Text="{Binding VideoMaxFrames, UpdateSourceTrigger=PropertyChanged}" VerticalContentAlignment="Center"
+                             ToolTip="1 to 200; when more would be taken, this many are picked evenly over the video"/>
+                    <TextBlock Text="frames per video" VerticalAlignment="Center" Margin="0,0,16,0"/>
+                    <CheckBox Content="Transcribe the audio track" IsChecked="{Binding VideoTranscribe}" VerticalAlignment="Center"
+                              ToolTip="With the transcription engine above, when one is set"/>
+                </WrapPanel>
+
                 <TextBlock Style="{StaticResource SectionHeader}" Text="Web lookup for Explain" Margin="0,14,0,4"/>
                 <TextBlock TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,4"
                            Text="Explain can search the web for what the app's data format means. Only the app, artifact, database file and column names are searched, never a value of a record; words with digits or @ are dropped. The searches are shown before they leave and logged. What comes back is reference, not evidence."/>
@@ -149,35 +213,6 @@
                     <TextBox Text="{Binding WebSearchUrl, UpdateSourceTrigger=PropertyChanged}" VerticalContentAlignment="Center"
                              ToolTip="DuckDuckGo's HTML page by default; {q} is replaced by the search words"/>
                 </DockPanel>
-
-                <TextBlock Style="{StaticResource SectionHeader}" Text="Claude CLI" Margin="0,14,0,4"/>
-                <TextBlock TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,4"
-                           Text="Once allowed, &quot;Claude CLI&quot; is a server the jobs above can use (text: summary, questions, translation, explain; vision: image description): choose it and its model under Jobs. The AI window's &quot;Ask Claude&quot; also runs claude -p with LEXIS as a read-only MCP server. What Claude reads leaves this machine for Anthropic: each run asks first, and every send is logged."/>
-                <CheckBox Content="Allow the Claude CLI (asked again at every run)" IsChecked="{Binding ClaudeAllowed}" Margin="0,0,0,4"/>
-                <TextBlock Text="{Binding ClaudeRow.Status}" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,4"
-                           Visibility="{Binding ClaudeAllowed, Converter={StaticResource Vis}}"/>
-                <DockPanel>
-                    <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Content="Check" Command="{Binding CheckClaudeCommand}" Margin="6,0,0,0"/>
-                    <TextBlock DockPanel.Dock="Left" Text="Executable" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                    <TextBox Text="{Binding ClaudePath, UpdateSourceTrigger=PropertyChanged}" VerticalContentAlignment="Center"/>
-                </DockPanel>
-                <TextBlock Text="{Binding ClaudeStatus}" Foreground="{StaticResource MutedBrush}" Margin="0,2,0,0"/>
-
-                <TextBlock Style="{StaticResource SectionHeader}" Text="Transcription with whisper.cpp" Margin="0,14,0,4"/>
-                <TextBlock TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,4"
-                           Text="LM Studio and Ollama run chat models: they cannot transcribe audio, even with a Whisper model loaded (LM Studio answers 415). whisper.cpp does it on this machine: download a release's Windows zip (whisper-cli.exe) and a ggml model (ggml-small.bin is a good start; ggml-large-v3-turbo.bin is better and slower) into one folder, then give whisper-cli.exe here and choose whisper.cpp for Transcription under Jobs. Opus, AMR, M4A and other formats need ffmpeg.exe beside it or on PATH. Nothing leaves this machine."/>
-                <DockPanel>
-                    <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Content="Browse…" Command="{Binding BrowseWhisperCommand}" Margin="6,0,0,0"/>
-                    <TextBlock DockPanel.Dock="Left" Text="whisper-cli.exe" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                    <TextBox Text="{Binding WhisperPath, UpdateSourceTrigger=LostFocus}" VerticalContentAlignment="Center"/>
-                </DockPanel>
-                <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                    <Button Style="{StaticResource FlatButton}" Content="Download page (whisper.cpp)" Command="{Binding OpenWhisperDownloadsCommand}" Margin="0,0,6,0"
-                            ToolTip="Opens the whisper.cpp releases in your browser"/>
-                    <Button Style="{StaticResource FlatButton}" Content="Download page (models)" Command="{Binding OpenWhisperDownloadsCommand}" CommandParameter="models"
-                            ToolTip="Opens the ggml Whisper models in your browser"/>
-                    <TextBlock Text="{Binding WhisperRow.Status}" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" Margin="8,0,0,0"/>
-                </StackPanel>
 
                 <TextBlock Style="{StaticResource SectionHeader}" Text="MCP for other programs" Margin="0,14,0,4"/>
                 <TextBlock TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,4"

@@ -128,6 +128,16 @@ public static partial class MacroCategories
 
     public static MacroCategory Of(ArtifactInfo a) => Classify(a).Macro;
 
+    /// <summary>Records holding text people wrote (messages, emails, notes, calendar, posts, searches): what a translation is for.</summary>
+    public static bool Written(ArtifactInfo a) => a.Conversation is not null
+        || Classify(a).Type is "Emails" or "SMS / MMS" or "Instant Messages" or "Notes" or "Calendar" or "Social Media Activity" or "Searched Items";
+
+    /// <summary>Records a summary tells something of: written ones, calls, journeys and locations, web history, or several
+    /// artifacts together (a timeline).</summary>
+    public static bool Summarizable(IReadOnlyCollection<ArtifactInfo> a) =>
+        a.Select(x => x.TableName).Distinct().Count() > 1
+        || a.Any(x => Written(x) || Classify(x) is var (m, t) && (m == Calls || m == Location || t == "Web History"));
+
     /// <summary>The group and the data type within it: what the artifact holds ("Biome - Battery Level" → battery) is
     /// tried before the app it comes from.</summary>
     public static (MacroCategory Macro, string Type) Classify(ArtifactInfo a)

@@ -138,6 +138,7 @@
     </Style>
 
     <Style x:Key="SearchBox" TargetType="TextBox">
+        <Setter Property="MinWidth" Value="140"/><!-- an empty box never shrinks to a sliver -->
         <Setter Property="Padding" Value="4,3"/>
         <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
         <Setter Property="VerticalContentAlignment" Value="Center"/>

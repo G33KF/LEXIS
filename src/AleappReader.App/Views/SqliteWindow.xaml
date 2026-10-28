@@ -36,7 +36,8 @@
             <GridSplitter Grid.Column="1" HorizontalAlignment="Stretch"/>
             <DockPanel Grid.Column="2">
                 <WrapPanel DockPanel.Dock="Top" Margin="6,6,6,2">
-                    <TextBox Style="{StaticResource SearchBox}" Text="{Binding Filter, UpdateSourceTrigger=PropertyChanged}" VerticalAlignment="Center"
+                    <TextBlock Text="Filter rows" VerticalAlignment="Center" Margin="0,0,4,0" Foreground="{StaticResource MutedBrush}"/>
+                    <TextBox Style="{StaticResource SearchBox}" Width="220" Text="{Binding Filter, UpdateSourceTrigger=PropertyChanged}" VerticalAlignment="Center"
                              ToolTip="Filter the table's rows (Enter): words, a | b, -word, &quot;phrase&quot;, /regex/">
                         <TextBox.InputBindings><KeyBinding Key="Enter" Command="{Binding ShowTableCommand}"/></TextBox.InputBindings>
                     </TextBox>

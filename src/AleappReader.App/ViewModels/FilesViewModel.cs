@@ -12,6 +12,7 @@ public sealed record FileRow(string Path, string Device, long Size, string Type,
                              string? Tag = null)
 {
     public string UsedBy => string.Join(", ", Artifacts.Select(a => a.Name));
+    public string Name => System.IO.Path.GetFileName(Device);
 }
 
 /// <summary>A file as a tile of the thumbnail view: its picture or video frame, else its kind.</summary>
@@ -100,12 +101,22 @@ public partial class FilesViewModel : ObservableObject
     /// <summary>The viewer tab in front: 0 hex, 1 text, 2 tree.</summary>
     [ObservableProperty] private int viewerTab;
 
-    public FilesViewModel(MainViewModel main, CaseSession s)
+    /// <summary>The extraction's files, or only one kind of them (<paramref name="only"/>: the Documents node), typed from
+    /// their first bytes as they open; <paramref name="counted"/> gets how many are shown.</summary>
+    public FilesViewModel(MainViewModel main, CaseSession s, string? only = null, Action<int>? counted = null)
     {
         _main = main;
         _s = s;
+        _only = only;
+        _counted = counted;
+        if (only is not null) TypeFilter = only;
         _ = LoadAsync();
     }
+
+    readonly string? _only;
+    readonly Action<int>? _counted;
+    public string Title => _only ?? "Extraction Files";
+    public bool AnyKind => _only is null;
 
     async Task LoadAsync()
     {
@@ -136,6 +147,12 @@ public partial class FilesViewModel : ObservableObject
         Locked = x.Locked;
         if (Locked) Info = "Encrypted iTunes backup: its files are shown as stored, encrypted and named by hash. Enter the backup password to read them: it is used for this session only, never saved. " + Info;
         if (_reveal is { } r) Reveal(r);
+        // one kind only: the files whose name says nothing (no extension) are typed too, so a PDF saved without one is found
+        if (_only is not null && !Locked) // an encrypted backup's bytes say nothing until it is unlocked
+        {
+            var all = _all;
+            await Identify(await Task.Run(() => all.Where(e => RawFiles.Category(e.Device, "") is var c && (c == _only || c == RawFiles.Other)).Select(e => e.Path).ToList()));
+        }
     }
 
     /// <summary>An encrypted backup opened without its password.</summary>
@@ -221,6 +238,7 @@ public partial class FilesViewModel : ObservableObject
                (_kind == "tar.gz" ? " A tar.gz is read from its start for each file: previews are slow, searches read it once." : "") +
                (TypeFilter != AllTypes && _types.Count == 0 ? " Types come from file names until Identify types reads their first bytes." : "");
         ShowPage(0);
+        _counted?.Invoke(Rows.Count);
     }
 
     /// <summary>A page of tiles; the pictures and video frames are decoded one by one, until another page replaces it.</summary>
@@ -281,6 +299,7 @@ public partial class FilesViewModel : ObservableObject
     void ShowFolder()
     {
         if (Selected is not { } f) return;
+        if (_only is not null) { _main.ShowInFiles(f.Path, _s); return; } // one kind, no folder tree: the Extraction Files view shows it
         SelectFolder(f.Device);
         Selected = Rows.FirstOrDefault(r => r.Path == f.Path);
     }
@@ -297,7 +316,7 @@ public partial class FilesViewModel : ObservableObject
     async Task Open()
     {
         if (Selected is not { } f) return;
-        if (f.Category == RawFiles.Archives || f.Type.StartsWith("ZIP") || f.Type is "gzip") await ExploreArchive();
+        if (_only is null && (f.Category == RawFiles.Archives || f.Type.StartsWith("ZIP") || f.Type is "gzip")) await ExploreArchive(); // a .docx is a zip too
         else if (f.Category == RawFiles.Databases) await OpenSqlite();
     }
 
@@ -330,19 +349,28 @@ public partial class FilesViewModel : ObservableObject
         Info = $"{files.Count:N0} files inside {f.Device}, read from a read-only copy of it (nothing unpacked). " + Info;
     }
 
-    async Task Run(Func<ExtractionFiles, IReadOnlyList<string>, IProgress<(int, int)>, CancellationToken, Task> work)
+    async Task Run(Func<ExtractionFiles, IReadOnlyList<string>, IProgress<(int, int)>, CancellationToken, Task> work, IReadOnlyList<string>? only = null)
     {
         Running = true;
         _cts = new CancellationTokenSource();
-        var paths = Rows.Select(r => r.Path).ToList();
+        var paths = only ?? Rows.Select(r => r.Path).ToList();
+        string? failed = null;
         try { await work(_s.Extraction!, paths, new Progress<(int Done, int Total)>(p => Progress = 100.0 * p.Done / Math.Max(1, p.Total)), _cts.Token); }
         catch (OperationCanceledException) { }
-        finally { Running = false; ApplyFilter(); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidDataException) { failed = e.Message; }
+        finally
+        {
+            Running = false;
+            ApplyFilter();
+            if (failed is not null) Info = $"The extraction could not be read to the end: {failed} " + Info;
+        }
     }
 
     /// <summary>Types every shown file from its first bytes, so a filter can find e.g. SQLite files without an extension.</summary>
     [RelayCommand(CanExecute = nameof(Idle))]
-    Task Identify() => Run(async (x, paths, p, ct) =>
+    Task Identify() => Identify(null);
+
+    Task Identify(IReadOnlyList<string>? only) => Run(async (x, paths, p, ct) =>
     {
         var types = await Task.Run(() =>
         {
@@ -359,7 +387,7 @@ public partial class FilesViewModel : ObservableObject
             return r;
         });
         foreach (var (path, type) in types) _types[path] = type;
-    });
+    }, only);
 
     /// <summary>Searches the shown files' bytes for the keyword; an empty keyword clears the search.</summary>
     [RelayCommand(CanExecute = nameof(Idle))]
@@ -483,7 +511,7 @@ public partial class FilesViewModel : ObservableObject
     List<FileAction> Actions(FileRow f, bool archive)
     {
         List<FileAction> a = [];
-        if (archive || f.Category == RawFiles.Archives) a.Add(new("Explore the archive", ExploreArchiveCommand));
+        if (_only is null && (archive || f.Category == RawFiles.Archives)) a.Add(new("Explore the archive", ExploreArchiveCommand));
         if (f.Category == RawFiles.Databases || f.Type.StartsWith("SQLite")) a.Add(new("Open in SQLite reader", OpenSqliteCommand));
         if (!_archiveOf.ContainsKey(f.Path)) a.Add(new("Open a verified copy", _main.Details.OpenSourceCopyCommand));
         a.Add(new("Save a copy…", SaveCopyCommand));
@@ -498,7 +526,63 @@ public partial class FilesViewModel : ObservableObject
         a.Add(new("Show in its folder", ShowFolderCommand));
         if (f.Artifacts.Count > 0) a.Add(new("-"));
         foreach (var art in f.Artifacts) a.Add(new($"Open artifact: {art.Name}", OpenArtifactCommand, art));
+        if (_s.Extraction is { } ex && (ex.ToMedia(f.Path).IsImage || f.Path.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)))
+        {
+            a.Add(new("-"));
+            a.Add(new("Read the text (OCR): " + OcrJobs.TesseractLabel, OcrFileCommand, OcrJobs.Engine.Tesseract));
+            if (OcrJobs.WindowsLabel is { } w) a.Add(new("Read the text (OCR): " + w, OcrFileCommand, OcrJobs.Engine.Windows));
+        }
+        var ai = AiState.Instance;
+        if (ai.Enabled && _s.Extraction is { } x)
+        {
+            a.Add(new("-"));
+            var m = x.ToMedia(f.Path);
+            if (m.IsImage && ai.Vision)
+            {
+                a.Add(new("AI: describe and read the text (OCR)", AiFileCommand, "describe"));
+                a.Add(new("AI: classify the image", AiFileCommand, "classify"));
+            }
+            if (m.Kind == "audio" && ai.Audio) a.Add(new("AI: transcribe", AiFileCommand, "transcribe"));
+            if (m.Kind == "video" && ai.Video) a.Add(new("AI: analyse the video (frames and audio)", AiFileCommand, "video"));
+            if (ai.Text) a.Add(new("AI: explain this file (what it is, its values)", AiFileCommand, "explain"));
+        }
         return a;
+    }
+
+    /// <summary>OCR of the selected file (an image, or a PDF's scanned pages) into the text base; its details then show the text.</summary>
+    [RelayCommand]
+    async Task OcrFile(object? engine)
+    {
+        if (Selected is not { } f || _s.Extraction is not { } x) return;
+        await OcrJobs.Run(_main, _s, [(f.Path, () => x.CopyOut(f.Path))], OcrJobs.Of(engine));
+        if (Selected == f) OnSelectedChanged(f);
+    }
+
+    /// <summary>The selected file to the AI: an image described or classified, an audio file transcribed (each from its
+    /// read-only copy), or any file explained from what this view shows of it (text, else the hex of its start).</summary>
+    [RelayCommand]
+    async Task AiFile(string job)
+    {
+        if (Selected is not { } f || _s.Extraction is not { } x) return;
+        var what = $"the file {f.Device} of the extraction";
+        if (job == "explain")
+        {
+            static string Cut(string s, int n) => s.Length <= n ? s : s[..n] + "\n…";
+            var about = $"File of the extraction: {f.Device}\nSize: {f.Size:N0} bytes\nKind: {f.Category}\nType (content): {(Detected != "" ? Detected : f.Type)}" +
+                        (f.UsedBy != "" ? $"\nRead by: {f.UsedBy}" : "") + "\n\n" +
+                        (ViewerTab > 0 && Text != "" ? "Content (start):\n" + Cut(Text, 12_000) : "Start of the file in hex:\n" + Cut(Hex, 6_000));
+            if (_main.OpenAi(_s, new AiScope(what, [], [], about, [AiText.Key("media", x.ToMedia(f.Path).RefId)])) is { } vm) _ = vm.ExplainDataCommand.ExecuteAsync(null);
+            return;
+        }
+        if (await Task.Run(() => x.CopyOut(f.Path)) is not { } copy) { _main.Status = "The file cannot be read from the extraction."; return; }
+        if (_main.OpenAi(_s, new AiScope(what, [], [x.ToMedia(f.Path, copy)])) is not { } ai) return;
+        _ = job switch
+        {
+            "describe" => ai.DescribeImagesCommand.ExecuteAsync(null),
+            "classify" => ai.ClassifyImagesCommand.ExecuteAsync(null),
+            "video" => ai.AnalyseVideosCommand.ExecuteAsync(null),
+            _ => ai.TranscribeCommand.ExecuteAsync(null),
+        };
     }
 
     /// <summary>Tags the selected file by its path in the extraction (the tag it already has, or "", removes it); the

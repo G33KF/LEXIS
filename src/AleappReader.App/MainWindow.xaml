@@ -71,6 +71,7 @@
                     </Border>
                 </WrapPanel>
                 <WrapPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="8,0">
+                    <TextBlock Text="Time zone" VerticalAlignment="Center" Margin="0,0,4,0" Foreground="{StaticResource MutedBrush}"/>
                     <ComboBox Width="170" ToolTip="Display time zone for every date. Stored values are not changed" ItemsSource="{Binding Zones}" SelectedItem="{Binding Zone}" DisplayMemberPath="DisplayName" VerticalAlignment="Center"/>
                     <TextBox x:Name="SearchInput" Width="190" Margin="10,0,0,0" Style="{StaticResource SearchBox}" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
                              ToolTip="Search every artifact (Enter): a b (both), a | b (either), -a (not), &quot;exact phrase&quot;, /regex/. Ctrl+F: the open view's filter, or this box" IsEnabled="{Binding HasCase}">
