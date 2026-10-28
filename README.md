@@ -1,15 +1,45 @@
 # LEXIS — LEAPP Reader
 
-LEXIS is a Windows desktop reader for the reports of **ALEAPP** (Android) and **iLEAPP** (iOS).
-It ships as a single executable with both tools inside. You can open an existing LEAPP case,
-or analyze a new extraction (folder, zip, tar, tar.gz, iTunes/Finder backup, encrypted iTunes
-backup, adb backup) without installing Python or either LEAPP.
+LEXIS is a Windows graphical analysis environment for **ALEAPP** (Android) and **iLEAPP** (iOS).
+LEAPP parses the extraction and reports each artifact on its own; LEXIS brings those results
+together, so you can search, correlate and tag across artifacts and across devices. Both tools
+are bundled in a single portable exe: open an existing LEAPP report, or load a new extraction
+and LEXIS runs the right tool for you. No Python, nothing to install.
 
-*This is a first release and may still need some work, but I'm happy to share it.*
+On top of the LEAPP reports it adds:
+- **LEAPP artifacts, organized**: every artifact from the LAVA output, sorted into categories
+  and data types (Messages › SMS, Calls › Call Log, ...), or grouped by application. Tables
+  load as you scroll, with column filters, `/regex/` search, inline media and export. Cells
+  holding JSON, XML, plists or protobuf (decoded by recognized schema) open as a tree
+- **Multi-device cases**: joint timeline and map, co-presence, common contacts, search across devices
+- **Chats, timeline, map, media gallery and documents** in one window, with one search syntax
+- **Deleted messages recovered**: the messaging apps' databases carved (WAL and free pages) and
+  WhatsApp backups decrypted with the keys found in the extraction; recovered rows are marked
+- **The extraction file system**: file browser, SQLite reader with WAL and free-page carving, plist reader,
+  offline OCR, search inside the files' contents
+- **Indicators**: matching of STIX2 indicators and hash sets, root/jailbreak traces, crypto addresses and seed phrases
+- **Verifiable exports**: tags and notes, SHA-256 manifests, signed portable cases
+- **AI analysis**: off by default. Plug in Ollama, LM Studio or any OpenAI-compatible
+  model to analyze, explain, summarize and translate, read images (OCR), transcribe audio and
+  analyze videos (frames and audio track on one timeline), with every answer citing the records it used. A built-in MCP server lets any MCP client
+  query the open case
 
-Evidence is opened read-only: databases are read from temporary copies, and nothing is written
-beside the evidence. Tags and notes go to `_reader_tags.db` beside the case, AI results to
-`_reader_ai.db`.
+**Supported inputs**
+- Existing LEAPP report folders
+- File system extractions: unpacked folder, zip, tar, tar.gz
+- Extractions from major third-party forensic tools (UFD, GK)
+- iTunes/Finder backups, including encrypted backups from iOS 10.2 and later
+- Android adb backups (`.ab`), plain or encrypted
+
+Evidence is never modified: databases are opened from temporary copies, so the original
+files keep their hashes. Tags and notes are saved in `_reader_tags.db` beside the case,
+AI results in `_reader_ai.db`.
+
+> [!NOTE]
+> *This is a first release and may still need some work, but I'm happy to share it.*
+>
+> *For details about the logic and architecture, see https://g33kf.github.io/LEXIS/*
+
 
 ## Download
 
@@ -17,7 +47,7 @@ Get `LEXIS-<version>-win-x64.exe` from the [Releases](../../releases) page. The 
 beside it is the checksum to verify the download against:
 
 ```powershell
-Get-FileHash .\LEXIS-1.2.0-win-x64.exe -Algorithm SHA256
+Get-FileHash .\LEXIS-1.2.5-win-x64.exe -Algorithm SHA256
 ```
 
 Windows 10/11 x64 is required. Nothing is installed: the exe runs from any folder. The WebView2
@@ -29,26 +59,40 @@ runtime, which Windows 11 already has, is needed only for the HTML previews and 
 - **Investigation case** (`.lexiscase`): several devices opened together, with a name, a proceeding
   number, and a label and colour per device. Devices can be renamed, reordered, moved between
   cases or removed. Reports opened on their own join a default case.
-- **Overview** per device: the device, its last SIM, wipes and setups, Android users and profiles,
-  the extraction, and the user contents by kind. An **Owner** tab lists each name, number,
-  address and account that identifies the user.
+- **Case Summary** per device, in tabs (Overview, Device, SIM cards, Owner & accounts, Users,
+  Report): the device, every SIM card recorded with its first and last date, wipes and setups,
+  Android users and profiles, the extraction, the user contents by kind, and whether LEXIS or
+  ALEAPP/iLEAPP made the report. The **Owner** tab lists each name, number, address and account
+  that identifies the user.
+- **Accounts Overview**: one row per account of each app or service, merged from the artifacts
+  that record it; every value names the artifact and column it came from.
 - **Case tree** with artifacts grouped by category, or by application in a parallel view. Tables
   load while you scroll and have column menus, `/regex/` filters, and CSV/JSON export.
 
 ### Reading the data
 - **Chats** with message bubbles, replies quoted and linked, reactions, inline media, shared
-  positions, participants matched to their contact record, and search inside a chat. Each chat
+  positions, participants matched to their contact record, and search inside a chat. Private and
+  group chats are told apart, and chats are split by the user's account, SIM card or backup.
+  Recovered (deleted) messages are marked, and WeChat voice messages (SILK) play. Each chat
   exports to a paged HTML report in a WhatsApp or Telegram look.
 - **Timeline** built from every datetime column, filtered by period and by artifact.
 - **Map** (Leaflet) of every row that has coordinates, with the route, pictures taken at a place,
   and zones of interest with visits and first and last time.
-- **Media gallery** of the extraction's media, with the chat message each file came with,
-  EXIF data, filters by app, direction and date, and colour tags.
+- **Media gallery** of the extraction's media, with every chat message each file was sent or
+  received in (copies with the same bytes included), EXIF data, filters by app, direction and
+  date, and colour tags. A **media viewer** zooms pictures, plays video and audio, and shows PDFs
+  in a sandboxed viewer.
+- **Documents**: every PDF, Office, OpenDocument, RTF and iWork file of the extraction in one
+  list, typed from its first bytes, with the artifacts that read it.
 - **Statistics**: user activity by weekday and hour, busiest days, top parties, contacts, apps and places.
-- **Details** pane: a resizable preview, every embedded metadata of a media file, the record's
-  source on the device, and any number decoded as a date under 11 common timestamp epochs.
+- **Details** pane, in tabs: a resizable preview, every embedded metadata of a media file, the
+  record's source on the device, and any number decoded as a date under 11 common timestamp
+  epochs; then the text read from the file and the AI analyses of the item.
 - **Search**: one syntax for search, filters, timeline and chats (`a b`, `a | b`, `-a`, an exact
   phrase, `/regex/`), per device or across devices, with a removable history of searches.
+  Results come as a table, filterable by any column. Search also reads the text inside the
+  extraction's files (PDF, Office, SQLite, plists, text) and the AI results; keyword lists can
+  be loaded from a file, in any language.
 
 ### Across devices
 - **Joint timeline** and **joint map** of the chosen devices.
@@ -66,6 +110,8 @@ runtime, which Windows 11 already has, is needed only for the HTML previews and 
   WAL and from free pages.
 - **Plist reader**: XML and binary plists as a tree, and NSKeyedArchiver archives resolved into
   their objects.
+- **OCR, offline**: pictures and scanned PDFs read with Tesseract (carried by LEXIS) or the OCR
+  built into Windows. The text goes to the search.
 - **Content manifest**: a SHA-256 of every file and one root hash over the whole extraction.
   The root hash is the same for a folder and for its zip.
 - **Export of a data source**: verified copies of an artifact's source files, with
@@ -100,7 +146,14 @@ runtime, which Windows 11 already has, is needed only for the HTML previews and 
 - On checked records, chats or media: summarize, translate, explain, describe images with OCR,
   and run a complete analysis of chosen data categories against an objective. Each answer cites
   the records it used.
-- Audio transcription with **whisper.cpp** on this machine.
+- **Explain** on a record explains what it is and each value it holds.
+- **Video analysis**: frames taken every N % of the duration or every N seconds, described by
+  the vision model, and the audio track transcribed, on one timeline, with the SHA-256 of each
+  frame sent.
+- The examiner can correct or exclude any AI analysis; the model's text is kept, nothing is deleted.
+- Audio transcription with **whisper.cpp** on this machine, set up from the AI settings (each
+  file kept only if its SHA-256 is the published one). Opus, AMR, M4A and MP3 are converted by
+  the ffmpeg carried by LEXIS.
 - **MCP server** inside the open LEXIS: LM Studio, Claude Desktop or any MCP client can read
   the open case through it.
 
@@ -115,6 +168,9 @@ The two tools are vendored in `ALEAPP/` and `ILEAPP/`:
 
 On top of those bases, this repository adds the modules below. Each module's `notes` field
 says what was validated on real data and what was checked only on synthetic files.
+The `LEXIS_*` modules live in `scripts/lexis_artifacts/` and load after the tool's own
+artifacts; one that declares a standard artifact replaces it, so nothing is reported twice and
+the original modules stay untouched.
 
 ### ALEAPP
 
@@ -133,6 +189,13 @@ says what was validated on real data and what was checked only on synthetic file
 | `bunq.py`, `huarenjie.py` | bunq Account Holders and Monetary Accounts · Huarenjie Account |
 | `wellbeing.py`, `accounts_ce.py` (extended) | Digital Wellbeing - App Settings · Account Extras |
 | `calllog.py`, `airtagAndroid.py`, `smsmmsBackup.py` (fixes) | Honor call log layout · AirTag WAL carving · SMS/MMS backup paths |
+| `LEXIS_WhatsApp.py` | WhatsApp and WhatsApp Business, per app and per Android user · WhatsApp Backups (`msgstore*.db.crypt12/14/15`, decrypted with the key files in the extraction) · Backups - One To One / Group Messages · deleted messages recovered from backups · message types named and a *Content* column · Contact Cards · View Once Media |
+| `LEXIS_Carved.py`, `lexis_carving.py` | Deleted messages of the messaging apps recovered by carving (page versions, WAL, free space), in the same tables with a *Recovered* column |
+| `LEXIS_WeChatMultiAccount.py` | WeChat: every account on the device, each database opened with the IMEIs WeChat keeps |
+| `LEXIS_Signal.py` | Signal - Messages with edits, deletions, mentions and stories · Message Edits · Stories |
+| `LEXIS_RecoveryApps.py` | Recovery Apps - Captured Messages (notification-log and "recover deleted messages" apps) |
+| `LEXIS_Session.py` | Session - Messages, decrypted with the key from `secrets.json` |
+| `LEXIS_SimInfo.py`, `lexis_sms_sim.py`, `LEXIS_SmsViews.py` | siminfo with MCC and MNC · SMS and MMS split per SIM card · chat view for SMS Backup and Restore and recovered SMS |
 
 ### iLEAPP
 
@@ -147,6 +210,9 @@ says what was validated on real data and what was checked only on synthetic file
 | `keychain.py` (extended) | Keychain Passwords: all password items |
 | `iosDiagnosticReports.py` (extended) | iOS Diagnostic Reports - OS Versions (`.ips` and Analytics-Journal metadata) |
 | `lockdownEvents.py` (fix) | lockdownd upgrade detection from `perform_migration` |
+| `LEXIS_WhatsApp.py` | WhatsApp and WhatsApp Business, each with the account's own JID and name |
+| `LEXIS_Carved.py`, `lexis_carving.py` | Deleted messages of the messaging apps recovered by carving |
+| `telegramMesssages.py`, `telegramAccounts.py` (extended) | Telegram Messages by account |
 | `ileapp.py`, `search_files.py` (fixes) | encrypted iTunes backup password taken from an environment variable or a file and kept out of the report log; a run with no password and no terminal stops instead of waiting for input |
 
 Not supported: encrypted legacy iTunes backups (`Manifest.mbdb`, iOS before 10.2).
