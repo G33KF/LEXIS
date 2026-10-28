@@ -65,6 +65,13 @@
 - **Video analysis**: a video with no readable duration gets one frame and its audio; the audio of videos over an hour
   is not sent; the count says how many were analyzed; its temporary frames are deleted with retries.
 - **Documents** is one list of all the documents, with a Name column; the Files toolbar is in labelled rows.
+- **Security review fixes.** whisper.cpp setup accepts only build files under the project's own GitHub release URL,
+  stops a download that grows past its published size, and refuses a folder whose `bin` it did not install (instead of
+  replacing it). ffmpeg is LEXIS's own, the one beside whisper-cli or an `ffmpeg.exe` on PATH, never a script; the
+  file extension passed on is checked. ffmpeg and whisper-cli stop after a time limit (10 minutes for
+  ffmpeg, 3 hours for whisper-cli). Temporary frames, audio and prompts are deleted when a job ends; what cannot be
+  deleted then is said, and removed at the next start. OCR skips pictures declaring more than 80 million pixels, and
+  reads a scanned PDF one page at a time. Translate and Write summary in the details refuse to run when the AI is off.
 
 ## 1.2.5
 

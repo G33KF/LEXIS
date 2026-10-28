@@ -25,6 +25,8 @@ public sealed class TesseractOcr : IDisposable
     [DllImport(Tess, CallingConvention = CallingConvention.Cdecl)] static extern void TessDeleteText(IntPtr text);
     [DllImport(Tess, CallingConvention = CallingConvention.Cdecl)] static extern void TessBaseAPIDelete(IntPtr api);
     [DllImport(Lept, CallingConvention = CallingConvention.Cdecl)] static extern IntPtr pixReadMem(byte[] data, UIntPtr size);
+    [DllImport(Lept, CallingConvention = CallingConvention.Cdecl)]
+    static extern int pixReadHeaderMem(byte[] data, UIntPtr size, out int format, out int w, out int h, out int bps, out int spp, out int iscmap);
     [DllImport(Lept, CallingConvention = CallingConvention.Cdecl)] static extern void pixDestroy(ref IntPtr pix);
 
     // the Visual C++ runtime beside Tesseract is loaded first, by name, so a PC without it installed still runs Tesseract
@@ -54,9 +56,12 @@ public sealed class TesseractOcr : IDisposable
         Method = $"OCR · {Engine} · {join}";
     }
 
-    /// <summary>The text in an image (JPEG, PNG, TIFF, GIF, WebP, BMP); null when Leptonica cannot decode it.</summary>
+    /// <summary>The text in an image (JPEG, PNG, TIFF, GIF, WebP, BMP); null when Leptonica cannot decode it, or its header
+    /// declares more than <see cref="OcrIndex.MaxPixels"/> (a small file can declare a huge picture): read before decoding.</summary>
     public string? Read(byte[] image)
     {
+        if (pixReadHeaderMem(image, (UIntPtr)image.Length, out _, out var w, out var h, out _, out _, out _) != 0
+            || w <= 0 || h <= 0 || (long)w * h > OcrIndex.MaxPixels) return null;
         var pix = pixReadMem(image, (UIntPtr)image.Length);
         if (pix == IntPtr.Zero) return null;
         try
@@ -103,6 +108,9 @@ public sealed class TesseractOcr : IDisposable
 /// <summary>OCR of files of the extraction into the <see cref="TextStore"/>, whatever engine reads the images.</summary>
 public static class OcrIndex
 {
+    /// <summary>The largest picture read, in pixels (a page scanned at 600 dpi is about 35 million).</summary>
+    public const long MaxPixels = 80_000_000;
+
     /// <summary>Reads one file and records it (anything but a picture or a PDF is left as it was): an image whole; a PDF's scanned pages, from their images, at most
     /// <paramref name="maxPages"/>, its text pages kept as they were. <paramref name="read"/> gives an image's text, or null
     /// when it cannot decode it; <paramref name="method"/> says which engine and languages.</summary>
@@ -124,30 +132,23 @@ public static class OcrIndex
         }
         var (_, pages, pdfMethod, parts) = ContentIndex.Read(rel, type, kind, bytes);
         int done = 0, left = 0;
-        List<(int Page, Func<Task<string>> Text)> todo = [];
         using (var doc = PdfDocument.Open(bytes))
             foreach (var page in doc.GetPages())
             {
                 if (page.Text.Trim() != "" || page.GetImages().ToList() is not { Count: > 0 } images) continue;
                 if (done++ >= maxPages) { left++; continue; }
-                // a JPEG stays in the PDF as it was (DCT): its raw bytes are the JPEG file; the other images are decoded to PNG
-                var raw = images.Select(i => i.TryGetPng(out var png) ? png : i.RawBytes.ToArray()).ToList();
-                todo.Add((page.Number, async () =>
-                {
-                    List<string> texts = [];
-                    foreach (var img in raw) if (await read(img) is { } t && t.Trim() != "") texts.Add(t);
-                    return string.Join("\n", texts);
-                }));
+                ct.ThrowIfCancellationRequested();
+                // one image decoded at a time, when it is read; one declaring more pixels than MaxPixels is not decoded.
+                // A JPEG stays in the PDF as it was (DCT): its raw bytes are the JPEG file; the other images are decoded to PNG
+                List<string> texts = [];
+                foreach (var i in images.Where(i => (long)i.WidthInSamples * i.HeightInSamples is > 0 and <= MaxPixels))
+                    if (await read(i.TryGetPng(out var png) ? png : i.RawBytes.ToArray()) is { } t && t.Trim() != "") texts.Add(t);
+                if (texts.Count > 0) parts.Add(($"page {page.Number}", string.Join("\n", texts)));
             }
-        foreach (var (n, text) in todo)
-        {
-            ct.ThrowIfCancellationRequested();
-            if (await text() is { Length: > 0 } t) parts.Add(($"page {n}", t));
-        }
         parts.Sort((a, b) => PageOf(a.Part).CompareTo(PageOf(b.Part)));
         var status = parts.Count == 0 ? TextStore.NoText : TextStore.HasText;
         if (left > 0) status += $"; {left} scanned pages over the limit of {maxPages} not read";
-        var pdf = new TextFile(rel, bytes.Length, sha, kind, type, status, pages, todo.Count == 0 ? pdfMethod : $"{pdfMethod} + {method}");
+        var pdf = new TextFile(rel, bytes.Length, sha, kind, type, status, pages, done == 0 ? pdfMethod : $"{pdfMethod} + {method}");
         store.Save(pdf, parts);
         return pdf;
     }

@@ -1248,7 +1248,7 @@ public static class ClaudeCli
         }
         finally
         {
-            try { work.Delete(true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+            await TempWork.Delete(work);
         }
     }
 }
@@ -1276,9 +1276,15 @@ public static class WhisperCpp
         return list.Count > 0 ? list : throw new AiException($"No ggml-*.bin model beside whisper-cli or in a models folder. Download one (e.g. ggml-small.bin) from {ModelDownloads}");
     }
 
-    /// <summary>ffmpeg beside whisper-cli, else LEXIS's own, else on PATH.</summary>
+    /// <summary>LEXIS's own ffmpeg, else ffmpeg.exe beside whisper-cli, else on PATH: a program only, never a .cmd or .bat
+    /// (cmd.exe would read an argument's &amp; or | as a command).</summary>
     static string? Ffmpeg(string exe) =>
-        Path.Combine(Path.GetDirectoryName(exe) ?? "", "ffmpeg.exe") is var near && File.Exists(near) ? near : BundledFfmpeg ?? ClaudeCli.Resolve("ffmpeg");
+        BundledFfmpeg ?? (Path.Combine(Path.GetDirectoryName(exe) ?? "", "ffmpeg.exe") is var near && File.Exists(near) ? near
+            : ClaudeCli.Resolve("ffmpeg") is { } p && p.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? p : null);
+
+    /// <summary>How long one ffmpeg run, and one whisper-cli transcription, may take before it is stopped: a malformed file
+    /// can make either stall, holding up every file after it.</summary>
+    public static readonly TimeSpan FfmpegLimit = TimeSpan.FromMinutes(10), WhisperLimit = TimeSpan.FromHours(3);
 
     /// <summary>LEXIS's own ffmpeg (decoders only, built by tools/ffmpeg/build.sh), embedded in it: written once to
     /// %LOCALAPPDATA%\AleappReader\ffmpeg\&lt;SHA-256&gt;\ and used only while it still has that SHA-256. Null when it cannot be written.</summary>
@@ -1306,7 +1312,7 @@ public static class WhisperCpp
 
     /// <summary>Converts <paramref name="input"/> with <paramref name="ffmpeg"/> into the 16 kHz mono WAV whisper.cpp reads.</summary>
     public static Task ToWav(string ffmpeg, string input, string wav, CancellationToken ct) =>
-        Exec(ffmpeg, ["-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-i", input, "-ar", "16000", "-ac", "1", wav], Path.GetDirectoryName(wav)!, "ffmpeg", ct);
+        Exec(ffmpeg, ["-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-i", input, "-ar", "16000", "-ac", "1", wav], Path.GetDirectoryName(wav)!, "ffmpeg", FfmpegLimit, ct);
 
     public static async Task<Transcript> Transcribe(string exe, string model, string fileName, byte[] audio, CancellationToken ct)
     {
@@ -1316,7 +1322,8 @@ public static class WhisperCpp
         var work = Directory.CreateTempSubdirectory("lexis-whisper-");
         try
         {
-            var ext = Path.GetExtension(fileName).ToLowerInvariant();
+            // the extension comes from the evidence's file name: only letters and digits reach a path or a command line
+            var ext = Path.GetExtension(fileName).ToLowerInvariant() is var e && Regex.IsMatch(e, @"^\.[a-z0-9]{1,8}$") ? e : "";
             var input = Path.Combine(work.FullName, "audio" + (ext == "" ? ".bin" : ext));
             await File.WriteAllBytesAsync(input, audio, ct);
             if (!Readable.Contains(ext))
@@ -1328,43 +1335,81 @@ public static class WhisperCpp
             }
             var output = Path.Combine(work.FullName, "out");
             await Exec(exe, ["-m", modelPath, "-f", input, "-l", "auto", "-oj", "-of", output, "-np",
-                             "-t", Math.Clamp(Environment.ProcessorCount - 1, 1, 8).ToString(CultureInfo.InvariantCulture)], work.FullName, "whisper-cli", ct);
+                             "-t", Math.Clamp(Environment.ProcessorCount - 1, 1, 8).ToString(CultureInfo.InvariantCulture)], work.FullName, "whisper-cli", WhisperLimit, ct);
             var j = JsonNode.Parse(await File.ReadAllTextAsync(output + ".json", ct));
             List<(TimeSpan At, string Text)> segs = [.. (j?["transcription"] as JsonArray ?? [])
                 .Select(s => (TimeSpan.FromMilliseconds((double?)s?["offsets"]?["from"] ?? 0), ((string?)s?["text"] ?? "").Trim())).Where(s => s.Item2 != "")];
             return new(string.Join(" ", segs.Select(s => s.Text)), (string?)j?["result"]?["language"], segs);
         }
         catch (Exception e) when (e is IOException or JsonException) { throw new AiException("whisper.cpp: " + e.Message); }
-        finally
-        {
-            try { work.Delete(true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
-        }
+        finally { await TempWork.Delete(work); }
     }
 
     /// <summary>What a program prints on its error stream, whatever its exit code.</summary>
-    internal static async Task<string> Run(string exe, IEnumerable<string> args, string dir, CancellationToken ct)
+    internal static async Task<string> Run(string exe, IEnumerable<string> args, string dir, TimeSpan limit, CancellationToken ct)
     {
-        var psi = new ProcessStartInfo(exe) { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = dir, RedirectStandardOutput = true, RedirectStandardError = true };
-        foreach (var a in args) psi.ArgumentList.Add(a);
-        using var p = Process.Start(psi) ?? throw new AiException($"{Path.GetFileName(exe)} did not start");
-        using var kill = ct.Register(() => { try { p.Kill(true); } catch (InvalidOperationException) { } });
-        var stdout = p.StandardOutput.ReadToEndAsync(CancellationToken.None);
-        var stderr = p.StandardError.ReadToEndAsync(CancellationToken.None);
-        await p.WaitForExitAsync(ct);
-        await stdout;
-        return await stderr;
+        var (_, stderr) = await Start(exe, args, dir, Path.GetFileName(exe), limit, ct);
+        return stderr;
     }
 
-    internal static async Task Exec(string exe, IEnumerable<string> args, string dir, string what, CancellationToken ct)
+    internal static async Task Exec(string exe, IEnumerable<string> args, string dir, string what, TimeSpan limit, CancellationToken ct)
+    {
+        var (code, stderr) = await Start(exe, args, dir, what, limit, ct);
+        if (code != 0) throw new AiException($"{what} ended with code {code}: {AiClient.Short(stderr)}");
+    }
+
+    /// <summary>Runs a program to its end, killed on cancel or once <paramref name="limit"/> has passed.</summary>
+    static async Task<(int Code, string Stderr)> Start(string exe, IEnumerable<string> args, string dir, string what, TimeSpan limit, CancellationToken ct)
     {
         var psi = new ProcessStartInfo(exe) { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = dir, RedirectStandardOutput = true, RedirectStandardError = true };
         foreach (var a in args) psi.ArgumentList.Add(a);
         using var p = Process.Start(psi) ?? throw new AiException($"{what} did not start");
-        using var kill = ct.Register(() => { try { p.Kill(true); } catch (InvalidOperationException) { } });
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        stop.CancelAfter(limit);
+        using var kill = stop.Token.Register(() => { try { p.Kill(true); } catch (InvalidOperationException) { } });
         var stdout = p.StandardOutput.ReadToEndAsync(CancellationToken.None); // drained so a full pipe never blocks it
         var stderr = p.StandardError.ReadToEndAsync(CancellationToken.None);
-        await p.WaitForExitAsync(ct);
+        try { await p.WaitForExitAsync(stop.Token); }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            throw new AiException($"{what} did not finish within {(limit.TotalHours >= 1 ? $"{limit.TotalHours:0.#} h" : $"{limit.TotalMinutes:0} min")}: stopped.");
+        }
         await stdout;
-        if (p.ExitCode != 0) throw new AiException($"{what} ended with code {p.ExitCode}: {AiClient.Short(await stderr)}");
+        return (p.ExitCode, await stderr);
+    }
+}
+
+/// <summary>LEXIS's temporary work folders (lexis-video-, lexis-whisper-, lexis-claude- in %TEMP%), which can hold copies
+/// of evidence: deleted after each job, retried while another program still holds a file, and swept at start.</summary>
+public static class TempWork
+{
+    static readonly string[] Prefixes = ["lexis-video-", "lexis-whisper-", "lexis-claude-"];
+
+    /// <summary>Deletes <paramref name="dir"/>, trying again for about a second; false when it is still there.</summary>
+    public static async Task<bool> Delete(DirectoryInfo dir)
+    {
+        for (var i = 0; i < 5; i++)
+        {
+            dir.Refresh();
+            if (!dir.Exists) return true;
+            try { dir.Delete(true); }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { await Task.Delay(200, CancellationToken.None); }
+        }
+        dir.Refresh();
+        return !dir.Exists;
+    }
+
+    /// <summary>Deletes the work folders an earlier run left (none touched in the last <paramref name="age"/>, so a running
+    /// LEXIS keeps its own); returns how many remain.</summary>
+    public static int Sweep(TimeSpan age, string? root = null)
+    {
+        var left = 0;
+        foreach (var d in new DirectoryInfo(root ?? Path.GetTempPath()).EnumerateDirectories("lexis-*"))
+        {
+            if (!Prefixes.Any(p => d.Name.StartsWith(p, StringComparison.Ordinal)) || DateTime.UtcNow - d.LastWriteTimeUtc < age) continue;
+            try { d.Delete(true); }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { left++; }
+        }
+        return left;
     }
 }

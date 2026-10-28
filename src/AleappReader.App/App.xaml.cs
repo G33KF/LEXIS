@@ -20,6 +20,8 @@ public partial class App : Application
         DispatcherUnhandledException += OnUnhandled;
         EventManager.RegisterClassHandler(typeof(Window), UIElement.PreviewMouseRightButtonUpEvent, new MouseButtonEventHandler(CopyText));
         GridExport.Install();
+        // frames, audio and prompts an earlier run could not delete (copies of evidence); older than any job's time limit
+        _ = Task.Run(() => { try { TempWork.Sweep(TimeSpan.FromHours(6)); } catch (Exception x) when (x is IOException or UnauthorizedAccessException) { } });
         try { ValueFormatter.Zone = TimeZoneInfo.FindSystemTimeZoneById(Settings.Current.TimeZoneId); }
         catch (TimeZoneNotFoundException) { }
 

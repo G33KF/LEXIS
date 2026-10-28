@@ -33,7 +33,7 @@ public static partial class VideoFrames
 
     /// <summary>The duration of <paramref name="video"/>, read by ffmpeg (which ends with an error without an output: what it prints is what counts).</summary>
     public static async Task<TimeSpan?> DurationOf(string ffmpeg, string video, CancellationToken ct) =>
-        Duration(await WhisperCpp.Run(ffmpeg, ["-nostdin", "-hide_banner", "-i", video], Path.GetTempPath(), ct));
+        Duration(await WhisperCpp.Run(ffmpeg, ["-nostdin", "-hide_banner", "-i", video], Path.GetTempPath(), WhisperCpp.FfmpegLimit, ct));
 
     /// <summary>One JPEG per time, at most 1280 px wide, in <paramref name="folder"/>; a frame ffmpeg cannot write is left out.</summary>
     public static async Task<IReadOnlyList<(TimeSpan At, string File)>> Extract(string ffmpeg, string video, IReadOnlyList<TimeSpan> times,
@@ -47,7 +47,7 @@ public static partial class VideoFrames
             {
                 await WhisperCpp.Exec(ffmpeg, ["-nostdin", "-hide_banner", "-loglevel", "error", "-y",
                     "-ss", times[i].TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture), "-i", video,
-                    "-frames:v", "1", "-vf", "scale='min(1280,iw)':-2", "-q:v", "3", file], folder, "ffmpeg", ct);
+                    "-frames:v", "1", "-vf", "scale='min(1280,iw)':-2", "-q:v", "3", file], folder, "ffmpeg", WhisperCpp.FfmpegLimit, ct);
             }
             catch (AiException) { }
             if (File.Exists(file)) got.Add((times[i], file));

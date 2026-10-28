@@ -7,29 +7,31 @@ namespace AleappReader.Core.Tests;
 public class WhisperSetupTests
 {
     static string Sha(char c) => new(c, 64);
+    const string U = "https://github.com/ggml-org/whisper.cpp/releases/download/";
 
     [Fact]
     public void Each_build_comes_from_the_newest_release_that_has_it_with_a_sha256()
     {
         var json = $$"""
         [
+          {"tag_name":"b6000","published_at":"2026-05-03T00:00:00Z","assets":[{"name":"whisper-bin-x64.zip","size":1,"digest":"sha256:{{Sha('7')}}","browser_download_url":"https://elsewhere.example/whisper-bin-x64.zip"}]},
           {"tag_name":"v1.9.5","published_at":"2026-05-02T00:00:00Z","assets":[]},
-          {"tag_name":"b9999","draft":true,"published_at":"2026-06-01T00:00:00Z","assets":[{"name":"whisper-bin-x64.zip","size":1,"digest":"sha256:{{Sha('9')}}","browser_download_url":"https://x/draft"}]},
+          {"tag_name":"b9999","draft":true,"published_at":"2026-06-01T00:00:00Z","assets":[{"name":"whisper-bin-x64.zip","size":1,"digest":"sha256:{{Sha('9')}}","browser_download_url":"{{U}}draft"}]},
           {"tag_name":"b5454","prerelease":true,"published_at":"2026-05-01T00:00:00Z","assets":[
-            {"name":"whisper-bin-x64.zip","size":10,"digest":"sha256:{{Sha('A')}}","browser_download_url":"https://x/cpu"},
-            {"name":"whisper-blas-bin-x64.zip","size":20,"browser_download_url":"https://x/blas-no-digest"},
-            {"name":"whisper-bin-win-cuda-12.4.0-x64.zip","size":30,"digest":"sha256:{{Sha('c')}}","browser_download_url":"https://x/cuda12"},
-            {"name":"whisper-bin-ubuntu-x64.tar.gz","size":40,"digest":"sha256:{{Sha('d')}}","browser_download_url":"https://x/linux"}]},
+            {"name":"whisper-bin-x64.zip","size":10,"digest":"sha256:{{Sha('A')}}","browser_download_url":"{{U}}cpu"},
+            {"name":"whisper-blas-bin-x64.zip","size":20,"browser_download_url":"{{U}}blas-no-digest"},
+            {"name":"whisper-bin-win-cuda-12.4.0-x64.zip","size":30,"digest":"sha256:{{Sha('c')}}","browser_download_url":"{{U}}cuda12"},
+            {"name":"whisper-bin-ubuntu-x64.tar.gz","size":40,"digest":"sha256:{{Sha('d')}}","browser_download_url":"{{U}}linux"}]},
           {"tag_name":"b5130","published_at":"2026-04-01T00:00:00Z","assets":[
-            {"name":"whisper-bin-x64.zip","size":11,"digest":"sha256:{{Sha('e')}}","browser_download_url":"https://x/old-cpu"},
-            {"name":"whisper-blas-bin-x64.zip","size":21,"digest":"sha256:{{Sha('f')}}","browser_download_url":"https://x/blas"},
-            {"name":"whisper-cublas-11.8.0-bin-x64.zip","size":31,"digest":"sha256:{{Sha('1')}}","browser_download_url":"https://x/cuda11"}]}
+            {"name":"whisper-bin-x64.zip","size":11,"digest":"sha256:{{Sha('e')}}","browser_download_url":"{{U}}old-cpu"},
+            {"name":"whisper-blas-bin-x64.zip","size":21,"digest":"sha256:{{Sha('f')}}","browser_download_url":"{{U}}blas"},
+            {"name":"whisper-cublas-11.8.0-bin-x64.zip","size":31,"digest":"sha256:{{Sha('1')}}","browser_download_url":"{{U}}cuda11"}]}
         ]
         """;
         var b = WhisperSetup.ParseBuilds(json).ToDictionary(x => x.Variant);
         Assert.Equal(["CPU", "CPU with OpenBLAS", "NVIDIA CUDA 12", "NVIDIA CUDA 11"], b.Keys);
-        Assert.Equal(("b5454", "https://x/cpu", Sha('a')), (b["CPU"].Tag, b["CPU"].File.Url, b["CPU"].File.Sha256));
-        Assert.Equal(("b5130", "https://x/blas"), (b["CPU with OpenBLAS"].Tag, b["CPU with OpenBLAS"].File.Url));
+        Assert.Equal(("b5454", U + "cpu", Sha('a')), (b["CPU"].Tag, b["CPU"].File.Url, b["CPU"].File.Sha256)); // not b6000's, served elsewhere
+        Assert.Equal(("b5130", U + "blas"), (b["CPU with OpenBLAS"].Tag, b["CPU with OpenBLAS"].File.Url));
         Assert.Equal("whisper-bin-win-cuda-12.4.0-x64.zip", b["NVIDIA CUDA 12"].File.Name);
         Assert.Equal("whisper-cublas-11.8.0-bin-x64.zip", b["NVIDIA CUDA 11"].File.Name);
         Assert.Empty(WhisperSetup.ParseBuilds("[]"));
@@ -75,6 +77,8 @@ public class WhisperSetupTests
             var e = await Assert.ThrowsAsync<AiException>(() => WhisperSetup.Fetch(good with { Sha256 = Sha('0') }, dir, null, CancellationToken.None, http));
             Assert.Contains("SHA-256", e.Message);
             await Assert.ThrowsAsync<AiException>(() => WhisperSetup.Fetch(good with { Size = 99 }, dir, null, CancellationToken.None, http));
+            e = await Assert.ThrowsAsync<AiException>(() => WhisperSetup.Fetch(good with { Size = 3 }, dir, null, CancellationToken.None, http));
+            Assert.Contains("more than", e.Message); // stopped while still receiving
             Assert.Empty(Directory.GetFiles(dir));
         }
         finally { Directory.Delete(dir, true); }
@@ -118,6 +122,11 @@ public class WhisperSetupTests
             Directory.CreateDirectory(Path.Combine(folder, "bin"));
             File.WriteAllText(Path.Combine(folder, "bin", "stale.dll"), "");
 
+            // a bin LEXIS did not install (an extraction's system\bin, another program's) is refused and left as it was
+            Assert.Throws<AiException>(() => WhisperSetup.Unpack(zip, folder));
+            Assert.True(File.Exists(Path.Combine(folder, "bin", "stale.dll")));
+
+            File.WriteAllText(Path.Combine(folder, WhisperSetup.LogName), "");
             var exe = WhisperSetup.Unpack(zip, folder);
             Assert.Equal(Path.Combine(folder, "bin", "whisper-cli.exe"), exe);
             Assert.Equal(["ggml.dll", "whisper-cli.exe"], Directory.GetFiles(Path.Combine(folder, "bin")).Select(Path.GetFileName).Order());
@@ -130,5 +139,29 @@ public class WhisperSetupTests
             Assert.Equal(Path.Combine(dir, "models"), WhisperSetup.ModelFolder(Path.Combine(dir, "whisper-cli.exe")));
         }
         finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public void Sweep_deletes_only_old_lexis_work_folders()
+    {
+        var root = Directory.CreateTempSubdirectory("sweep-").FullName;
+        try
+        {
+            DirectoryInfo Make(string name, double hoursAgo)
+            {
+                var d = Directory.CreateDirectory(Path.Combine(root, name));
+                File.WriteAllText(Path.Combine(d.FullName, "f"), "x");
+                d.LastWriteTimeUtc = DateTime.UtcNow.AddHours(-hoursAgo);
+                return d;
+            }
+            var old = Make("lexis-video-a", 10);
+            var fresh = Make("lexis-whisper-b", 1);
+            var other = Make("lexis-cases", 10);
+            Assert.Equal(0, TempWork.Sweep(TimeSpan.FromHours(6), root));
+            Assert.False(Directory.Exists(old.FullName));
+            Assert.True(Directory.Exists(fresh.FullName));
+            Assert.True(Directory.Exists(other.FullName));
+        }
+        finally { Directory.Delete(root, true); }
     }
 }

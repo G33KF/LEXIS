@@ -147,6 +147,7 @@ public partial class DetailsViewModel
     async Task WriteSummaryAsync()
     {
         var ai = Settings.Current.Ai;
+        if (!ai.Enabled) { AiStatus = "AI is off in AI settings."; return; }
         if (_s is not { } s || ai.ProviderOf(ai.Text) is not { } p || ai.Text.Model == "") { AiStatus = "Choose a text model in AI settings."; return; }
         var used = _analyses.Where(a => !a.Excluded).ToList();
         if (used.Count == 0 || _writing) return;
@@ -211,6 +212,7 @@ public partial class DetailsViewModel
     {
         var ai = Settings.Current.Ai;
         if (_s is not { } s || _text is not { } t) return;
+        if (!ai.Enabled) { AiStatus = "AI is off in AI settings."; return; }
         if (ai.ProviderOf(ai.Text) is not { } p || ai.Text.Model == "") { AiStatus = "Choose a text model in AI settings."; return; }
         var todo = Texts.Where(x => !x.HasTranslation || x.TranslationStale).ToList();
         if (todo.Count == 0 || !AiViewModel.Confirm(p.Provider, $"The text of {Title}")) return;

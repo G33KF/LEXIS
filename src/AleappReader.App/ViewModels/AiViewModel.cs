@@ -118,6 +118,7 @@ public partial class AiViewModel : ObservableObject
     /// <summary>The client and model of a job, or null with the reason in the status.</summary>
     (AiClient Client, AiProvider Provider, string Model)? Role(AiRole r, string job)
     {
+        if (!Ai.Enabled) { Status = "AI is off in AI settings."; return null; }
         if (Ai.ProviderOf(r) is not { } p || r.Model == "") { Status = $"Choose a {job} model in AI settings."; return null; }
         return (p.Client(), p.Provider, r.Model);
     }
@@ -608,6 +609,7 @@ public partial class AiViewModel : ObservableObject
         var every = Ai.VideoByPercent ? $"every {Ai.VideoPercent} %" : $"every {Ai.VideoSeconds} s";
         int n = 0, done = 0;
         AiResult? last = null;
+        var left = new List<string>();
         foreach (var m in Videos)
         {
             n++;
@@ -664,17 +666,13 @@ public partial class AiViewModel : ObservableObject
             }
             finally
             {
-                // the frames and the audio are copies of evidence: retried, ffmpeg or an antivirus may still hold them a moment
-                for (var i = 0; i < 5 && work.Exists; i++)
-                {
-                    try { work.Delete(true); }
-                    catch (Exception e) when (e is IOException or UnauthorizedAccessException) { await Task.Delay(200, CancellationToken.None); }
-                    work.Refresh();
-                }
+                // the frames and the audio are copies of evidence: a folder still held (ffmpeg, an antivirus) is said, and swept at the next start
+                if (!await TempWork.Delete(work)) left.Add(work.FullName);
             }
         }
-        if (last is null) return;
-        Status = $"{done:N0} of {n:N0} videos analyzed. Review aid, not a finding.";
+        var kept = left.Count == 0 ? "" : $" Temporary frames and audio could not be deleted yet ({string.Join(", ", left)}); LEXIS deletes them at its next start.";
+        if (last is null) { if (kept != "") Status = kept.Trim(); return; }
+        Status = $"{done:N0} of {n:N0} videos analyzed. Review aid, not a finding.{kept}";
         Show(last);
     });
 

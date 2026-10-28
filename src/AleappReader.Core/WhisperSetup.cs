@@ -16,6 +16,7 @@ public static class WhisperSetup
     public const string Releases = "https://api.github.com/repos/ggml-org/whisper.cpp/releases?per_page=30";
     public const string ModelTree = "https://huggingface.co/api/models/ggerganov/whisper.cpp/tree/main";
     const string ModelFile = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/";
+    const string BuildDownloads = "https://github.com/ggml-org/whisper.cpp/releases/download/";
     public const string LogName = "install.log";
     public static readonly string DefaultFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AleappReader", "whisper");
 
@@ -44,7 +45,8 @@ public static class WhisperSetup
         foreach (var (variant, name) in Variants)
             foreach (var r in releases)
                 if ((r["assets"] as JsonArray ?? []).FirstOrDefault(a => name.IsMatch((string?)a?["name"] ?? "")) is { } a
-                    && (string?)a["digest"] is { } d && Regex.IsMatch(d, "^sha256:[0-9a-fA-F]{64}$") && (string?)a["browser_download_url"] is { } url)
+                    && (string?)a["digest"] is { } d && Regex.IsMatch(d, "^sha256:[0-9a-fA-F]{64}$") && (string?)a["browser_download_url"] is { } url
+                    && url.StartsWith(BuildDownloads, StringComparison.Ordinal)) // only the project's own release files, over HTTPS
                 {
                     builds.Add(new(variant, (string?)r["tag_name"] ?? "", new((string)a["name"]!, (long?)a["size"] ?? 0, d[7..].ToLowerInvariant(), url)));
                     break;
@@ -91,6 +93,7 @@ public static class WhisperSetup
                     sha.AppendData(buf, 0, n);
                     await dst.WriteAsync(buf.AsMemory(0, n), ct);
                     got += n;
+                    if (got > d.Size) throw new AiException($"{d.Name}: more than the {d.Size:N0} bytes published; stopped.");
                     progress?.Report(got);
                 }
             }
@@ -104,11 +107,14 @@ public static class WhisperSetup
     }
 
     /// <summary>Unpacks a build's zip into <paramref name="folder"/>\bin, replacing an earlier one, and returns its
-    /// whisper-cli.exe. The folder holding it becomes bin, so the models folder beside bin is kept across updates.</summary>
+    /// whisper-cli.exe. The folder holding it becomes bin, so the models folder beside bin is kept across updates.
+    /// A bin or bin.new LEXIS did not install (no install.log beside it) is never replaced: the folder is refused.</summary>
     public static string Unpack(string zip, string folder)
     {
         var bin = Path.Combine(folder, "bin");
         var fresh = Path.Combine(folder, "bin.new");
+        if ((Directory.Exists(bin) || Directory.Exists(fresh)) && !File.Exists(Path.Combine(folder, LogName)))
+            throw new AiException($"{folder} already has a bin folder that LEXIS did not install; choose an empty folder for whisper.cpp.");
         if (Directory.Exists(fresh)) Directory.Delete(fresh, true);
         ZipFile.ExtractToDirectory(zip, fresh); // refuses entries that would land outside it
         try
@@ -134,7 +140,7 @@ public static class WhisperSetup
     /// is read); without, its help.</summary>
     public static async Task Check(string exe, string? model, CancellationToken ct)
     {
-        if (model is null) await WhisperCpp.Exec(exe, ["-h"], Path.GetDirectoryName(exe)!, "whisper-cli", ct);
+        if (model is null) await WhisperCpp.Exec(exe, ["-h"], Path.GetDirectoryName(exe)!, "whisper-cli", WhisperCpp.FfmpegLimit, ct);
         else await WhisperCpp.Transcribe(exe, model, "silence.wav", [.. SilkAudio.WavHeader(32000, 16000), .. new byte[32000]], ct);
     }
 
