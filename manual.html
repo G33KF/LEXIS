@@ -1,0 +1,382 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LEXIS manual</title>
+<meta name="description" content="What LEXIS adds to ALEAPP and iLEAPP reports, view by view: cases, cross-device analysis, media origin, OCR, AI, search and the portable case.">
+<style>
+:root{--sfondo:#f6f7f9;--carta:#fff;--testo:#1c2330;--tenue:#5d6878;--bordo:#dde2ea;--accento:#2f5bd3;--sel:#eef3ff;--nota:#fff7e0;--notabordo:#e8c55a}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--sfondo:#12161d;--carta:#1a2029;--testo:#e3e8ef;--tenue:#94a0b0;--bordo:#2c3542;--accento:#7c9cff;--sel:#223052;--nota:#2a2614;--notabordo:#8a7430}}
+:root[data-theme="dark"]{--sfondo:#12161d;--carta:#1a2029;--testo:#e3e8ef;--tenue:#94a0b0;--bordo:#2c3542;--accento:#7c9cff;--sel:#223052;--nota:#2a2614;--notabordo:#8a7430}
+*{box-sizing:border-box}
+html{scroll-padding-top:64px}
+body{margin:0;background:var(--sfondo);color:var(--testo);font:15px/1.6 system-ui,"Segoe UI",sans-serif}
+a{color:var(--accento)}
+header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--bordo);background:var(--carta);position:sticky;top:0;z-index:5}
+header h1{font-size:16px;margin:0}
+header h1 a{color:inherit;text-decoration:none}
+header .links{margin-left:auto;display:flex;flex-wrap:wrap;gap:8px}
+header .links a{padding:4px 10px;border:1px solid var(--bordo);border-radius:6px;text-decoration:none;font-size:14px}
+.wrap{display:grid;grid-template-columns:230px minmax(0,1fr);gap:28px;max-width:1180px;margin:0 auto;padding:20px 16px 60px}
+nav.toc{position:sticky;top:64px;align-self:start;max-height:calc(100vh - 80px);overflow:auto;font-size:14px}
+nav.toc b{display:block;color:var(--tenue);font-size:12px;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px}
+nav.toc a{display:block;padding:3px 8px;border-radius:5px;text-decoration:none;color:var(--testo)}
+nav.toc a:hover{background:var(--sel)}
+main{min-width:0}
+section{background:var(--carta);border:1px solid var(--bordo);border-radius:10px;padding:18px 22px;margin-bottom:18px}
+h2{font-size:21px;margin:0 0 8px}
+h3{font-size:16px;margin:18px 0 6px;color:var(--accento)}
+p{margin:6px 0 10px}
+ul{margin:4px 0 10px;padding-left:20px}
+li{margin:3px 0}
+code,kbd{font:13px Consolas,monospace;background:var(--sel);padding:1px 5px;border-radius:4px}
+.ui{font-weight:600}
+.lead{font-size:16px;color:var(--tenue)}
+.tab{overflow-x:auto;margin:6px 0 12px}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{border:1px solid var(--bordo);padding:6px 9px;text-align:left;vertical-align:top}
+th{background:var(--sel)}
+.note{background:var(--nota);border-left:3px solid var(--notabordo);padding:8px 12px;border-radius:4px;margin:10px 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin:8px 0 4px}
+.card{border:1px solid var(--bordo);border-radius:8px;padding:10px 12px}
+.card b{display:block;margin-bottom:2px}
+.small{font-size:13px;color:var(--tenue)}
+@media (max-width:820px){.wrap{grid-template-columns:1fr}nav.toc{position:static;max-height:none}section{padding:14px 16px}}
+</style>
+</head>
+<body>
+<header>
+ <h1><a href="https://github.com/G33KF/LEXIS">LEXIS</a> · manual</h1>
+ <span class="links"><a href="./">Code map</a> <a href="https://github.com/G33KF/LEXIS">Repository</a> <a href="https://github.com/G33KF/LEXIS/releases/latest">Download</a></span>
+</header>
+<div class="wrap">
+<nav class="toc">
+ <b>Contents</b>
+ <a href="#start">What LEXIS adds</a>
+ <a href="#case">Cases and devices</a>
+ <a href="#cross">Across devices</a>
+ <a href="#gallery">Media gallery and origin</a>
+ <a href="#mediaai">OCR and AI on media</a>
+ <a href="#details">Details pane</a>
+ <a href="#chats">Chats</a>
+ <a href="#search">Search</a>
+ <a href="#files">Extraction files and SQLite</a>
+ <a href="#views">Timeline, map, statistics</a>
+ <a href="#ioc">Indicators</a>
+ <a href="#ai">AI</a>
+ <a href="#tags">Tags, exports, portable case</a>
+</nav>
+<main>
+
+<section id="start">
+ <h2>What LEXIS adds</h2>
+ <p class="lead">ALEAPP and iLEAPP parse a phone extraction into hundreds of artifacts. LEXIS opens their report and adds
+  the views an examiner works in. This manual covers only what LEXIS adds, view by view. It describes version 1.2.5.</p>
+ <div class="grid">
+  <div class="card"><b>Read-only</b>Evidence files open from temporary copies. Tags, OCR text and AI results go to separate databases beside the case.</div>
+  <div class="card"><b>Several devices</b>One investigation case holds many devices, with joint views and co-presence.</div>
+  <div class="card"><b>Traceable</b>Every value points back to its artifact, record and source file on the device.</div>
+ </div>
+ <p>Each device in the case tree has these nodes: Timeline, Statistics, Map, Media Gallery, Documents, Tagged Items, Search, Indicators, Extraction Files,
+  Chats, and <span class="ui">Analyzed Data</span> (the artifacts by category). The Timeline and Map nodes appear only when the device has dated records or positions.
+  The case node adds <span class="ui">Shared analysis</span> for all the devices together.</p>
+</section>
+
+<section id="case">
+ <h2>Cases and devices</h2>
+ <h3>Investigation case</h3>
+ <p>A case file (<code>.lexiscase</code>) holds a name, a <span class="ui">Proceeding no.</span>, and the devices.
+  Each device has a label, a colour, and a report (a folder, a <code>.lava</code> file or a portable case zip).
+  Paths below the case file are stored relative to it, so a case folder can be moved. Labels must be unique.</p>
+ <p>The case page shows a card per device: its platform, records, artifacts with data, tagged items, and the names and numbers that identify its user.
+  <span class="ui">Names on more than one device</span> lists names spelled the same on two or more devices: a lead, not an identification.</p>
+ <h3>Case Summary per device</h3>
+ <div class="tab"><table>
+  <tr><th>Tab</th><th>What it shows</th></tr>
+  <tr><td>Overview</td><td>Device, last SIM card, users and profiles, owner and accounts, wipe/setup/activation/restore events, statistics, extraction, case; then user contents by type and gallery albums.</td></tr>
+  <tr><td>Device</td><td>Device profile, acquisition file details, and links to boot, reset, setup and activation artifacts.</td></tr>
+  <tr><td>SIM cards</td><td>SIM history: one card per ICCID (else IMSI, else number), merged from device info and SIM artifacts, with first and last date where a source dates it.</td></tr>
+  <tr><td>Owner &amp; accounts</td><td>Owner facts, the Accounts Overview, accounts in short (names, numbers and e-mails with the apps they appear in) and links to the account artifacts. Passwords are never shown.</td></tr>
+  <tr><td>Users</td><td>Android users and profiles: ID, name, type, created, last logged in, last in foreground, status.</td></tr>
+  <tr><td>Report</td><td>Extraction info, <span class="ui">Verify extraction hash</span>, content manifest with one root hash, LEAPP parameters, categories and modules.</td></tr>
+ </table></div>
+ <h3>Accounts Overview</h3>
+ <p>One row per account of each app or service, merged from the account and profile artifacts: name, username, phone, e-mail, UID, services, and
+  <span class="ui">Read from</span>. Selecting a row shows every value with the artifact and column it came from. A profile picture is shown only if it is a file
+  in the extraction, never fetched from the internet. Tokens, keys and saved passwords are left out.</p>
+ <h3>Artifact tree</h3>
+ <p><span class="ui">Analyzed Data</span> groups artifacts into macro categories (Calls, Contacts, Messages, Location Related, Media, User Accounts &amp; Details…), then by app.
+  Artifacts with no records go to a <span class="ui">No data</span> group. The setting <span class="ui">Show "Data by application"</span> adds a parallel tree by app.</p>
+</section>
+
+<section id="cross">
+ <h2>Across devices</h2>
+ <p class="lead">The case node's <span class="ui">Shared analysis</span> group works on all the devices of the case at once.
+  Every view has a <span class="ui">Devices</span> list, one coloured checkbox per device: untick a device to leave it out.</p>
+ <div class="tab"><table>
+  <tr><th>View</th><th>Needs</th><th>Answers</th></tr>
+  <tr><td>Search (all devices)</td><td>1+ device</td><td>Where a word, number or pattern appears on any device</td></tr>
+  <tr><td>Joint Timeline</td><td>1+ device</td><td>What happened on all devices, in one time order</td></tr>
+  <tr><td>Joint Map</td><td>1+ device</td><td>Where each device was, and the places they share</td></tr>
+  <tr><td>Co-presence</td><td>2+ devices</td><td>When and where two or more devices were close in space and time</td></tr>
+  <tr><td>Common Contacts</td><td>2+ devices</td><td>Which numbers, addresses and app accounts appear on more than one device</td></tr>
+ </table></div>
+
+ <h3>Joint Timeline</h3>
+ <p>Every non-empty date column of every record becomes an event; the events of all ticked devices are merged in time order, each with a chip in its device colour.
+  Filter by artifact, by period, by text (search syntax), newest first. A histogram per day sits above the list: click a bar to jump to that day.</p>
+
+ <h3>Joint Map and zones of interest</h3>
+ <p>Positions come from any artifact with a latitude/longitude column pair; positions at 0,0 are dropped. There is one layer per device and artifact, in the device colour.
+  <span class="ui">Route</span> joins each device's positions in time order. A period can be set; then positions without a time are left out.</p>
+ <p><span class="ui">Zones of interest</span> groups the positions shown into circles and counts visits:</p>
+ <div class="tab"><table>
+  <tr><th>Setting</th><th>Default</th><th>Meaning</th></tr>
+  <tr><td>Radius (m)</td><td>200</td><td>A position joins the nearest zone within this distance, otherwise it starts a new zone.</td></tr>
+  <tr><td>New visit after (min)</td><td>60</td><td>Two positions of one device in a zone further apart in time than this are two visits.</td></tr>
+  <tr><td>Together within (min)</td><td>10</td><td>Visits of two devices count as together when they overlap or are this close in time.</td></tr>
+ </table></div>
+ <p><span class="ui">List…</span> opens the zones table (first and last seen, visits, positions, devices, together), with the visits of the zone picked.
+  <span class="ui">Only zones of more than one device</span> keeps the shared places.</p>
+
+ <h3>Co-presence</h3>
+ <p>Co-presence finds positions of <b>different</b> devices that are close in space <b>and</b> in time. Only positions that carry a time are compared.</p>
+ <div class="tab"><table>
+  <tr><th>Parameter</th><th>Default</th><th>Effect</th></tr>
+  <tr><td>Radius (m)</td><td>100</td><td>Largest distance between two positions (great-circle distance)</td></tr>
+  <tr><td>Time window (min)</td><td>10</td><td>Largest time difference, either side of each position</td></tr>
+  <tr><td>Devices at least</td><td>2</td><td>Smallest number of devices in a group</td></tr>
+  <tr><td>Sources</td><td>all</td><td>Which location artifacts are compared, with their counts</td></tr>
+ </table></div>
+ <p>Matching pairs are chained into groups: devices close at the same time, directly or through other positions, form one co-presence.
+  Groups are numbered by time. Each row shows the devices, from, to, span, positions, the largest distance of the matched pairs, and the centre.
+  The lower list shows every position of the selected group with its device, time, source and record; double-click opens the record.
+  <span class="ui">Show on map</span> draws one numbered circle per co-presence.</p>
+ <div class="note">A co-presence means the records place the devices near each other. It does not show that the devices, or their users, met.
+  At most 10,000 position pairs are used: if more exist, LEXIS says so; narrow the radius or the window.</div>
+
+ <h3>Common Contacts</h3>
+ <p><span class="ui">Run</span> reads the contacts, calls, messages and app accounts of every device and keeps the identifiers found on at least two devices.</p>
+ <ul>
+  <li><b>Sources:</b> contact artifacts, communication artifacts (calls, SMS/MMS, chats, voicemail) and artifacts of messaging and social apps.</li>
+  <li><b>Types:</b> phone, e-mail, WhatsApp LID, WhatsApp group, <i>App</i> ID, <i>App</i> username. A WhatsApp JID counts as its phone number.
+   App IDs and usernames are compared only within the same app.</li>
+  <li><b>Numbers:</b> spaces, dashes, dots and brackets are removed; 8 to 15 digits are required. The comparison uses the <b>last 9 digits</b>, so
+   <code>+39 333…</code> on one device matches <code>333…</code> on another. The number shown is the international form when one was recorded.</li>
+ </ul>
+ <p>Each row shows the identifier, its type, the devices, where it was found and the names recorded beside it. The lower list shows every record with the
+  value as stored; <span class="ui">Open</span> jumps to it. Filters (text, type, sources, devices) apply without a new run.</p>
+ <div class="note">Two numbers from different countries with the same last 9 digits would be merged. Check the values as stored before relying on a match.</div>
+</section>
+
+<section id="gallery">
+ <h2>Media gallery and origin</h2>
+ <h3>Files shown</h3>
+ <ul>
+  <li><span class="ui">Linked to records</span>: the media ALEAPP/iLEAPP tied to a record (for example a chat attachment).</li>
+  <li><span class="ui">Whole extraction</span>: every picture, video and audio file in the extraction, read-only. Files at the same device path as a report file
+   still get their sent/received data.</li>
+ </ul>
+ <h3>Filters</h3>
+ <p><span class="ui">Type</span> (image, video, audio, file), <span class="ui">App</span>, <span class="ui">Origin</span>,
+  <span class="ui">Date</span> (message time, else file modified), and text (name, artifact, path, chat, sender). The app is read from the package folder in the device path
+  (<code>/data/data/&lt;package&gt;</code>, <code>Android/media/&lt;package&gt;</code>…), else from the artifact; about 80 packages are named (WhatsApp, Telegram…).</p>
+ <h3>Origin: where a file came from</h3>
+ <p>The origin is decided from two facts only: the file's <b>path on the device</b> and the <b>chat messages that carry it</b>. Nothing is guessed from the picture itself.</p>
+ <div class="tab"><table>
+  <tr><th>Origin</th><th>Rule</th></tr>
+  <tr><td>Device gallery</td><td>In the user's own storage: <code>/Media/DCIM/</code> on iOS; on Android the shared storage (<code>/sdcard</code>, <code>/storage/emulated/N</code>, SD cards), except app folders under <code>Android/</code>, hidden folders and caches.</td></tr>
+  <tr><td>Camera</td><td>Taken with the phone's camera. Android: <code>DCIM/Camera/</code> or a camera folder such as <code>DCIM/100ANDRO</code> in the shared storage. iOS: the Photos library says the back or front camera imported it (iLEAPP's Photos.sqlite artifacts must be in the report).</td></tr>
+  <tr><td>Screenshots</td><td>Screenshots and screen recordings. Android: a <code>Screenshots</code>, <code>Screen recordings</code> or <code>ScreenRecorder</code> folder, or a name such as <code>Screenshot_…</code> or <code>Screen_Recording_…</code>. iOS: the Photos library marks it as a screenshot or screen recording (iLEAPP's Photos.sqlite artifacts); without them the status line says so and the list stays empty.</td></tr>
+  <tr><td>Sent or received</td><td>At least one chat message points to the file.</td></tr>
+  <tr><td>Sent</td><td>At least one of those messages is outgoing.</td></tr>
+  <tr><td>Received</td><td>At least one of those messages is incoming.</td></tr>
+  <tr><td>Cache</td><td>A folder in the path is a cache, thumbnails or temp folder.</td></tr>
+  <tr><td>System files</td><td>System or app-install paths (<code>/system/</code>, <code>/vendor/</code>, <code>/data/app/</code>, <code>/System/</code>, <code>/Applications/</code>…).</td></tr>
+ </table></div>
+ <p>The direction of a message comes from the chat artifact's own direction column (outgoing, sent, from me…). A picture received and then forwarded is both
+  <i>Received</i> and <i>Sent</i>. If the artifact has no direction column, the message counts as <i>Sent or received</i> only.</p>
+ <h3>Same content, other file</h3>
+ <p>In <span class="ui">Linked to records</span>, files of the same size are hashed (SHA-256); equal hashes are copies of one content, for example the same photo
+  saved by two apps. A file shows its copies' messages too, marked <i>same content, other file</i>. They do not change its own origin.</p>
+ <h3>Sent / received history</h3>
+ <p>Selecting a tile opens <span class="ui">Sent / received history</span> in the details pane: one row per message that carried the file (or a copy of it):
+  direction and artifact, who (<i>to</i> a chat, <i>from</i> a sender, group or not), and when. Click a row to open that message in its table.</p>
+ <h3>Media viewer</h3>
+ <p>Double-click a tile: pictures zoom (wheel, buttons, double-click for fit/100%) and pan by dragging; video and audio play; PDFs show in a sandboxed viewer
+  with scripts off. Programs and scripts are never run: they are only shown in their folder. Other files open as a read-only temporary copy.</p>
+</section>
+
+<section id="mediaai">
+ <h2>OCR and AI on media</h2>
+ <p>Each tile has a checkbox. Checked files are what the toolbar buttons work on, on every page the filters keep. All files start checked, so use
+  <span class="ui">Uncheck all</span> first, then check the files you want. The right-click menu works on the selected tiles instead: one or many.</p>
+ <div class="tab"><table>
+  <tr><th>Action</th><th>Where</th><th>On</th><th>Result</th></tr>
+  <tr><td>Read the text (OCR, offline)</td><td>right-click (also in Search and Extraction Files, for scanned PDFs)</td><td>selected images</td><td>Text in the <i>Text Extraction</i> tab and in search</td></tr>
+  <tr><td>Describe + OCR</td><td>toolbar; right-click AI menu</td><td>checked / selected images</td><td>Per image: description, text read, translation</td></tr>
+  <tr><td>Classify</td><td>right-click AI menu</td><td>selected images</td><td>One category per image with a confidence</td></tr>
+  <tr><td>Transcribe</td><td>toolbar; right-click AI menu</td><td>checked / selected audio</td><td>Transcript (whisper.cpp)</td></tr>
+  <tr><td>Analyze videos: frames and audio</td><td>right-click AI menu</td><td>selected videos</td><td>A timeline of what is seen and said</td></tr>
+  <tr><td>AI window</td><td>toolbar; right-click AI menu</td><td>checked / selected files</td><td>Questions and thematic review on those files</td></tr>
+ </table></div>
+ <h3>OCR</h3>
+ <p>Two engines, both offline: <b>Tesseract</b>, carried by LEXIS with 12 languages (English, Italian, Chinese simplified and traditional, Arabic, Russian, Albanian,
+  French, German, Spanish, Portuguese, Romanian), and <b>Windows OCR</b> with the languages installed in Windows. Defaults: files up to 20 MB, scanned PDFs up to 200 pages;
+  pictures over 80 million pixels are skipped and counted. The text is stored per file in <code>_reader_text.db</code>, never in the evidence.</p>
+ <h3>Image AI</h3>
+ <p><i>Describe + OCR</i> takes JPEG, PNG, GIF and WebP up to 20 MB; other formats are counted as left out. <i>Classify</i> uses the categories in AI settings
+  (by default weapons, drugs, identity documents, cash or payment cards, screenshots, vehicles, people, documents, other). A stopped run resumes where it stopped.</p>
+ <h3>Video analysis</h3>
+ <p>A frame every 10 % of the duration (or every N seconds), at most 30 frames, each described by the vision model; the audio track is transcribed when the video is under one hour.
+  The output is one timeline per video (<code>mm:ss</code> seen / said), with the SHA-256 of each frame sent. Temporary frames are deleted afterwards.</p>
+</section>
+
+<section id="details">
+ <h2>Details pane</h2>
+ <p>Above the tabs: a preview (picture, or player for video and audio), <span class="ui">Open</span> and <span class="ui">Show in folder</span>; for e-mails the original body
+  in a sandboxed view; for gallery media the sent/received history.</p>
+ <div class="tab"><table>
+  <tr><th>Tab</th><th>Shows</th></tr>
+  <tr><td>Details</td><td>Every field of the record (with the value as stored when the display differs); the source (file on the device, extraction, LEAPP module);
+   the embedded metadata of media (EXIF, GPS, XMP, QuickTime: camera, date taken, position, duration); any number decoded as a date under 11 timestamp epochs;
+   structured values (plists, JSON, protobuf) as a tree; tag and note.</td></tr>
+  <tr><td>Text Extraction</td><td>The text read from the file, part by part, with the method (engine and languages), and <span class="ui">Translate into … (AI)</span>.
+   Shown only when the file has text.</td></tr>
+  <tr><td>AI Analysis</td><td>Every AI analysis of the item, grouped by kind, and a summary when there are two or more. Each can be <span class="ui">Corrected</span>
+   (the model's text is kept beside the correction) or <span class="ui">Excluded</span> (hidden and left out of the summary, never deleted).</td></tr>
+ </table></div>
+ <p>Right-click any value for <span class="ui">Explain with the AI…</span>. Source files can be exported as verified copies with <code>SHA256SUMS.txt</code> and <code>PROVENANCE.txt</code>.</p>
+</section>
+
+<section id="chats">
+ <h2>Chats</h2>
+ <p>The Chats node lists every app with a conversation view, then the user's accounts. Chats are split by local account, by backup file, by SIM card (Android SMS/MMS)
+  or by own number (iOS Messages), whenever the artifact records it.</p>
+ <ul>
+  <li><b>Private or Group:</b> group when the chat ID is a group ID (<code>@g.us</code>, <code>@chatroom</code>…) or more than one person besides the user wrote in it.</li>
+  <li><b>Chat list:</b> chat, type, account, participants, message count, first and last message, last text; filter per column, by type and by account.</li>
+  <li><b>Chat view:</b> bubbles or table; participants matched to their contact record by identifier, never by display name; search with <kbd>Ctrl+F</kbd>;
+   filters by direction, sender, kind (text, media, images, videos, audio, locations, replies, system messages) and date.</li>
+  <li><b>Recovered messages</b> (from a <i>Recovered</i> column or <i>not in the active database</i>) are marked <i>Recovered (deleted)</i> with a dashed outline.</li>
+  <li><b>WeChat voice messages</b> (SILK) play in LEXIS.</li>
+  <li><b>Export:</b> an HTML report in a WhatsApp or Telegram look, one page per chat, with an evidence block (source files and SHA-256) at the top.
+   The examiner's tags and notes are left out unless you tick them. Every export is logged.</li>
+ </ul>
+</section>
+
+<section id="search">
+ <h2>Search</h2>
+ <p>One syntax for search, filters, timeline and chats:</p>
+ <div class="tab"><table>
+  <tr><th>Write</th><th>Finds</th></tr>
+  <tr><td><code>a b</code></td><td>both words</td></tr>
+  <tr><td><code>a | b</code></td><td>either word</td></tr>
+  <tr><td><code>-a</code></td><td>without the word</td></tr>
+  <tr><td><code>"exact phrase"</code></td><td>the phrase</td></tr>
+  <tr><td><code>/regex/</code></td><td>a regular expression</td></tr>
+ </table></div>
+ <h3>Search in</h3>
+ <ul>
+  <li><span class="ui">Report data</span>: the artifact records, by category.</li>
+  <li><span class="ui">File contents</span>: the text inside the extraction's documents, databases, property lists, JSON/XML/HTML and text files. The text is read once
+   and kept, so later searches are fast. A scanned PDF with no text is listed as <i>Needs OCR</i>; right-click to read it.</li>
+  <li><span class="ui">AI results</span>: translations, descriptions, transcripts and analyses.</li>
+ </ul>
+ <p><span class="ui">Exclude technical fields</span> leaves out hashes, UUIDs, encoded data, paths and IDs.</p>
+ <h3>Results</h3>
+ <p>One table: origin (report data, file content, needs OCR, AI analysis), category, artifact, date, app, device, where the hit is, text, source.
+  Narrow it with <span class="ui">Within the results</span>, the filter of each column, or the facets with counts. <span class="ui">Tag results</span> tags the rows selected or shown.
+  The last 50 searches are kept per case, outside the case folder.</p>
+ <h3>Keyword lists</h3>
+ <p><span class="ui">Load list…</span> takes a <code>.txt</code> or <code>.csv</code> in any language and encoding: one keyword per line (or split on a separator), duplicates dropped,
+  <code>#</code> lines as comments. The list is searched as <i>any of the words</i>.</p>
+</section>
+
+<section id="files">
+ <h2>Extraction files and SQLite</h2>
+ <h3>Extraction Files</h3>
+ <ul>
+  <li>The extraction as a read-only tree by device path: zip, tar, tar.gz, folder, or iTunes/Finder backup (encrypted ones unlock with the password for the session only).</li>
+  <li><span class="ui">Read by</span>: the artifacts that read each file, with a filter to keep only those.</li>
+  <li><span class="ui">Identify types</span> types every file from its first bytes; <span class="ui">Search inside</span> searches the bytes of the listed files (UTF-8 and UTF-16).</li>
+  <li>Hex, text and tree viewer; archives (zip, APK, Office, tar…) browsed inside without unpacking; MD5, SHA-1 and SHA-256 on demand; tag files.</li>
+  <li><span class="ui">Documents</span> is the same view for PDF, Office, OpenDocument, RTF and iWork files.</li>
+ </ul>
+ <h3>SQLite reader</h3>
+ <ul>
+  <li>Opens a read-only copy. <span class="ui">Apply the write-ahead log</span> switches between what the app saw last (with the WAL) and the main file alone.</li>
+  <li>Tables, views and indexes with counts and schema; filter, sort, export CSV; one read-only <code>SELECT</code>/<code>PRAGMA</code> at a time.</li>
+  <li><span class="ui">Recovered</span> carves records a query no longer returns: older page versions (main file and WAL), free space, journal and freelist pages,
+   each with origin, page, offset and a confidence. Finding nothing is not proof that nothing was deleted.</li>
+ </ul>
+ <h3>Plist and structured data</h3>
+ <p>XML and binary plists as a tree with the key path of every node; NSKeyedArchiver archives resolved; nested plists, JSON and protobuf decoded.</p>
+</section>
+
+<section id="views">
+ <h2>Timeline, map, statistics</h2>
+ <p>Per device, the Timeline and Map work as the joint ones above. <b>Statistics</b> shows:</p>
+ <ul>
+  <li><b>Parties:</b> top 10 and last 10 one-to-one parties, with means, exchanges, out/in and last contact; you choose which means are counted. Group chats are not counted.</li>
+  <li><b>Locations:</b> the ten places (zones of 200 m) with most positions, with visits and first/last time.</li>
+  <li><b>User activity:</b> a 12-month calendar, year by year, weekday × hour, and the busiest days (click to open the day in the timeline).</li>
+ </ul>
+</section>
+
+<section id="ioc">
+ <h2>Indicators</h2>
+ <ul>
+  <li><b>Indicators and hash sets:</b> STIX2 files (for example MVT feeds) and MD5/SHA-1/SHA-256 lists, loaded by the examiner; nothing is downloaded.
+   Every text cell and the extraction's file list are checked; domains also match their subdomains.</li>
+  <li><b>Root / jailbreak traces</b> (Magisk, Cydia, Sileo…): a trace does not mean the device is rooted now.</li>
+  <li><b>Security settings:</b> on Android the weakening settings and the security patch age; on iOS the version age and passcode changes.</li>
+  <li><b>Crypto addresses</b> (Bitcoin, Litecoin, Dogecoin, Tron, XRP, Ethereum, Monero, TON) and BIP-39 seed phrases, reported only when their checksum holds.</li>
+  <li><b>Tag by rules:</b> a text file of <code>Tag: keyword</code> or <code>Tag: /regex/</code> lines; <span class="ui">Tag all matches</span> applies them.</li>
+ </ul>
+</section>
+
+<section id="ai">
+ <h2>AI</h2>
+ <p>AI is off until <span class="ui">Use AI</span> is ticked and a model server is set. Defaults are local: <b>Ollama</b> and <b>LM Studio</b>.
+  Any OpenAI-compatible endpoint can be added (its key protected by Windows DPAPI), and the <b>Claude CLI</b> can be used after a warning that data leaves the machine.
+  Each server is marked local, LAN or remote; a remote one asks before sending. One model is chosen per job: text, vision, transcription, video frames.</p>
+ <ul>
+  <li><b>On records:</b> Summarize, Translate, Explain (what a record is and each value), questions on the records, and a thematic review in batches that resumes.</li>
+  <li><b>Complete analysis:</b> an objective and the data categories to read; optionally translate, describe images and transcribe audio first; then triage and a report
+   that cites its records.</li>
+  <li><b>Audio:</b> whisper.cpp on this machine, installed from <span class="ui">Set up whisper.cpp / models…</span>; each downloaded file is kept only if its size and SHA-256
+   match the published ones. Opus, AMR, M4A and MP3 are converted by LEXIS's own ffmpeg.</li>
+  <li><b>MCP server:</b> the open case, read-only, on this machine only, with a secret token; LM Studio, Claude Desktop or any MCP client can query it.</li>
+  <li><b>Records kept:</b> every result with its prompt and citations, and every send (when, where, which model, how many characters, the exact text) in
+   <code>_reader_ai.db</code>; the <span class="ui">Send log</span> tab shows it.</li>
+ </ul>
+ <div class="note">AI output is a review aid, not a finding. Every answer lists its cited records (click to open); citations to records that were not sent, and lines without a
+  source, are flagged.</div>
+</section>
+
+<section id="tags">
+ <h2>Tags, exports, portable case</h2>
+ <h3>Tags and notes</h3>
+ <p>Tags (Evidence, Important, Suspicious, Follow up, Irrelevant, or your own) with <kbd>Ctrl+1</kbd>…<kbd>Ctrl+5</kbd>, and notes, on records, chats, media and extraction files.
+  They are kept in <code>_reader_tags.db</code> beside the case. <span class="ui">Tagged Items</span> lists them and exports an HTML or JSON report.</p>
+ <h3>Exports</h3>
+ <p>Any table to CSV, JSON or HTML, following the filters in view, or only the checked rows. HTML reports carry their media in a folder beside the page.
+  The <span class="ui">Exports</span> button lists every export of the session: what, when, from which device, to which file.</p>
+ <h3>Portable case</h3>
+ <ul>
+  <li>One zip with the case and, optionally, the reader exe beside it, so the recipient needs nothing else.</li>
+  <li>Content by category, or tagged records only; media; the source files of the included artifacts or every file the parsing read; tagged files.
+   Every copied file is checked against ALEAPP's copy.</li>
+  <li><code>SHA256SUMS.txt</code> covers every file and can be signed with the examiner's ECDSA P-256 key, kept non-exportable in the Windows key store;
+   give the recipient its fingerprint by another channel.</li>
+  <li><span class="ui">Verify package</span> checks a received zip without opening it: <i>intact</i>, <i>ALTERED</i>, or not a portable case. An altered case opens with a red banner.</li>
+ </ul>
+</section>
+
+<p class="small">LEXIS is an independent project, built on ALEAPP and iLEAPP by Alexis Brignoni and contributors (MIT). It is not affiliated with or endorsed by the LEAPP project.</p>
+</main>
+</div>
+</body>
+</html>
