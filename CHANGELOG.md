@@ -1,8 +1,39 @@
 # Changelog
 
-## Unreleased
+## 1.2.5
 
 ### Added
+- **Search results as a table.** One row per record found: category, artifact, date, app, device, the column it was
+  found in and its text. Narrow the results by text, by any column's ▾ (date between, contains…) and by the values
+  on the right with their counts; double-click opens the record. The search covers the categories checked, by
+  default the one selected in the tree.
+- **Search in file contents and AI results.** *Search in* adds the text inside the extraction's files (PDF pages,
+  Word, Excel, PowerPoint and OpenDocument files, SQLite rows, property lists, text, JSON and XML; databases without
+  a name are recognised by their content) and the AI results (translations, analyses, descriptions). The first search
+  reads the files and keeps their text in `_reader_text.db`, beside the tags: later searches and sessions do not read
+  them again. A PDF whose pages are only images is listed as *Needs OCR*. Double-click opens a database in the SQLite
+  reader, a picture, video or PDF in its viewer.
+- **Media viewer.** Double-click a file in the Media Gallery (or a picture in a chat): a picture to zoom (wheel,
+  buttons, double-click) and drag, a video or audio with its player, a PDF in the sandboxed viewer, beside its details.
+  Any other file opens in its default program, as a read-only copy; programs, scripts and shortcuts are only shown in the folder.
+- **Accounts Overview.** A table with one row per account of each app or service, merged from the artifacts that
+  record it: name, username, phone, e-mail, UID, services. Select a row for every value in the details, each with the
+  artifact and column it came from (installation source, date of birth, about…); a derived value (a number with its
+  country code, a WhatsApp JID) says so. The picture comes from the extraction when it is there (WeChat avatars,
+  WhatsApp `me.jpg`); a picture held online is shown as its address and never fetched. An account in another Android
+  user's files says which user. The table opens with *User Accounts & Details* above its artifacts, and in the Case
+  Summary's *Owner & accounts* tab. Android and iOS: on iOS the Apple IDs (with their services, and the DSID that
+  bought or installed the apps), Telegram's own profile, and the account WhatsApp and Telegram chats belong to.
+- **WhatsApp (iOS) own account.** *WhatsApp* artifacts now record the account's own JID and name (from WhatsApp's
+  preferences) instead of the app container. Needs a new run of the report.
+- **Sent / received history in the Gallery.** A file selected in the Gallery lists every chat message it was sent or
+  received in: when, the app, the chat (group or private), who it went to or came from. A click opens the message in
+  its table. Files holding the same bytes (a picture forwarded, saved or received again) lend each other their
+  messages, marked "same content, other file". The *Sent* and *Received* filters now keep a file when any of its
+  messages went that way, not only the earliest.
+- **Telegram (iOS) chats by account.** *Telegram Messages* now records the account each message belongs to (its user
+  id, as *Telegram Accounts* reports it) and names it by its username, else its phone number, else its name; LEXIS
+  shows the account level under Telegram. Needs a new run of the report.
 - **Video analysis with the AI.** Right-click a video (Gallery, artifact tiles, Extraction Files) or the AI window:
   frames taken by LEXIS's ffmpeg every N % of the duration (default 10 %) or every N seconds, at most 30 by default,
   each described by the video model (the vision model unless one is set), and the audio track transcribed; the result
@@ -39,6 +70,12 @@
   finds it and the file's details show it. Tesseract needs no Visual C++ install: its runtime comes with LEXIS.
 
 ### Changed
+- **Accounts in short, cleaner.** The device's own users (owner, Secure Folder) are no longer listed as accounts, nor
+  the accounts an app keeps for itself under its own name or label (Meet, WhatsApp, a bank's name); Chrome's saved
+  logins go with the other sites; the Samsung account and the phone's mail app are named as such; long cells wrap.
+- **Chats start collapsed.** The *Chats* node lists the apps; an app opens on its accounts only when clicked.
+- **An account no record identifies is "Unidentified Account"** in the chat tree (was "(no account recorded)"); an
+  account known only by its name or only by its id is shown by that alone.
 - **Engines for each job.** AI settings list Ollama, LM Studio, the Claude CLI and whisper.cpp as engines; each job
   offers every engine that can do it, with where it runs. Choosing the Claude CLI for a job is the permission (the
   separate checkbox is gone); *Ask Claude* is available when it does the text job. Transcription defaults to whisper.cpp,
@@ -72,50 +109,8 @@
   for ffmpeg, 3 hours for whisper-cli, 2 hours for one Claude CLI request); a video that stalls ffmpeg stops at the
   first frame. Temporary frames, audio and prompts are deleted when a job ends; what cannot be deleted then is said,
   and removed at the next start when no other LEXIS is running. OCR skips pictures declaring more than 80 million
-  pixels (GIFs included) and reads a scanned PDF one page at a time, saying how many images it skipped. Translate and Write summary in the details refuse to run when the AI is off.
-
-## 1.2.5
-
-### Added
-- **Search results as a table.** One row per record found: category, artifact, date, app, device, the column it was
-  found in and its text. Narrow the results by text, by any column's ▾ (date between, contains…) and by the values
-  on the right with their counts; double-click opens the record. The search covers the categories checked, by
-  default the one selected in the tree.
-- **Search in file contents and AI results.** *Search in* adds the text inside the extraction's files (PDF pages,
-  Word, Excel, PowerPoint and OpenDocument files, SQLite rows, property lists, text, JSON and XML; databases without
-  a name are recognised by their content) and the AI results (translations, analyses, descriptions). The first search
-  reads the files and keeps their text in `_reader_text.db`, beside the tags: later searches and sessions do not read
-  them again. A PDF whose pages are only images is listed as *Needs OCR*. Double-click opens a database in the SQLite
-  reader, a picture, video or PDF in its viewer.
-- **Media viewer.** Double-click a file in the Media Gallery (or a picture in a chat): a picture to zoom (wheel,
-  buttons, double-click) and drag, a video or audio with its player, a PDF in the sandboxed viewer, beside its details.
-  Any other file opens in its default program, as a read-only copy; programs, scripts and shortcuts are only shown in the folder.
-- **Accounts Overview.** A table with one row per account of each app or service, merged from the artifacts that
-  record it: name, username, phone, e-mail, UID, services. Select a row for every value in the details, each with the
-  artifact and column it came from (installation source, date of birth, about…); a derived value (a number with its
-  country code, a WhatsApp JID) says so. The picture comes from the extraction when it is there (WeChat avatars,
-  WhatsApp `me.jpg`); a picture held online is shown as its address and never fetched. An account in another Android
-  user's files says which user. The table opens with *User Accounts & Details* above its artifacts, and in the Case
-  Summary's *Owner & accounts* tab. Android and iOS: on iOS the Apple IDs (with their services, and the DSID that
-  bought or installed the apps), Telegram's own profile, and the account WhatsApp and Telegram chats belong to.
-- **WhatsApp (iOS) own account.** *WhatsApp* artifacts now record the account's own JID and name (from WhatsApp's
-  preferences) instead of the app container. Needs a new run of the report.
-- **Sent / received history in the Gallery.** A file selected in the Gallery lists every chat message it was sent or
-  received in: when, the app, the chat (group or private), who it went to or came from. A click opens the message in
-  its table. Files holding the same bytes (a picture forwarded, saved or received again) lend each other their
-  messages, marked "same content, other file". The *Sent* and *Received* filters now keep a file when any of its
-  messages went that way, not only the earliest.
-- **Telegram (iOS) chats by account.** *Telegram Messages* now records the account each message belongs to (its user
-  id, as *Telegram Accounts* reports it) and names it by its username, else its phone number, else its name; LEXIS
-  shows the account level under Telegram. Needs a new run of the report.
-
-### Changed
-- **Accounts in short, cleaner.** The device's own users (owner, Secure Folder) are no longer listed as accounts, nor
-  the accounts an app keeps for itself under its own name or label (Meet, WhatsApp, a bank's name); Chrome's saved
-  logins go with the other sites; the Samsung account and the phone's mail app are named as such; long cells wrap.
-- **Chats start collapsed.** The *Chats* node lists the apps; an app opens on its accounts only when clicked.
-- **An account no record identifies is "Unidentified Account"** in the chat tree (was "(no account recorded)"); an
-  account known only by its name or only by its id is shown by that alone.
+  pixels (GIFs included) and reads a scanned PDF one page at a time, saying how many images it skipped.
+  Translate and Write summary in the details refuse to run when the AI is off.
 
 ## 1.2.4
 
