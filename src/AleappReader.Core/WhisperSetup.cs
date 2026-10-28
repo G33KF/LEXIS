@@ -18,6 +18,8 @@ public static class WhisperSetup
     const string ModelFile = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/";
     const string BuildDownloads = "https://github.com/ggml-org/whisper.cpp/releases/download/";
     public const string LogName = "install.log";
+    /// <summary>Written by <see cref="Unpack"/> inside the bin folder it installs: the one bin it may replace.</summary>
+    public const string Marker = ".lexis-whisper";
     public static readonly string DefaultFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AleappReader", "whisper");
 
     public sealed record Download(string Name, long Size, string Sha256, string Url);
@@ -46,7 +48,7 @@ public static class WhisperSetup
             foreach (var r in releases)
                 if ((r["assets"] as JsonArray ?? []).FirstOrDefault(a => name.IsMatch((string?)a?["name"] ?? "")) is { } a
                     && (string?)a["digest"] is { } d && Regex.IsMatch(d, "^sha256:[0-9a-fA-F]{64}$") && (string?)a["browser_download_url"] is { } url
-                    && url.StartsWith(BuildDownloads, StringComparison.Ordinal)) // only the project's own release files, over HTTPS
+                    && Uri.TryCreate(url, UriKind.Absolute, out var u) && u.AbsoluteUri.StartsWith(BuildDownloads, StringComparison.Ordinal)) // only the project's own release files, over HTTPS, after ".." is resolved
                 {
                     builds.Add(new(variant, (string?)r["tag_name"] ?? "", new((string)a["name"]!, (long?)a["size"] ?? 0, d[7..].ToLowerInvariant(), url)));
                     break;
@@ -108,19 +110,19 @@ public static class WhisperSetup
 
     /// <summary>Unpacks a build's zip into <paramref name="folder"/>\bin, replacing an earlier one, and returns its
     /// whisper-cli.exe. The folder holding it becomes bin, so the models folder beside bin is kept across updates.
-    /// A bin or bin.new LEXIS did not install (no install.log beside it) is never replaced: the folder is refused.</summary>
+    /// A bin LEXIS did not install (no <see cref="Marker"/> inside it) is never replaced: the folder is refused.</summary>
     public static string Unpack(string zip, string folder)
     {
         var bin = Path.Combine(folder, "bin");
-        var fresh = Path.Combine(folder, "bin.new");
-        if ((Directory.Exists(bin) || Directory.Exists(fresh)) && !File.Exists(Path.Combine(folder, LogName)))
+        if (Directory.Exists(bin) && !File.Exists(Path.Combine(bin, Marker)))
             throw new AiException($"{folder} already has a bin folder that LEXIS did not install; choose an empty folder for whisper.cpp.");
-        if (Directory.Exists(fresh)) Directory.Delete(fresh, true);
-        ZipFile.ExtractToDirectory(zip, fresh); // refuses entries that would land outside it
+        var fresh = Path.Combine(folder, $"bin.{Guid.NewGuid():N}.new"); // its own, never a folder already there
         try
         {
+            ZipFile.ExtractToDirectory(zip, fresh); // refuses entries that would land outside it
             var exe = Directory.EnumerateFiles(fresh, "whisper-cli.exe", SearchOption.AllDirectories).FirstOrDefault()
                       ?? throw new AiException($"{Path.GetFileName(zip)} has no whisper-cli.exe.");
+            File.WriteAllText(Path.Combine(Path.GetDirectoryName(exe)!, Marker), $"installed by LEXIS from {Path.GetFileName(zip)}\n");
             if (Directory.Exists(bin)) Directory.Delete(bin, true);
             Directory.Move(Path.GetDirectoryName(exe)!, bin);
             return Path.Combine(bin, "whisper-cli.exe");

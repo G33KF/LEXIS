@@ -13,7 +13,11 @@ namespace AleappReader.Core;
 
 public enum AiKind { Ollama, OpenAi, ClaudeCli, WhisperCpp }
 
-public sealed class AiException(string message) : Exception(message);
+public class AiException(string message) : Exception(message);
+
+/// <summary>A program stopped at its time limit.</summary>
+public sealed class AiTimeoutException(string what, TimeSpan limit)
+    : AiException($"{what} did not finish within {(limit.TotalHours >= 1 ? $"{limit.TotalHours:0.#} h" : $"{limit.TotalMinutes:0} min")}: stopped.");
 
 /// <summary>A model server. Ollama and LM Studio by default; any OpenAI-compatible endpoint; or the Claude CLI.</summary>
 public sealed record AiProvider(string Name, AiKind Kind, string Address)
@@ -1197,6 +1201,9 @@ public static class ClaudeCli
 
     /// <summary>LEXIS's own job (summary, translation, image description…) done by Claude: the request through stdin, no tool
     /// but reading the images given, which are copied into the empty working folder; no MCP, nothing else of the case.</summary>
+    /// <summary>The longest one request may run (an answer read from the case through many tool calls included).</summary>
+    public static readonly TimeSpan Limit = TimeSpan.FromHours(2);
+
     public static Task<string> Ask(string exe, string model, string system, string user, IReadOnlyList<AiImage>? images, CancellationToken ct) =>
         Launch(exe, ct, work =>
         {
@@ -1236,13 +1243,22 @@ public static class ClaudeCli
                                       "--settings", """{"disableAllHooks":true}""", "--disable-slash-commands" }.Concat(args))
                 psi.ArgumentList.Add(a);
             using var p = Process.Start(psi) ?? throw new AiException("Claude CLI did not start");
-            // Killed at once on cancel (window closed, Stop, app exit), with the MCP server it started.
-            using var kill = ct.Register(() => { try { p.Kill(true); } catch (InvalidOperationException) { } });
+            // Killed at once on cancel (window closed, Stop, app exit) or at its time limit, with the MCP server it started.
+            using var stop = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            stop.CancelAfter(Limit);
+            using var kill = stop.Token.Register(() => WhisperCpp.Kill(p));
             var stdout = p.StandardOutput.ReadToEndAsync(CancellationToken.None);
             var stderr = p.StandardError.ReadToEndAsync(CancellationToken.None);
-            await p.StandardInput.WriteAsync(prompt);
-            p.StandardInput.Close();
-            await p.WaitForExitAsync(ct);
+            try
+            {
+                await p.StandardInput.WriteAsync(prompt);
+                p.StandardInput.Close();
+                await p.WaitForExitAsync(stop.Token);
+            }
+            catch (Exception e) when (e is OperationCanceledException or IOException && !ct.IsCancellationRequested && stop.IsCancellationRequested)
+            {
+                throw new AiTimeoutException("Claude CLI", Limit);
+            }
             if (p.ExitCode != 0) throw new AiException($"Claude CLI ended with code {p.ExitCode}: {AiClient.Short(await stderr)}");
             return (await stdout).Trim();
         }
@@ -1366,16 +1382,20 @@ public static class WhisperCpp
         using var p = Process.Start(psi) ?? throw new AiException($"{what} did not start");
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(ct);
         stop.CancelAfter(limit);
-        using var kill = stop.Token.Register(() => { try { p.Kill(true); } catch (InvalidOperationException) { } });
+        using var kill = stop.Token.Register(() => Kill(p));
         var stdout = p.StandardOutput.ReadToEndAsync(CancellationToken.None); // drained so a full pipe never blocks it
         var stderr = p.StandardError.ReadToEndAsync(CancellationToken.None);
         try { await p.WaitForExitAsync(stop.Token); }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-        {
-            throw new AiException($"{what} did not finish within {(limit.TotalHours >= 1 ? $"{limit.TotalHours:0.#} h" : $"{limit.TotalMinutes:0} min")}: stopped.");
-        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested) { throw new AiTimeoutException(what, limit); }
         await stdout;
         return (p.ExitCode, await stderr);
+    }
+
+    /// <summary>Kills a program and what it started; from a cancel callback, so nothing it throws may escape.</summary>
+    internal static void Kill(Process p)
+    {
+        try { p.Kill(true); }
+        catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException) { }
     }
 }
 

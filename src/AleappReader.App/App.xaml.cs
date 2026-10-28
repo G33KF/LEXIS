@@ -20,8 +20,12 @@ public partial class App : Application
         DispatcherUnhandledException += OnUnhandled;
         EventManager.RegisterClassHandler(typeof(Window), UIElement.PreviewMouseRightButtonUpEvent, new MouseButtonEventHandler(CopyText));
         GridExport.Install();
-        // frames, audio and prompts an earlier run could not delete (copies of evidence); older than any job's time limit
-        _ = Task.Run(() => { try { TempWork.Sweep(TimeSpan.FromHours(6)); } catch (Exception x) when (x is IOException or UnauthorizedAccessException) { } });
+        // frames, audio and prompts an earlier run could not delete (copies of evidence); only when no other LEXIS is
+        // running, since a long job's folder can go hours without a write
+        var lexis = System.Diagnostics.Process.GetProcessesByName(System.Diagnostics.Process.GetCurrentProcess().ProcessName);
+        var alone = lexis.Length == 1;
+        foreach (var p in lexis) p.Dispose();
+        if (alone) _ = Task.Run(() => { try { TempWork.Sweep(TimeSpan.FromHours(6)); } catch (Exception x) when (x is IOException or UnauthorizedAccessException) { } });
         try { ValueFormatter.Zone = TimeZoneInfo.FindSystemTimeZoneById(Settings.Current.TimeZoneId); }
         catch (TimeZoneNotFoundException) { }
 

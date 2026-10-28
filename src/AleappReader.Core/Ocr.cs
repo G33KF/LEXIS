@@ -60,6 +60,9 @@ public sealed class TesseractOcr : IDisposable
     /// declares more than <see cref="OcrIndex.MaxPixels"/> (a small file can declare a huge picture): read before decoding.</summary>
     public string? Read(byte[] image)
     {
+        // Leptonica decodes a whole GIF to read its header, at its logical screen size (bytes 6-9): that is checked first
+        if (image.Length >= 10 && image.AsSpan(0, 4).SequenceEqual("GIF8"u8)
+            && (long)BitConverter.ToUInt16(image, 6) * BitConverter.ToUInt16(image, 8) > OcrIndex.MaxPixels) return null;
         if (pixReadHeaderMem(image, (UIntPtr)image.Length, out _, out var w, out var h, out _, out _, out _) != 0
             || w <= 0 || h <= 0 || (long)w * h > OcrIndex.MaxPixels) return null;
         var pix = pixReadMem(image, (UIntPtr)image.Length);
@@ -131,7 +134,7 @@ public static class OcrIndex
             return f;
         }
         var (_, pages, pdfMethod, parts) = ContentIndex.Read(rel, type, kind, bytes);
-        int done = 0, left = 0;
+        int done = 0, left = 0, big = 0;
         using (var doc = PdfDocument.Open(bytes))
             foreach (var page in doc.GetPages())
             {
@@ -141,14 +144,16 @@ public static class OcrIndex
                 // one image decoded at a time, when it is read; one declaring more pixels than MaxPixels is not decoded.
                 // A JPEG stays in the PDF as it was (DCT): its raw bytes are the JPEG file; the other images are decoded to PNG
                 List<string> texts = [];
-                foreach (var i in images.Where(i => (long)i.WidthInSamples * i.HeightInSamples is > 0 and <= MaxPixels))
-                    if (await read(i.TryGetPng(out var png) ? png : i.RawBytes.ToArray()) is { } t && t.Trim() != "") texts.Add(t);
+                foreach (var i in images)
+                    if ((long)i.WidthInSamples * i.HeightInSamples > MaxPixels) big++;
+                    else if (await read(i.TryGetPng(out var png) ? png : i.RawBytes.ToArray()) is { } t && t.Trim() != "") texts.Add(t);
                 if (texts.Count > 0) parts.Add(($"page {page.Number}", string.Join("\n", texts)));
             }
         parts.Sort((a, b) => PageOf(a.Part).CompareTo(PageOf(b.Part)));
         var status = parts.Count == 0 ? TextStore.NoText : TextStore.HasText;
         if (left > 0) status += $"; {left} scanned pages over the limit of {maxPages} not read";
-        var pdf = new TextFile(rel, bytes.Length, sha, kind, type, status, pages, done == 0 ? pdfMethod : $"{pdfMethod} + {method}");
+        if (big > 0) status += $"; {big} images over {MaxPixels / 1_000_000} million pixels not read";
+        var pdf = new TextFile(rel, bytes.Length, sha, kind, type, status, pages, done > left ? $"{pdfMethod} + {method}" : pdfMethod);
         store.Save(pdf, parts);
         return pdf;
     }

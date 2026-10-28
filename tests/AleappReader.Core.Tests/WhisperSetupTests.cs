@@ -126,11 +126,16 @@ public class WhisperSetupTests
             Assert.Throws<AiException>(() => WhisperSetup.Unpack(zip, folder));
             Assert.True(File.Exists(Path.Combine(folder, "bin", "stale.dll")));
 
+            // install.log beside it does not make it LEXIS's (a model download writes one too): only the marker inside bin does
             File.WriteAllText(Path.Combine(folder, WhisperSetup.LogName), "");
+            Assert.Throws<AiException>(() => WhisperSetup.Unpack(zip, folder));
+            Directory.Delete(Path.Combine(folder, "bin"), true);
+
             var exe = WhisperSetup.Unpack(zip, folder);
             Assert.Equal(Path.Combine(folder, "bin", "whisper-cli.exe"), exe);
-            Assert.Equal(["ggml.dll", "whisper-cli.exe"], Directory.GetFiles(Path.Combine(folder, "bin")).Select(Path.GetFileName).Order());
-            Assert.False(Directory.Exists(Path.Combine(folder, "bin.new")));
+            Assert.Equal([WhisperSetup.Marker, "ggml.dll", "whisper-cli.exe"], Directory.GetFiles(Path.Combine(folder, "bin")).Select(Path.GetFileName).Order(StringComparer.Ordinal));
+            Assert.Equal(exe, WhisperSetup.Unpack(zip, folder)); // its own bin is replaced
+            Assert.Empty(Directory.GetDirectories(folder, "bin.*.new"));
 
             var models = WhisperSetup.ModelFolder(exe);
             Assert.Equal(Path.Combine(folder, "models"), models);

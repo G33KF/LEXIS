@@ -49,7 +49,7 @@ public static partial class VideoFrames
                     "-ss", times[i].TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture), "-i", video,
                     "-frames:v", "1", "-vf", "scale='min(1280,iw)':-2", "-q:v", "3", file], folder, "ffmpeg", WhisperCpp.FfmpegLimit, ct);
             }
-            catch (AiException) { }
+            catch (AiException e) when (e is not AiTimeoutException) { } // a video that stalls ffmpeg once would stall every frame
             if (File.Exists(file)) got.Add((times[i], file));
         }
         return got;
