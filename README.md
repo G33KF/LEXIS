@@ -279,4 +279,16 @@ Data, formats and libraries:
 - Map tiles © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors. They can be switched off for offline use.
 - [CommunityToolkit.Mvvm](https://github.com/CommunityToolkit/dotnet) (MIT) and [Microsoft WebView2](https://developer.microsoft.com/microsoft-edge/webview2/).
 
+Carried inside the exe (the full notices are in [NOTICE](NOTICE)):
+- [Microsoft.Data.Sqlite](https://github.com/dotnet/efcore) (MIT) with [SQLitePCLRaw](https://github.com/ericsink/SQLitePCL.raw) (Apache-2.0) and [SQLite](https://sqlite.org/copyright.html) (public domain).
+- [PdfPig](https://github.com/UglyToad/PdfPig) (Apache-2.0): text of PDF pages.
+- [MetadataExtractor](https://github.com/drewnoakes/metadata-extractor-dotnet) (Apache-2.0) and [XmpCore](https://github.com/drewnoakes/xmp-core-dotnet) (BSD-3, from the Adobe XMP Toolkit): media metadata.
+- [Tesseract OCR](https://github.com/tesseract-ocr/tesseract) (Apache-2.0), [Leptonica](https://github.com/DanBloomberg/leptonica) (BSD-2) and the [tessdata_fast](https://github.com/tesseract-ocr/tessdata_fast) models (Apache-2.0), from the [Tesseract NuGet package](https://github.com/charlesw/tesseract).
+- [FFmpeg](https://github.com/FFmpeg/FFmpeg) 9.0.2 (LGPL-2.1+, built without GPL or non-free parts by `tools/ffmpeg/build.sh`).
+- The SILK decoder from [kn007/silk-v3-decoder](https://github.com/kn007/silk-v3-decoder) (MIT; SILK SDK © Skype Limited, BSD-style), for WeChat voice messages.
+- ALEAPP and iLEAPP run on an embedded Python runtime ([PSF licence](https://docs.python.org/3/license.html)) packaged with [PyInstaller](https://github.com/pyinstaller/pyinstaller) (GPL-2.0 with the bootloader exception).
+
+Downloaded only when the examiner asks for it:
+- [whisper.cpp](https://github.com/ggml-org/whisper.cpp) (MIT) from its GitHub releases, and the OpenAI Whisper models (MIT) in ggml format from [ggerganov/whisper.cpp on Hugging Face](https://huggingface.co/ggerganov/whisper.cpp), each file kept only if its SHA-256 matches the published one.
+
 LEXIS is an independent project. It is not affiliated with or endorsed by the LEAPP project.

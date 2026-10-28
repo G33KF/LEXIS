@@ -85,3 +85,20 @@ Copyright Google Inc., licensed under the Apache License 2.0.
 vcruntime140.dll, vcruntime140_1.dll and msvcp140.dll are the Microsoft Visual C++
 runtime (14.51), distributed with LEXIS app-locally, as Visual Studio's
 redistributable code, so Tesseract runs where that runtime is not installed.
+
+.NET libraries compiled into LEXIS, each under its own licence:
+- Microsoft.Data.Sqlite 10.0.12, Copyright (c) .NET Foundation and Contributors, MIT.
+- SQLitePCLRaw 2.1.12 (Eric Sink), Apache License 2.0, with SQLite (e_sqlite3),
+  which is in the public domain (https://sqlite.org/copyright.html).
+- PdfPig 0.1.16 (https://github.com/UglyToad/PdfPig), Apache License 2.0.
+- MetadataExtractor 2.8.1, Copyright Drew Noakes and contributors, Apache License 2.0.
+- XmpCore 6.1.10.1, the .NET port of the Adobe XMP Toolkit, Copyright Adobe Systems
+  Incorporated and Drew Noakes, BSD 3-clause licence.
+- CommunityToolkit.Mvvm 8.4.2, Copyright (c) .NET Foundation and Contributors, MIT.
+- Microsoft.Web.WebView2 1.0.4258.31, Copyright (C) Microsoft Corporation, under its
+  own licence (BSD-style, https://www.nuget.org/packages/Microsoft.Web.WebView2).
+
+ALEAPP and iLEAPP run inside LEXIS on an embedded CPython runtime (Python Software
+Foundation License) packaged with PyInstaller (GPL-2.0 with the bootloader exception,
+which allows its use in programs under any licence); the Python packages each LEAPP
+installs keep their own licences.
