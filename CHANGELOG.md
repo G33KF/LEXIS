@@ -39,6 +39,11 @@
   each described by the video model (the vision model unless one is set), and the audio track transcribed; the result
   is a timeline of what is seen and said, with the SHA-256 of each frame sent. Settings in AI settings › Video. LEXIS's
   ffmpeg now also decodes H.264, HEVC, MPEG-4, H.263, VP8, VP9 and MJPEG (6 MB).
+- **Camera and Screenshots in the Gallery's origin filter.** On Android a file is from the camera in `DCIM/Camera` or a
+  camera folder such as `DCIM/100ANDRO`, and a screenshot or screen recording in a Screenshots or screen-recording folder
+  or under the name the system gives it (`Screenshot_…`, `Screen_Recording_…`). On iOS the camera roll keeps both in
+  `DCIM/1xxAPPLE`, so there iLEAPP's Photos.sqlite artifacts decide (kind subtype screenshot or screen recording,
+  detected screenshot, imported by the back or front camera); without them the status line says so.
 - **Documents node** beside Media Gallery: the extraction's PDF, Office, OpenDocument, RTF and iWork files, typed from
   their first bytes when it opens (so one saved without an extension is found too), with the artifacts that read them.
 - **Details in tabs.** *Details*, then *Text Extraction* (text read from the file, part by part, with its method and
@@ -73,6 +78,7 @@
 - **Accounts in short, cleaner.** The device's own users (owner, Secure Folder) are no longer listed as accounts, nor
   the accounts an app keeps for itself under its own name or label (Meet, WhatsApp, a bank's name); Chrome's saved
   logins go with the other sites; the Samsung account and the phone's mail app are named as such; long cells wrap.
+- **MCP server: the model lists the case's artifacts first** instead of asking the user which ones to read.
 - **Chats start collapsed.** The *Chats* node lists the apps; an app opens on its accounts only when clicked.
 - **An account no record identifies is "Unidentified Account"** in the chat tree (was "(no account recorded)"); an
   account known only by its name or only by its id is shown by that alone.
