@@ -55,9 +55,11 @@ public partial class GalleryViewModel : ObservableObject
     [ObservableProperty] private System.ComponentModel.ICollectionView apps = AppsView([]);
     [ObservableProperty] private string app = AllApps;
     public sealed record AppChoice(string Name, string Group);
-    public const string AnyOrigin = "All origins", Gallery = "Device gallery", SentOrReceived = "Sent or received", Sent = "Sent",
-        Received = "Received", Cache = "Cache", SystemFiles = "System files";
-    public string[] Directions { get; } = [AnyOrigin, Gallery, SentOrReceived, Sent, Received, Cache, SystemFiles];
+    public const string AnyOrigin = "All origins", Gallery = "Device gallery", Camera = "Camera", Screenshots = "Screenshots",
+        SentOrReceived = "Sent or received", Sent = "Sent", Received = "Received", Cache = "Cache", SystemFiles = "System files";
+    public string[] Directions { get; } = [AnyOrigin, Gallery, Camera, Screenshots, SentOrReceived, Sent, Received, Cache, SystemFiles];
+    /// <summary>iOS: what the Photos library says of each camera-roll file (camera or screenshot), read once.</summary>
+    Dictionary<string, Capture>? _photos;
     [ObservableProperty] private string direction = AnyOrigin;
 
     static System.ComponentModel.ICollectionView AppsView(IEnumerable<AppChoice> apps)
@@ -82,6 +84,8 @@ public partial class GalleryViewModel : ObservableObject
     bool OfOrigin((MediaRef M, IReadOnlyList<MediaUse> U, string Path, string App, bool Known, IReadOnlyList<MediaUse> C) e) => Direction switch
     {
         Gallery => MediaOrigin.IsGallery(e.Path),
+        Camera => MediaOrigin.CaptureOf(e.Path, _photos) == Capture.Camera,
+        Screenshots => MediaOrigin.CaptureOf(e.Path, _photos) == Capture.Screenshot,
         SentOrReceived => e.U.Count > 0,
         Sent or Received => e.U.Any(u => u.Direction == Direction),
         Cache => MediaOrigin.IsCache(e.Path),
@@ -130,6 +134,7 @@ public partial class GalleryViewModel : ObservableObject
             if (fromExtraction && _s.Extraction is null) return [];
             using var con = _s.OpenDb();
             var uses = MediaUses.Build(con, _s.Manifest);
+            if (_s.Manifest.IsIos) _photos ??= MediaOrigin.Photos(con, _s.Manifest.Artifacts);
             // one tile per file: a picture used by two records is listed by the report twice; all its refs give its messages
             var byDate = Comparer<MediaUse>.Create(MediaUses.Earliest);
             var all = new MediaResolver(_s).All(con, int.MaxValue).GroupBy(m => m.ExtractionPath ?? m.RefId)
@@ -318,7 +323,13 @@ public partial class GalleryViewModel : ObservableObject
 
     partial void OnKindChanged(string value) => ApplyFilter();
     partial void OnAppChanged(string value) => ApplyFilter();
-    partial void OnDirectionChanged(string value) => ApplyFilter();
+    partial void OnDirectionChanged(string value)
+    {
+        const string noPhotos = "On an iPhone, Camera and Screenshots come from iLEAPP's Photos.sqlite artifacts (Photos category), which this report does not hold.";
+        if (value is Camera or Screenshots && _s.Manifest.IsIos && _photos is { Count: 0 }) Status = noPhotos;
+        else if (Status == noPhotos) Status = "";
+        ApplyFilter();
+    }
     partial void OnFromChanged(DateTime? value) => ApplyFilter();
     partial void OnToChanged(DateTime? value) => ApplyFilter();
     async partial void OnSelectedChanged(GalleryItem? value)

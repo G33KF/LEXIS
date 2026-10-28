@@ -1,6 +1,10 @@
 using System.Text.RegularExpressions;
+using Microsoft.Data.Sqlite;
 
 namespace AleappReader.Core;
+
+/// <summary>How a gallery file was made, when the device says so.</summary>
+public enum Capture { None, Camera, Screenshot }
 
 /// <summary>Where a media file sits on the device, read from its path only: the gallery (shared storage the phone's
 /// gallery indexes, iOS's camera roll), an app's cache, the system partitions; and the app a path belongs to.</summary>
@@ -27,6 +31,68 @@ public static partial class MediaOrigin
         if (SharedStorage().Match(p) is not { Success: true } m) return false;
         var rest = p[m.Length..];
         return !rest.StartsWith("Android/", StringComparison.OrdinalIgnoreCase) && !rest.Split('/')[..^1].Any(s => s.StartsWith('.')) && !IsCache(p);
+    }
+
+    // Android: the folders screenshots and screen recordings go to, and the names the system gives them.
+    [GeneratedRegex(@"^(screenshots?|screen[ _]?records?|screen[ _]?recordings?|screen[ _]?recorder)$", RegexOptions.IgnoreCase)]
+    private static partial Regex ScreenFolder();
+    [GeneratedRegex(@"^(screenshot|screen[_-]?record)", RegexOptions.IgnoreCase)]
+    private static partial Regex ScreenName();
+    // The camera's folders: DCIM/Camera, or a DCF folder (DCIM/100ANDRO, DCIM/100MEDIA).
+    [GeneratedRegex(@"^DCIM/(Camera|\d{3}[A-Z0-9_]{5})/", RegexOptions.IgnoreCase)]
+    private static partial Regex CameraDir();
+
+    /// <summary>Taken with the camera, or a screenshot or screen recording. Android: from the gallery folder and the name the
+    /// system gives the file. iOS keeps both in DCIM/1xxAPPLE, so there it is only what the Photos library says
+    /// (<paramref name="photos"/>, from <see cref="Photos"/>).</summary>
+    public static Capture CaptureOf(string devicePath, IReadOnlyDictionary<string, Capture>? photos = null)
+    {
+        var p = Slash(devicePath);
+        var i = p.IndexOf("/Media/DCIM/", StringComparison.OrdinalIgnoreCase);
+        if (i >= 0) return photos?.GetValueOrDefault(p[(i + "/Media/".Length)..]) ?? Capture.None;
+        if (!IsGallery(p) || SharedStorage().Match(p) is not { Success: true } m) return Capture.None;
+        var rest = p[m.Length..];
+        var parts = rest.Split('/');
+        if (parts[..^1].Any(s => ScreenFolder().IsMatch(s)) || ScreenName().IsMatch(parts[^1])) return Capture.Screenshot;
+        return CameraDir().IsMatch(rest) ? Capture.Camera : Capture.None;
+    }
+
+    /// <summary>iOS: the camera roll's files that iLEAPP's Photos.sqlite artifacts mark as a screenshot or screen recording
+    /// (kind subtype 10 or 103, or detected screenshot) or as taken with the back or front camera (imported by 1 or 2), keyed
+    /// by their path under Media ("DCIM/100APPLE/IMG_0001.HEIC"). Empty when the report holds none of those artifacts.</summary>
+    public static Dictionary<string, Capture> Photos(SqliteConnection con, IEnumerable<ArtifactInfo> artifacts)
+    {
+        var kinds = new Dictionary<string, Capture>(StringComparer.OrdinalIgnoreCase);
+        // iLEAPP numbers a header per query ("zAsset-Directory-Path-35")
+        static bool Is(ColumnInfo c, string header) => c.Display == header || c.Display.StartsWith(header + "-", StringComparison.Ordinal);
+        foreach (var a in artifacts.Where(a => a.Columns.Any(c => Is(c, "zAsset-Directory-Path"))))
+        {
+            IReadOnlyList<ColumnInfo> cols;
+            try { cols = ArtifactQuery.ExistingColumns(con, a); }
+            catch (SqliteException) { continue; }
+            ColumnInfo? C(string header) => cols.FirstOrDefault(c => Is(c, header));
+            if (C("zAsset-Directory-Path") is not { } dir || C("zAsset-Filename") is not { } file) continue;
+            var (sub, shot, by) = (C("zAsset-Kind-Sub-Type"), C("zAsset-Is_Detected_Screenshot"), C("zAddAssetAttr-Imported by"));
+            if (sub is null && shot is null && by is null) continue;
+            string Sel(ColumnInfo? c) => c is null ? "NULL" : ArtifactQuery.Q(c.Sql);
+            using var cmd = con.CreateCommand();
+            cmd.CommandText = $"SELECT {Sel(dir)}, {Sel(file)}, {Sel(sub)}, {Sel(shot)}, {Sel(by)} FROM {ArtifactQuery.Q(a.TableName)}";
+            try
+            {
+                using var r = cmd.ExecuteReader();
+                while (r.Read())
+                {
+                    // values read "10-SpringBoard-Screenshot-10": the code leads
+                    int? N(int i) => r.IsDBNull(i) || !int.TryParse(r.GetValue(i).ToString()?.Split('-')[0], out var n) ? null : n;
+                    var kind = N(2) is 10 or 103 || N(3) == 1 ? Capture.Screenshot : N(4) is 1 or 2 ? Capture.Camera : Capture.None;
+                    if (kind == Capture.None || r.IsDBNull(0) || r.IsDBNull(1)) continue;
+                    var key = $"{r.GetValue(0)}/{r.GetValue(1)}";
+                    if (kind == Capture.Screenshot || !kinds.ContainsKey(key)) kinds[key] = kind;
+                }
+            }
+            catch (SqliteException) { } // a table that does not read adds nothing
+        }
+        return kinds;
     }
 
     /// <summary>In a cache, thumbnail or temporary folder.</summary>
